@@ -18,48 +18,38 @@
   <!-- App Description for SEO/Sharing -->
   <meta name="description" content="JMart Steel Safety Management App - Pre-Start Checklists, Site Inspections, ITP Forms, Toolbox Talks, and Incident Reports">
 
-  <!-- Favicon and App Icons (Base64 embedded) -->
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23ea580c'/><text x='50' y='65' font-size='50' text-anchor='middle' fill='white'>🛡️</text></svg>">
-  <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'><rect width='180' height='180' rx='40' fill='%23ea580c'/><text x='90' y='115' font-size='80' text-anchor='middle' fill='white'>🛡️</text></svg>">
-
-  <!-- iOS PWA Manifest -->
-  <link rel="manifest" href="manifest.json">
-
-  <!-- iOS-specific Apple Touch Icons -->
+  <!-- Favicon and App Icons -->
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192x192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512x512.png">
   <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon-180x180.png">
   <link rel="apple-touch-icon" sizes="167x167" href="icons/apple-touch-icon-167x167.png">
   <link rel="apple-touch-icon" sizes="152x152" href="icons/apple-touch-icon-152x152.png">
-  <link rel="apple-touch-icon" sizes="120x120" href="icons/apple-touch-icon-120x120.png">
 
-  <!-- iOS Safari Splash Screens -->
-  <link rel="apple-touch-startup-image" href="icons/apple-splash-2048-2732.png" media="(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2)">
-  <link rel="apple-touch-startup-image" href="icons/apple-splash-1668-2388.png" media="(device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2)">
-  <link rel="apple-touch-startup-image" href="icons/apple-splash-1536-2048.png" media="(device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2)">
-  <link rel="apple-touch-startup-image" href="icons/apple-splash-1290-2796.png" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3)">
-  <link rel="apple-touch-startup-image" href="icons/apple-splash-1179-2556.png" media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3)">
-  <link rel="apple-touch-startup-image" href="icons/apple-splash-1170-2532.png" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3)">
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="manifest.json">
 
-  <!-- iOS Service Worker Registration -->
+  <!-- Service Worker Registration -->
   <script>
-    // Register Service Worker for iOS
+    // Register Service Worker for all devices
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js')
           .then(reg => {
-            console.log('[iOS] Service Worker registered:', reg.scope);
-            // Check for updates periodically
-            setInterval(() => reg.update(), 60000);
+            console.log('[App] Service Worker registered:', reg.scope);
+            // Check for updates
+            reg.update();
           })
-          .catch(err => console.log('[iOS] SW registration failed:', err));
+          .catch(err => console.log('[App] SW registration failed:', err));
       });
     }
 
-    // iOS PWA Detection
-    const isIOSPWA = window.navigator.standalone === true;
-    if (isIOSPWA) {
-      document.documentElement.classList.add('ios-pwa');
-      console.log('[iOS] Running as installed PWA');
-    }
+    // Detect platform for analytics/debugging
+    const platform = {
+      isIOS: /iPad|iPhone|iPod/.test(navigator.userAgent),
+      isAndroid: /Android/.test(navigator.userAgent),
+      isPWA: window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone
+    };
+    console.log('[App] Platform:', platform);
   </script>
 
   <!-- Scripts -->
