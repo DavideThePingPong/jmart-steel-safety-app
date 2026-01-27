@@ -999,7 +999,26 @@
 
       const addForm = (formType, formData) => {
         const newForm = { id: Date.now(), type: formType, data: formData, createdAt: new Date().toISOString(), status: 'completed' };
-        setForms([newForm, ...forms]);
+        console.log('addForm called, current forms:', forms.length, 'isInitialLoad:', isInitialLoad.current);
+
+        // Use functional update to ensure we get latest forms state
+        setForms(prevForms => {
+          const updatedForms = [newForm, ...prevForms];
+          console.log('setForms update, new length:', updatedForms.length);
+
+          // Immediately save to localStorage as backup
+          localStorage.setItem('jmart-safety-forms', JSON.stringify(updatedForms));
+          console.log('Immediately saved to localStorage');
+
+          // Immediately sync to Firebase
+          if (FirebaseSync.isConnected()) {
+            FirebaseSync.syncForms(updatedForms).then(() => {
+              console.log('Immediately synced to Firebase');
+            }).catch(err => console.error('Firebase sync error:', err));
+          }
+
+          return updatedForms;
+        });
 
         // Auto-download PDF with date and job name
         setTimeout(() => {
