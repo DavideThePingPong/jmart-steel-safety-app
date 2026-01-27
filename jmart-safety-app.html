@@ -33,6 +33,227 @@
   <script src="https://unpkg.com/lucide@latest"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
+  <!-- Firebase SDK for Cloud Sync -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+
+  <script>
+    // ========================================
+    // FIREBASE CONFIGURATION
+    // ========================================
+    // TODO: Replace these values with your Firebase config from the Firebase Console
+    // Follow the setup guide: Firebase-Setup-Guide.docx
+    // ========================================
+    const firebaseConfig = {
+      apiKey: "AIzaSyAECfytYqggzmQ-Kxm_vqQWlEnBJMXz5H4",
+      authDomain: "jmart-steel-safety.firebaseapp.com",
+      databaseURL: "https://jmart-steel-safety-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "jmart-steel-safety",
+      storageBucket: "jmart-steel-safety.firebasestorage.app",
+      messagingSenderId: "920798274486",
+      appId: "1:920798274486:web:9d6cdd8853d82280665717"
+    };
+
+    // Check if Firebase is configured
+    const isFirebaseConfigured = firebaseConfig.apiKey !== "YOUR_API_KEY_HERE";
+
+    // Initialize Firebase only if configured
+    let firebaseApp = null;
+    let firebaseDb = null;
+
+    if (isFirebaseConfigured) {
+      try {
+        firebaseApp = firebase.initializeApp(firebaseConfig);
+        firebaseDb = firebase.database();
+        console.log('Firebase connected successfully!');
+      } catch (error) {
+        console.error('Firebase initialization error:', error);
+      }
+    } else {
+      console.log('Firebase not configured - running in local-only mode. See Firebase-Setup-Guide.docx for setup instructions.');
+    }
+
+    // Firebase sync helper functions
+    const FirebaseSync = {
+      // Sync forms to Firebase
+      syncForms: async (forms) => {
+        if (!firebaseDb || !isFirebaseConfigured) return;
+        try {
+          await firebaseDb.ref('jmart-safety/forms').set(forms);
+          console.log('Forms synced to Firebase');
+        } catch (error) {
+          console.error('Error syncing forms:', error);
+        }
+      },
+
+      // Sync sites to Firebase
+      syncSites: async (sites) => {
+        if (!firebaseDb || !isFirebaseConfigured) return;
+        try {
+          await firebaseDb.ref('jmart-safety/sites').set(sites);
+          console.log('Sites synced to Firebase');
+        } catch (error) {
+          console.error('Error syncing sites:', error);
+        }
+      },
+
+      // Sync training records to Firebase
+      syncTraining: async (training) => {
+        if (!firebaseDb || !isFirebaseConfigured) return;
+        try {
+          await firebaseDb.ref('jmart-safety/training').set(training);
+          console.log('Training synced to Firebase');
+        } catch (error) {
+          console.error('Error syncing training:', error);
+        }
+      },
+
+      // Listen for real-time form updates
+      onFormsChange: (callback) => {
+        if (!firebaseDb || !isFirebaseConfigured) return () => {};
+        const ref = firebaseDb.ref('jmart-safety/forms');
+        ref.on('value', (snapshot) => {
+          const data = snapshot.val();
+          if (data) callback(data);
+        });
+        return () => ref.off();
+      },
+
+      // Listen for real-time site updates
+      onSitesChange: (callback) => {
+        if (!firebaseDb || !isFirebaseConfigured) return () => {};
+        const ref = firebaseDb.ref('jmart-safety/sites');
+        ref.on('value', (snapshot) => {
+          const data = snapshot.val();
+          if (data) callback(data);
+        });
+        return () => ref.off();
+      },
+
+      // Listen for real-time training updates
+      onTrainingChange: (callback) => {
+        if (!firebaseDb || !isFirebaseConfigured) return () => {};
+        const ref = firebaseDb.ref('jmart-safety/training');
+        ref.on('value', (snapshot) => {
+          const data = snapshot.val();
+          if (data) callback(data);
+        });
+        return () => ref.off();
+      },
+
+      // Check if Firebase is configured and connected
+      isConnected: () => isFirebaseConfigured && firebaseDb !== null
+    };
+
+    // ========================================
+    // PDF GENERATOR
+    // ========================================
+    const PDFGenerator = {
+      folderMap: {
+        'prestart': 'Pre-Start Checklists',
+        'inspection': 'Site Inspections',
+        'itp': 'ITP Forms',
+        'incident': 'Incidents',
+        'toolbox': 'Toolbox Talks',
+        'steel-itp': 'Steel ITP',
+        'training': 'Training Certificates'
+      },
+
+      generate: function(form) {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+
+        const type = form.type || 'unknown';
+        const folderName = this.folderMap[type] || type;
+        const date = new Date(form.createdAt || Date.now());
+        const dateStr = date.toLocaleDateString('en-AU').replace(/\//g, '-');
+        const timeStr = date.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' }).replace(':', '-');
+
+        // Header
+        doc.setFillColor(234, 88, 12);
+        doc.rect(0, 0, 210, 35, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(22);
+        doc.text('JMart Steel Safety', 105, 18, { align: 'center' });
+        doc.setFontSize(12);
+        doc.text(folderName, 105, 28, { align: 'center' });
+
+        // Form details
+        doc.setTextColor(0, 0, 0);
+        doc.setFontSize(11);
+        let y = 50;
+
+        doc.text('Date: ' + date.toLocaleDateString('en-AU'), 20, y);
+        doc.text('Time: ' + date.toLocaleTimeString('en-AU'), 120, y);
+        y += 15;
+
+        // Form data
+        if (form.data) {
+          const data = form.data;
+          for (const [key, value] of Object.entries(data)) {
+            if (value && typeof value !== 'object') {
+              const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+              const text = label + ': ' + value;
+
+              // Word wrap for long text
+              const lines = doc.splitTextToSize(text, 170);
+              lines.forEach(line => {
+                if (y > 270) {
+                  doc.addPage();
+                  y = 20;
+                }
+                doc.text(line, 20, y);
+                y += 7;
+              });
+            } else if (value && typeof value === 'object' && !Array.isArray(value)) {
+              // Handle nested objects (like inspection items)
+              const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+              doc.setFontSize(12);
+              doc.setFont(undefined, 'bold');
+              if (y > 260) { doc.addPage(); y = 20; }
+              doc.text(label + ':', 20, y);
+              y += 8;
+              doc.setFontSize(10);
+              doc.setFont(undefined, 'normal');
+
+              for (const [subKey, subValue] of Object.entries(value)) {
+                if (subValue && typeof subValue !== 'object') {
+                  const subLabel = subKey.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+                  const subText = '  • ' + subLabel + ': ' + subValue;
+                  const subLines = doc.splitTextToSize(subText, 165);
+                  subLines.forEach(line => {
+                    if (y > 270) { doc.addPage(); y = 20; }
+                    doc.text(line, 25, y);
+                    y += 6;
+                  });
+                }
+              }
+              doc.setFontSize(11);
+            }
+          }
+        }
+
+        // Footer
+        doc.setFontSize(9);
+        doc.setTextColor(128, 128, 128);
+        doc.text('Generated: ' + new Date().toLocaleString('en-AU'), 105, 285, { align: 'center' });
+
+        // Generate filename
+        const siteName = form.data?.siteConducted || form.data?.site || form.data?.siteLocation || 'Form';
+        const safeSiteName = siteName.toString().replace(/[^a-zA-Z0-9]/g, '-').substring(0, 30);
+        const filename = dateStr + '_' + timeStr + '_' + type + '_' + safeSiteName + '.pdf';
+
+        return { doc, filename, folderName };
+      },
+
+      download: function(form) {
+        const { doc, filename } = this.generate(form);
+        doc.save(filename);
+        return filename;
+      }
+    };
+  </script>
+
   <style>
     /* Base styles */
     body {
@@ -342,30 +563,80 @@
       const [showInstallPrompt, setShowInstallPrompt] = useState(false);
       const [deferredPrompt, setDeferredPrompt] = useState(null);
       const [lastSynced, setLastSynced] = useState(null);
+      const [syncStatus, setSyncStatus] = useState(FirebaseSync.isConnected() ? 'synced' : 'local'); // 'synced', 'syncing', 'offline', 'local'
+      const [showSyncBanner, setShowSyncBanner] = useState(!FirebaseSync.isConnected());
+      const [successModal, setSuccessModal] = useState(null); // { form, type } for PDF download modal
+      const isInitialLoad = useRef(true);
 
-      // Load saved data
+      // Load saved data from localStorage first, then listen to Firebase
       useEffect(() => {
+        // Load local data first (for offline support)
         const savedForms = localStorage.getItem('jmart-safety-forms');
         if (savedForms) setForms(JSON.parse(savedForms));
         const savedSites = localStorage.getItem('jmart-safety-sites');
         if (savedSites) setSites(JSON.parse(savedSites));
         const lastSync = localStorage.getItem('jmart-last-sync');
         if (lastSync) setLastSynced(lastSync);
+
+        // If Firebase is connected, listen for real-time updates
+        if (FirebaseSync.isConnected()) {
+          const unsubForms = FirebaseSync.onFormsChange((firebaseForms) => {
+            const formsArray = Array.isArray(firebaseForms) ? firebaseForms : Object.values(firebaseForms || {});
+            if (formsArray.length > 0) {
+              setForms(formsArray);
+              localStorage.setItem('jmart-safety-forms', JSON.stringify(formsArray));
+            }
+            setSyncStatus('synced');
+            setLastSynced(new Date().toISOString());
+          });
+
+          const unsubSites = FirebaseSync.onSitesChange((firebaseSites) => {
+            const sitesArray = Array.isArray(firebaseSites) ? firebaseSites : Object.values(firebaseSites || {});
+            if (sitesArray.length > 0) {
+              setSites(sitesArray);
+              localStorage.setItem('jmart-safety-sites', JSON.stringify(sitesArray));
+            }
+          });
+
+          return () => {
+            unsubForms();
+            unsubSites();
+          };
+        }
+
+        isInitialLoad.current = false;
       }, []);
 
-      // Save forms
+      // Save forms to localStorage and sync to Firebase
       useEffect(() => {
-        if (forms.length > 0) {
+        if (forms.length > 0 && !isInitialLoad.current) {
           localStorage.setItem('jmart-safety-forms', JSON.stringify(forms));
           localStorage.setItem('jmart-last-sync', new Date().toISOString());
           setLastSynced(new Date().toISOString());
-        }
-      }, [forms]);
 
-      // Save sites
+          // Sync to Firebase if connected
+          if (FirebaseSync.isConnected() && isOnline) {
+            setSyncStatus('syncing');
+            FirebaseSync.syncForms(forms).then(() => {
+              setSyncStatus('synced');
+            }).catch(() => {
+              setSyncStatus('offline');
+            });
+          }
+        }
+      }, [forms, isOnline]);
+
+      // Save sites to localStorage and sync to Firebase
       useEffect(() => {
-        if (sites.length > 0) localStorage.setItem('jmart-safety-sites', JSON.stringify(sites));
-      }, [sites]);
+        if (sites.length > 0 && !isInitialLoad.current) {
+          localStorage.setItem('jmart-safety-sites', JSON.stringify(sites));
+
+          // Sync to Firebase if connected
+          if (FirebaseSync.isConnected() && isOnline) {
+            FirebaseSync.syncSites(sites);
+          }
+        }
+      }, [sites, isOnline]);
 
       // Online/Offline detection
       useEffect(() => {
@@ -413,6 +684,20 @@
       const addForm = (formType, formData) => {
         const newForm = { id: Date.now(), type: formType, data: formData, createdAt: new Date().toISOString(), status: 'completed' };
         setForms([newForm, ...forms]);
+        // Show success modal with PDF download option
+        setSuccessModal({ form: newForm, type: formType });
+      };
+
+      const handleDownloadPDF = () => {
+        if (successModal?.form) {
+          const filename = PDFGenerator.download(successModal.form);
+          console.log('Downloaded:', filename);
+        }
+      };
+
+      const closeSuccessModal = () => {
+        setSuccessModal(null);
+        setCurrentView('dashboard');
       };
 
       const previousPrestarts = forms.filter(f => f.type === 'prestart');
@@ -439,6 +724,59 @@
             </div>
           )}
 
+          {/* Success Modal with PDF Download */}
+          {successModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4">
+              <div className="bg-white rounded-2xl max-w-sm w-full shadow-2xl overflow-hidden">
+                <div className="bg-green-500 text-white p-6 text-center">
+                  <div className="text-5xl mb-3">✅</div>
+                  <h2 className="text-xl font-bold">Form Submitted!</h2>
+                  <p className="text-green-100 text-sm mt-1">
+                    {PDFGenerator.folderMap[successModal.type] || successModal.type}
+                  </p>
+                </div>
+                <div className="p-6 space-y-4">
+                  <p className="text-gray-600 text-center text-sm">
+                    Your form has been saved{FirebaseSync.isConnected() ? ' and synced to the cloud' : ''}.
+                  </p>
+                  <button
+                    onClick={handleDownloadPDF}
+                    className="w-full bg-orange-600 text-white py-4 rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-orange-700 transition"
+                  >
+                    <span className="text-xl">📥</span>
+                    Download PDF
+                  </button>
+                  <p className="text-xs text-gray-400 text-center">
+                    Save to Google Drive / JMart Steel / Safety Forms
+                  </p>
+                  <button
+                    onClick={closeSuccessModal}
+                    className="w-full bg-gray-100 text-gray-700 py-3 rounded-xl font-medium hover:bg-gray-200 transition"
+                  >
+                    Back to Dashboard
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Firebase Setup Banner */}
+          {showSyncBanner && !FirebaseSync.isConnected() && (
+            <div className="fixed bottom-20 left-3 right-3 bg-blue-600 text-white p-3 rounded-xl shadow-lg z-50 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">☁️</span>
+                <div>
+                  <p className="font-semibold text-sm">Enable Cloud Sync</p>
+                  <p className="text-xs opacity-80">Sync data across all devices</p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => setShowSyncBanner(false)} className="text-white opacity-70 px-2 py-1 text-sm">Later</button>
+                <button onClick={() => { setCurrentView('settings'); setShowSyncBanner(false); }} className="bg-white text-blue-600 px-3 py-1 rounded-lg text-sm font-semibold">Setup</button>
+              </div>
+            </div>
+          )}
+
           {/* Install Prompt Banner */}
           {showInstallPrompt && (
             <div className="install-banner">
@@ -462,10 +800,17 @@
               <span className="text-2xl">🛡️</span>
               <div>
                 <h1 className="font-bold text-lg leading-tight">JMart Steel</h1>
-                <p className="text-xs text-orange-200">{isOnline ? 'Safety Management' : '📴 Offline Mode'}</p>
+                <p className="text-xs text-orange-200">
+                  {!isOnline ? '📴 Offline Mode' :
+                   syncStatus === 'synced' ? '☁️ Synced' :
+                   syncStatus === 'syncing' ? '🔄 Syncing...' :
+                   syncStatus === 'local' ? '💾 Local Only' : 'Safety Management'}
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-1">
+              {syncStatus === 'synced' && <span className="text-green-300 text-sm">●</span>}
+              {syncStatus === 'syncing' && <span className="text-yellow-300 text-sm animate-pulse">●</span>}
               {!isOnline && <span className="text-yellow-300 text-sm">●</span>}
               <button className="p-2 hover:bg-orange-700 rounded-lg text-xl" aria-label="Notifications">🔔</button>
             </div>
