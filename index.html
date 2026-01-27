@@ -844,9 +844,26 @@
       useEffect(() => {
         // Load local data first (for offline support)
         const savedForms = localStorage.getItem('jmart-safety-forms');
-        if (savedForms) setForms(JSON.parse(savedForms));
+        let localForms = [];
+        if (savedForms) {
+          try {
+            localForms = JSON.parse(savedForms);
+            setForms(localForms);
+            console.log('Loaded from localStorage:', localForms.length, 'forms');
+          } catch (e) {
+            console.error('Error parsing localStorage forms:', e);
+          }
+        }
+
         const savedSites = localStorage.getItem('jmart-safety-sites');
-        if (savedSites) setSites(JSON.parse(savedSites));
+        if (savedSites) {
+          try {
+            setSites(JSON.parse(savedSites));
+          } catch (e) {
+            console.error('Error parsing localStorage sites:', e);
+          }
+        }
+
         const lastSync = localStorage.getItem('jmart-last-sync');
         if (lastSync) setLastSynced(lastSync);
 
@@ -854,10 +871,28 @@
         if (FirebaseSync.isConnected()) {
           const unsubForms = FirebaseSync.onFormsChange((firebaseForms) => {
             const formsArray = Array.isArray(firebaseForms) ? firebaseForms : Object.values(firebaseForms || {});
+            console.log('Firebase forms received:', formsArray.length, 'forms');
+
+            // Merge: use Firebase data if it has more forms, otherwise keep local
+            // This prevents data loss when Firebase is empty but local has data
             if (formsArray.length > 0) {
-              setForms(formsArray);
-              localStorage.setItem('jmart-safety-forms', JSON.stringify(formsArray));
+              // Merge by ID - combine local and Firebase, preferring newer timestamps
+              const mergedForms = [...formsArray];
+              localForms.forEach(localForm => {
+                if (!mergedForms.find(f => f.id === localForm.id)) {
+                  mergedForms.push(localForm);
+                }
+              });
+              mergedForms.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+              setForms(mergedForms);
+              localStorage.setItem('jmart-safety-forms', JSON.stringify(mergedForms));
+              console.log('Merged forms:', mergedForms.length, 'total');
+            } else if (localForms.length > 0) {
+              // Firebase is empty but we have local data - push to Firebase
+              console.log('Firebase empty, pushing local forms to Firebase');
+              FirebaseSync.syncForms(localForms);
             }
+
             setSyncStatus('synced');
             setLastSynced(new Date().toISOString());
           });
@@ -870,29 +905,38 @@
             }
           });
 
+          // Mark initial load as complete after a short delay
+          setTimeout(() => {
+            isInitialLoad.current = false;
+          }, 1000);
+
           return () => {
             unsubForms();
             unsubSites();
           };
+        } else {
+          isInitialLoad.current = false;
         }
-
-        isInitialLoad.current = false;
       }, []);
 
       // Save forms to localStorage and sync to Firebase
       useEffect(() => {
-        if (forms.length > 0 && !isInitialLoad.current) {
+        // Always save to localStorage when forms change (except on initial empty load)
+        if (!isInitialLoad.current) {
           localStorage.setItem('jmart-safety-forms', JSON.stringify(forms));
           localStorage.setItem('jmart-last-sync', new Date().toISOString());
           setLastSynced(new Date().toISOString());
+          console.log('Forms saved to localStorage:', forms.length, 'forms');
 
-          // Sync to Firebase if connected
-          if (FirebaseSync.isConnected() && isOnline) {
+          // Sync to Firebase if connected and we have forms
+          if (FirebaseSync.isConnected() && isOnline && forms.length > 0) {
             setSyncStatus('syncing');
             FirebaseSync.syncForms(forms).then(() => {
               setSyncStatus('synced');
-            }).catch(() => {
+              console.log('Forms synced to Firebase:', forms.length, 'forms');
+            }).catch((err) => {
               setSyncStatus('offline');
+              console.error('Firebase sync failed:', err);
             });
           }
         }
