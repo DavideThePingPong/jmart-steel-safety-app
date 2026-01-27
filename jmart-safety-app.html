@@ -238,10 +238,12 @@
         doc.setTextColor(128, 128, 128);
         doc.text('Generated: ' + new Date().toLocaleString('en-AU'), 105, 285, { align: 'center' });
 
-        // Generate filename
-        const siteName = form.data?.siteConducted || form.data?.site || form.data?.siteLocation || 'Form';
-        const safeSiteName = siteName.toString().replace(/[^a-zA-Z0-9]/g, '-').substring(0, 30);
-        const filename = dateStr + '_' + timeStr + '_' + type + '_' + safeSiteName + '.pdf';
+        // Generate filename: JobName_FormType_Date.pdf
+        const siteName = form.data?.siteConducted || form.data?.site || form.data?.siteLocation || form.data?.jobName || 'Form';
+        const safeSiteName = siteName.toString().replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '-').substring(0, 30);
+        const formTypeLabel = this.folderMap[type] || type;
+        const safeFormType = formTypeLabel.replace(/[^a-zA-Z0-9]/g, '-');
+        const filename = safeSiteName + '_' + safeFormType + '_' + dateStr + '.pdf';
 
         return { doc, filename, folderName };
       },
@@ -690,7 +692,15 @@
       const addForm = (formType, formData) => {
         const newForm = { id: Date.now(), type: formType, data: formData, createdAt: new Date().toISOString(), status: 'completed' };
         setForms([newForm, ...forms]);
-        // Show success modal with PDF download option
+
+        // Auto-download PDF with date and job name
+        setTimeout(() => {
+          const filename = PDFGenerator.download(newForm);
+          markAsBackedUp(newForm.id);
+          console.log('Auto-saved PDF:', filename);
+        }, 500);
+
+        // Show success modal
         setSuccessModal({ form: newForm, type: formType });
       };
 
@@ -1670,8 +1680,8 @@
         URL.revokeObjectURL(url);
       };
 
-      // Get QR Code URL for sharing
-      const getAppUrl = () => window.location.href;
+      // Get QR Code URL for sharing - always use the GitHub Pages URL
+      const getAppUrl = () => 'https://davidethepingpong.github.io/jmart-steel-safety-app/jmart-safety-app.html';
 
       // Course List View
       if (!selectedCourse) {
@@ -1680,8 +1690,8 @@
             {showQRCode && (
               <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowQRCode(false)}>
                 <div className="bg-white rounded-xl p-6 max-w-sm text-center" onClick={e => e.stopPropagation()}>
-                  <h3 className="font-bold text-lg mb-3">📱 Share Training App</h3>
-                  <p className="text-sm text-gray-600 mb-4">Workers can scan this QR code or use the link to access training on their phone</p>
+                  <h3 className="font-bold text-lg mb-3">📱 Share JMart Safety App</h3>
+                  <p className="text-sm text-gray-600 mb-4">Workers can scan this QR code to install the Safety App on their phone</p>
                   <div className="bg-gray-100 p-4 rounded-lg mb-4">
                     <img src={'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(getAppUrl())} alt="QR Code" className="mx-auto" />
                   </div>
