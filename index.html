@@ -18,39 +18,12 @@
   <!-- App Description for SEO/Sharing -->
   <meta name="description" content="JMart Steel Safety Management App - Pre-Start Checklists, Site Inspections, ITP Forms, Toolbox Talks, and Incident Reports">
 
-  <!-- Favicon and App Icons -->
-  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192x192.png">
-  <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512x512.png">
-  <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon-180x180.png">
-  <link rel="apple-touch-icon" sizes="167x167" href="icons/apple-touch-icon-167x167.png">
-  <link rel="apple-touch-icon" sizes="152x152" href="icons/apple-touch-icon-152x152.png">
+  <!-- Favicon and App Icons (Base64 embedded) -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23ea580c'/><text x='50' y='65' font-size='50' text-anchor='middle' fill='white'>🛡️</text></svg>">
+  <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'><rect width='180' height='180' rx='40' fill='%23ea580c'/><text x='90' y='115' font-size='80' text-anchor='middle' fill='white'>🛡️</text></svg>">
 
-  <!-- PWA Manifest -->
-  <link rel="manifest" href="manifest.json">
-
-  <!-- Service Worker Registration -->
-  <script>
-    // Register Service Worker for all devices
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js')
-          .then(reg => {
-            console.log('[App] Service Worker registered:', reg.scope);
-            // Check for updates
-            reg.update();
-          })
-          .catch(err => console.log('[App] SW registration failed:', err));
-      });
-    }
-
-    // Detect platform for analytics/debugging
-    const platform = {
-      isIOS: /iPad|iPhone|iPod/.test(navigator.userAgent),
-      isAndroid: /Android/.test(navigator.userAgent),
-      isPWA: window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone
-    };
-    console.log('[App] Platform:', platform);
-  </script>
+  <!-- Manifest for PWA -->
+  <link rel="manifest" href="data:application/json;base64,ewogICJuYW1lIjogIkpNYXJ0IFN0ZWVsIFNhZmV0eSBBcHAiLAogICJzaG9ydF9uYW1lIjogIkpNYXJ0IFNhZmV0eSIsCiAgImRlc2NyaXB0aW9uIjogIlNhZmV0eSBtYW5hZ2VtZW50IGFwcCBmb3IgSk1hcnQgU3RlZWwgLSBOU1cgT3BlcmF0aW9ucyIsCiAgInN0YXJ0X3VybCI6ICIuIiwKICAiZGlzcGxheSI6ICJzdGFuZGFsb25lIiwKICAiYmFja2dyb3VuZF9jb2xvciI6ICIjZjNmNGY2IiwKICAidGhlbWVfY29sb3IiOiAiI2VhNTgwYyIsCiAgIm9yaWVudGF0aW9uIjogInBvcnRyYWl0IiwKICAiaWNvbnMiOiBbCiAgICB7CiAgICAgICJzcmMiOiAiZGF0YTppbWFnZS9zdmcreG1sLDxzdmcgeG1sbnM9J2h0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnJyB2aWV3Qm94PScwIDAgMTkyIDE5Mic+PHJlY3Qgd2lkdGg9JzE5MicgaGVpZ2h0PScxOTInIHJ4PSc0MCcgZmlsbD0nJTIzZWE1ODBjJy8+PHRleHQgeD0nOTYnIHk9JzEyMCcgZm9udC1zaXplPSc4MCcgdGV4dC1hbmNob3I9J21pZGRsZScgZmlsbD0nd2hpdGUnPvCfm6HvuI88L3RleHQ+PC9zdmc+IiwKICAgICAgInNpemVzIjogIjE5MngxOTIiLAogICAgICAidHlwZSI6ICJpbWFnZS9zdmcreG1sIiwKICAgICAgInB1cnBvc2UiOiAiYW55IG1hc2thYmxlIgogICAgfQogIF0KfQ==">
 
   <!-- Scripts -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -59,6 +32,229 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+  <!-- Firebase SDK for Cloud Sync -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+
+  <script>
+    // ========================================
+    // FIREBASE CONFIGURATION
+    // ========================================
+    // TODO: Replace these values with your Firebase config from the Firebase Console
+    // Follow the setup guide: Firebase-Setup-Guide.docx
+    // ========================================
+    const firebaseConfig = {
+      apiKey: "AIzaSyAECfytYqggzmQ-Kxm_vqQWlEnBJMXz5H4",
+      authDomain: "jmart-steel-safety.firebaseapp.com",
+      databaseURL: "https://jmart-steel-safety-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "jmart-steel-safety",
+      storageBucket: "jmart-steel-safety.firebasestorage.app",
+      messagingSenderId: "920798274486",
+      appId: "1:920798274486:web:9d6cdd8853d82280665717"
+    };
+
+    // Check if Firebase is configured
+    const isFirebaseConfigured = firebaseConfig.apiKey !== "YOUR_API_KEY_HERE";
+
+    // Initialize Firebase only if configured
+    let firebaseApp = null;
+    let firebaseDb = null;
+
+    if (isFirebaseConfigured) {
+      try {
+        firebaseApp = firebase.initializeApp(firebaseConfig);
+        firebaseDb = firebase.database();
+        console.log('Firebase connected successfully!');
+      } catch (error) {
+        console.error('Firebase initialization error:', error);
+      }
+    } else {
+      console.log('Firebase not configured - running in local-only mode. See Firebase-Setup-Guide.docx for setup instructions.');
+    }
+
+    // Firebase sync helper functions
+    const FirebaseSync = {
+      // Sync forms to Firebase
+      syncForms: async (forms) => {
+        if (!firebaseDb || !isFirebaseConfigured) return;
+        try {
+          await firebaseDb.ref('jmart-safety/forms').set(forms);
+          console.log('Forms synced to Firebase');
+        } catch (error) {
+          console.error('Error syncing forms:', error);
+        }
+      },
+
+      // Sync sites to Firebase
+      syncSites: async (sites) => {
+        if (!firebaseDb || !isFirebaseConfigured) return;
+        try {
+          await firebaseDb.ref('jmart-safety/sites').set(sites);
+          console.log('Sites synced to Firebase');
+        } catch (error) {
+          console.error('Error syncing sites:', error);
+        }
+      },
+
+      // Sync training records to Firebase
+      syncTraining: async (training) => {
+        if (!firebaseDb || !isFirebaseConfigured) return;
+        try {
+          await firebaseDb.ref('jmart-safety/training').set(training);
+          console.log('Training synced to Firebase');
+        } catch (error) {
+          console.error('Error syncing training:', error);
+        }
+      },
+
+      // Listen for real-time form updates
+      onFormsChange: (callback) => {
+        if (!firebaseDb || !isFirebaseConfigured) return () => {};
+        const ref = firebaseDb.ref('jmart-safety/forms');
+        ref.on('value', (snapshot) => {
+          const data = snapshot.val();
+          if (data) callback(data);
+        });
+        return () => ref.off();
+      },
+
+      // Listen for real-time site updates
+      onSitesChange: (callback) => {
+        if (!firebaseDb || !isFirebaseConfigured) return () => {};
+        const ref = firebaseDb.ref('jmart-safety/sites');
+        ref.on('value', (snapshot) => {
+          const data = snapshot.val();
+          if (data) callback(data);
+        });
+        return () => ref.off();
+      },
+
+      // Listen for real-time training updates
+      onTrainingChange: (callback) => {
+        if (!firebaseDb || !isFirebaseConfigured) return () => {};
+        const ref = firebaseDb.ref('jmart-safety/training');
+        ref.on('value', (snapshot) => {
+          const data = snapshot.val();
+          if (data) callback(data);
+        });
+        return () => ref.off();
+      },
+
+      // Check if Firebase is configured and connected
+      isConnected: () => isFirebaseConfigured && firebaseDb !== null
+    };
+
+    // ========================================
+    // PDF GENERATOR
+    // ========================================
+    const PDFGenerator = {
+      folderMap: {
+        'prestart': 'Pre-Start Checklists',
+        'inspection': 'Site Inspections',
+        'itp': 'ITP Forms',
+        'incident': 'Incidents',
+        'toolbox': 'Toolbox Talks',
+        'steel-itp': 'Steel ITP',
+        'training': 'Training Certificates'
+      },
+
+      generate: function(form) {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+
+        const type = form.type || 'unknown';
+        const folderName = this.folderMap[type] || type;
+        const date = new Date(form.createdAt || Date.now());
+        const dateStr = date.toLocaleDateString('en-AU').replace(/\//g, '-');
+        const timeStr = date.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' }).replace(':', '-');
+
+        // Header
+        doc.setFillColor(234, 88, 12);
+        doc.rect(0, 0, 210, 35, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(22);
+        doc.text('JMart Steel Safety', 105, 18, { align: 'center' });
+        doc.setFontSize(12);
+        doc.text(folderName, 105, 28, { align: 'center' });
+
+        // Form details
+        doc.setTextColor(0, 0, 0);
+        doc.setFontSize(11);
+        let y = 50;
+
+        doc.text('Date: ' + date.toLocaleDateString('en-AU'), 20, y);
+        doc.text('Time: ' + date.toLocaleTimeString('en-AU'), 120, y);
+        y += 15;
+
+        // Form data
+        if (form.data) {
+          const data = form.data;
+          for (const [key, value] of Object.entries(data)) {
+            if (value && typeof value !== 'object') {
+              const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+              const text = label + ': ' + value;
+
+              // Word wrap for long text
+              const lines = doc.splitTextToSize(text, 170);
+              lines.forEach(line => {
+                if (y > 270) {
+                  doc.addPage();
+                  y = 20;
+                }
+                doc.text(line, 20, y);
+                y += 7;
+              });
+            } else if (value && typeof value === 'object' && !Array.isArray(value)) {
+              // Handle nested objects (like inspection items)
+              const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+              doc.setFontSize(12);
+              doc.setFont(undefined, 'bold');
+              if (y > 260) { doc.addPage(); y = 20; }
+              doc.text(label + ':', 20, y);
+              y += 8;
+              doc.setFontSize(10);
+              doc.setFont(undefined, 'normal');
+
+              for (const [subKey, subValue] of Object.entries(value)) {
+                if (subValue && typeof subValue !== 'object') {
+                  const subLabel = subKey.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+                  const subText = '  • ' + subLabel + ': ' + subValue;
+                  const subLines = doc.splitTextToSize(subText, 165);
+                  subLines.forEach(line => {
+                    if (y > 270) { doc.addPage(); y = 20; }
+                    doc.text(line, 25, y);
+                    y += 6;
+                  });
+                }
+              }
+              doc.setFontSize(11);
+            }
+          }
+        }
+
+        // Footer
+        doc.setFontSize(9);
+        doc.setTextColor(128, 128, 128);
+        doc.text('Generated: ' + new Date().toLocaleString('en-AU'), 105, 285, { align: 'center' });
+
+        // Generate filename: JobName_FormType_Date.pdf
+        const siteName = form.data?.siteConducted || form.data?.site || form.data?.siteLocation || form.data?.jobName || 'Form';
+        const safeSiteName = siteName.toString().replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '-').substring(0, 30);
+        const formTypeLabel = this.folderMap[type] || type;
+        const safeFormType = formTypeLabel.replace(/[^a-zA-Z0-9]/g, '-');
+        const filename = safeSiteName + '_' + safeFormType + '_' + dateStr + '.pdf';
+
+        return { doc, filename, folderName };
+      },
+
+      download: function(form) {
+        const { doc, filename } = this.generate(form);
+        doc.save(filename);
+        return filename;
+      }
+    };
+  </script>
 
   <style>
     /* Base styles */
@@ -369,30 +565,86 @@
       const [showInstallPrompt, setShowInstallPrompt] = useState(false);
       const [deferredPrompt, setDeferredPrompt] = useState(null);
       const [lastSynced, setLastSynced] = useState(null);
+      const [syncStatus, setSyncStatus] = useState(FirebaseSync.isConnected() ? 'synced' : 'local'); // 'synced', 'syncing', 'offline', 'local'
+      const [showSyncBanner, setShowSyncBanner] = useState(!FirebaseSync.isConnected());
+      const [successModal, setSuccessModal] = useState(null); // { form, type } for PDF download modal
+      const [viewFormModal, setViewFormModal] = useState(null); // Form being viewed
+      const [deleteConfirmModal, setDeleteConfirmModal] = useState(null); // Form to delete
+      const [backedUpForms, setBackedUpForms] = useState(() => {
+        const saved = localStorage.getItem('jmart-backed-up-forms');
+        return saved ? JSON.parse(saved) : [];
+      });
+      const isInitialLoad = useRef(true);
 
-      // Load saved data
+      // Load saved data from localStorage first, then listen to Firebase
       useEffect(() => {
+        // Load local data first (for offline support)
         const savedForms = localStorage.getItem('jmart-safety-forms');
         if (savedForms) setForms(JSON.parse(savedForms));
         const savedSites = localStorage.getItem('jmart-safety-sites');
         if (savedSites) setSites(JSON.parse(savedSites));
         const lastSync = localStorage.getItem('jmart-last-sync');
         if (lastSync) setLastSynced(lastSync);
+
+        // If Firebase is connected, listen for real-time updates
+        if (FirebaseSync.isConnected()) {
+          const unsubForms = FirebaseSync.onFormsChange((firebaseForms) => {
+            const formsArray = Array.isArray(firebaseForms) ? firebaseForms : Object.values(firebaseForms || {});
+            if (formsArray.length > 0) {
+              setForms(formsArray);
+              localStorage.setItem('jmart-safety-forms', JSON.stringify(formsArray));
+            }
+            setSyncStatus('synced');
+            setLastSynced(new Date().toISOString());
+          });
+
+          const unsubSites = FirebaseSync.onSitesChange((firebaseSites) => {
+            const sitesArray = Array.isArray(firebaseSites) ? firebaseSites : Object.values(firebaseSites || {});
+            if (sitesArray.length > 0) {
+              setSites(sitesArray);
+              localStorage.setItem('jmart-safety-sites', JSON.stringify(sitesArray));
+            }
+          });
+
+          return () => {
+            unsubForms();
+            unsubSites();
+          };
+        }
+
+        isInitialLoad.current = false;
       }, []);
 
-      // Save forms
+      // Save forms to localStorage and sync to Firebase
       useEffect(() => {
-        if (forms.length > 0) {
+        if (forms.length > 0 && !isInitialLoad.current) {
           localStorage.setItem('jmart-safety-forms', JSON.stringify(forms));
           localStorage.setItem('jmart-last-sync', new Date().toISOString());
           setLastSynced(new Date().toISOString());
-        }
-      }, [forms]);
 
-      // Save sites
+          // Sync to Firebase if connected
+          if (FirebaseSync.isConnected() && isOnline) {
+            setSyncStatus('syncing');
+            FirebaseSync.syncForms(forms).then(() => {
+              setSyncStatus('synced');
+            }).catch(() => {
+              setSyncStatus('offline');
+            });
+          }
+        }
+      }, [forms, isOnline]);
+
+      // Save sites to localStorage and sync to Firebase
       useEffect(() => {
-        if (sites.length > 0) localStorage.setItem('jmart-safety-sites', JSON.stringify(sites));
-      }, [sites]);
+        if (sites.length > 0 && !isInitialLoad.current) {
+          localStorage.setItem('jmart-safety-sites', JSON.stringify(sites));
+
+          // Sync to Firebase if connected
+          if (FirebaseSync.isConnected() && isOnline) {
+            FirebaseSync.syncSites(sites);
+          }
+        }
+      }, [sites, isOnline]);
 
       // Online/Offline detection
       useEffect(() => {
@@ -440,7 +692,57 @@
       const addForm = (formType, formData) => {
         const newForm = { id: Date.now(), type: formType, data: formData, createdAt: new Date().toISOString(), status: 'completed' };
         setForms([newForm, ...forms]);
+
+        // Auto-download PDF with date and job name
+        setTimeout(() => {
+          const filename = PDFGenerator.download(newForm);
+          markAsBackedUp(newForm.id);
+          console.log('Auto-saved PDF:', filename);
+        }, 500);
+
+        // Show success modal
+        setSuccessModal({ form: newForm, type: formType });
       };
+
+      const handleDownloadPDF = () => {
+        if (successModal?.form) {
+          const filename = PDFGenerator.download(successModal.form);
+          markAsBackedUp(successModal.form.id);
+          console.log('Downloaded and backed up:', filename);
+        }
+      };
+
+      const closeSuccessModal = () => {
+        setSuccessModal(null);
+        setCurrentView('dashboard');
+      };
+
+      // Mark form as backed up (after PDF download)
+      const markAsBackedUp = (formId) => {
+        const newBackedUp = [...backedUpForms, formId];
+        setBackedUpForms(newBackedUp);
+        localStorage.setItem('jmart-backed-up-forms', JSON.stringify(newBackedUp));
+      };
+
+      // Download PDF and mark as backed up
+      const handleDownloadAndBackup = () => {
+        if (successModal?.form) {
+          const filename = PDFGenerator.download(successModal.form);
+          markAsBackedUp(successModal.form.id);
+          console.log('Downloaded and marked as backed up:', filename);
+        }
+      };
+
+      // Delete form (with backup check)
+      const deleteForm = (formId) => {
+        const updatedForms = forms.filter(f => f.id !== formId);
+        setForms(updatedForms);
+        setDeleteConfirmModal(null);
+        setViewFormModal(null);
+      };
+
+      // Check if form is backed up
+      const isFormBackedUp = (formId) => backedUpForms.includes(formId);
 
       const previousPrestarts = forms.filter(f => f.type === 'prestart');
 
@@ -463,6 +765,156 @@
           {!isOnline && (
             <div className="offline-banner">
               ⚠️ You're offline - Data will sync when connected
+            </div>
+          )}
+
+          {/* Success Modal with PDF Download */}
+          {successModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4">
+              <div className="bg-white rounded-2xl max-w-sm w-full shadow-2xl overflow-hidden">
+                <div className="bg-green-500 text-white p-6 text-center">
+                  <div className="text-5xl mb-3">✅</div>
+                  <h2 className="text-xl font-bold">Form Submitted!</h2>
+                  <p className="text-green-100 text-sm mt-1">
+                    {PDFGenerator.folderMap[successModal.type] || successModal.type}
+                  </p>
+                </div>
+                <div className="p-6 space-y-4">
+                  <p className="text-gray-600 text-center text-sm">
+                    Your form has been saved{FirebaseSync.isConnected() ? ' and synced to the cloud' : ''}.
+                  </p>
+                  <button
+                    onClick={handleDownloadPDF}
+                    className="w-full bg-orange-600 text-white py-4 rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-orange-700 transition"
+                  >
+                    <span className="text-xl">📥</span>
+                    Download PDF
+                  </button>
+                  <p className="text-xs text-gray-400 text-center">
+                    Save to Google Drive / JMart Steel / Safety Forms
+                  </p>
+                  <button
+                    onClick={closeSuccessModal}
+                    className="w-full bg-gray-100 text-gray-700 py-3 rounded-xl font-medium hover:bg-gray-200 transition"
+                  >
+                    Back to Dashboard
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* View Form Modal */}
+          {viewFormModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4">
+              <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl max-h-[80vh] overflow-hidden flex flex-col">
+                <div className="bg-orange-600 text-white p-4 flex items-center justify-between">
+                  <h2 className="text-lg font-bold">
+                    {PDFGenerator.folderMap[viewFormModal.type] || viewFormModal.type}
+                  </h2>
+                  <button onClick={() => setViewFormModal(null)} className="text-white text-2xl">&times;</button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                  <div className="text-sm text-gray-500">
+                    {new Date(viewFormModal.createdAt).toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                    {' at '}
+                    {new Date(viewFormModal.createdAt).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })}
+                  </div>
+                  {viewFormModal.data && Object.entries(viewFormModal.data).map(([key, value]) => {
+                    if (!value || typeof value === 'object') return null;
+                    const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+                    return (
+                      <div key={key} className="border-b border-gray-100 pb-2">
+                        <p className="text-xs text-gray-500">{label}</p>
+                        <p className="text-sm text-gray-800">{String(value)}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="p-4 border-t border-gray-200 space-y-2">
+                  <button
+                    onClick={() => {
+                      PDFGenerator.download(viewFormModal);
+                      markAsBackedUp(viewFormModal.id);
+                    }}
+                    className="w-full bg-orange-600 text-white py-3 rounded-xl font-semibold flex items-center justify-center gap-2"
+                  >
+                    <span>📥</span> Download PDF
+                  </button>
+                  <button
+                    onClick={() => setDeleteConfirmModal(viewFormModal)}
+                    className="w-full bg-red-100 text-red-600 py-3 rounded-xl font-semibold flex items-center justify-center gap-2"
+                  >
+                    <span>🗑️</span> Delete Form
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Delete Confirmation Modal */}
+          {deleteConfirmModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[110] p-4">
+              <div className="bg-white rounded-2xl max-w-sm w-full shadow-2xl overflow-hidden">
+                <div className="bg-red-500 text-white p-4 text-center">
+                  <span className="text-4xl">⚠️</span>
+                  <h2 className="text-lg font-bold mt-2">Delete Form?</h2>
+                </div>
+                <div className="p-4 space-y-4">
+                  {!isFormBackedUp(deleteConfirmModal.id) ? (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                      <p className="text-yellow-800 text-sm font-medium">This form has NOT been backed up!</p>
+                      <p className="text-yellow-700 text-xs mt-1">Download the PDF first to save a copy.</p>
+                    </div>
+                  ) : (
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                      <p className="text-green-800 text-sm">✓ This form has been backed up</p>
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    {!isFormBackedUp(deleteConfirmModal.id) && (
+                      <button
+                        onClick={() => {
+                          PDFGenerator.download(deleteConfirmModal);
+                          markAsBackedUp(deleteConfirmModal.id);
+                        }}
+                        className="w-full bg-orange-600 text-white py-3 rounded-xl font-semibold"
+                      >
+                        📥 Download PDF First
+                      </button>
+                    )}
+                    <button
+                      onClick={() => deleteForm(deleteConfirmModal.id)}
+                      className="w-full bg-red-600 text-white py-3 rounded-xl font-semibold"
+                    >
+                      🗑️ Delete Permanently
+                    </button>
+                    <button
+                      onClick={() => setDeleteConfirmModal(null)}
+                      className="w-full bg-gray-100 text-gray-700 py-3 rounded-xl font-medium"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Firebase Setup Banner */}
+          {showSyncBanner && !FirebaseSync.isConnected() && (
+            <div className="fixed bottom-20 left-3 right-3 bg-blue-600 text-white p-3 rounded-xl shadow-lg z-50 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">☁️</span>
+                <div>
+                  <p className="font-semibold text-sm">Enable Cloud Sync</p>
+                  <p className="text-xs opacity-80">Sync data across all devices</p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => setShowSyncBanner(false)} className="text-white opacity-70 px-2 py-1 text-sm">Later</button>
+                <button onClick={() => { setCurrentView('settings'); setShowSyncBanner(false); }} className="bg-white text-blue-600 px-3 py-1 rounded-lg text-sm font-semibold">Setup</button>
+              </div>
             </div>
           )}
 
@@ -489,12 +941,18 @@
               <span className="text-2xl">🛡️</span>
               <div>
                 <h1 className="font-bold text-lg leading-tight">JMart Steel</h1>
-                <p className="text-xs text-orange-200">{isOnline ? 'Safety Management' : '📴 Offline Mode'}</p>
+                <p className="text-xs text-orange-200">
+                  {!isOnline ? '📴 Offline Mode' :
+                   syncStatus === 'synced' ? '☁️ Synced' :
+                   syncStatus === 'syncing' ? '🔄 Syncing...' :
+                   syncStatus === 'local' ? '💾 Local Only' : 'Safety Management'}
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-1">
+              {syncStatus === 'synced' && <span className="text-green-300 text-sm">●</span>}
+              {syncStatus === 'syncing' && <span className="text-yellow-300 text-sm animate-pulse">●</span>}
               {!isOnline && <span className="text-yellow-300 text-sm">●</span>}
-              <button className="p-2 hover:bg-orange-700 rounded-lg text-xl" aria-label="Notifications">🔔</button>
             </div>
           </header>
 
@@ -520,7 +978,7 @@
           )}
 
           <main className="flex-1 p-4 pb-20">
-            {currentView === 'dashboard' && <Dashboard setCurrentView={setCurrentView} forms={forms} />}
+            {currentView === 'dashboard' && <Dashboard setCurrentView={setCurrentView} forms={forms} onViewForm={setViewFormModal} isFormBackedUp={isFormBackedUp} />}
             {currentView === 'training' && <TrainingView />}
             {currentView === 'prestart' && <PrestartView onSubmit={(data) => addForm('prestart', data)} previousPrestarts={previousPrestarts} sites={sites} />}
             {currentView === 'steel-itp' && <SteelITPView onSubmit={(data) => addForm('steel-itp', data)} sites={sites} />}
@@ -552,8 +1010,19 @@
     }
 
     // Dashboard
-    function Dashboard({ setCurrentView, forms }) {
+    function Dashboard({ setCurrentView, forms, onViewForm, isFormBackedUp }) {
       const todayDate = new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+      const formTypeLabels = {
+        'prestart': { label: 'Pre-Start', emoji: '📋', color: 'bg-green-500' },
+        'inspection': { label: 'Site Inspection', emoji: '🔍', color: 'bg-blue-500' },
+        'itp': { label: 'ITP Form', emoji: '📝', color: 'bg-indigo-500' },
+        'incident': { label: 'Incident', emoji: '⚠️', color: 'bg-red-500' },
+        'toolbox': { label: 'Toolbox Talk', emoji: '👥', color: 'bg-purple-500' },
+        'steel-itp': { label: 'Steel ITP', emoji: '🔩', color: 'bg-slate-600' }
+      };
+
+      const recentForms = forms.slice(0, 10); // Show last 10 forms
 
       return (
         <div className="space-y-6">
@@ -628,6 +1097,43 @@
               </button>
             </div>
           </div>
+
+          {/* Recent Forms */}
+          {recentForms.length > 0 && (
+            <div>
+              <h3 className="font-semibold text-gray-800 mb-3">Recent Forms</h3>
+              <div className="space-y-2">
+                {recentForms.map(form => {
+                  const typeInfo = formTypeLabels[form.type] || { label: form.type, emoji: '📄', color: 'bg-gray-500' };
+                  const formDate = new Date(form.createdAt);
+                  const isBackedUp = isFormBackedUp(form.id);
+                  return (
+                    <button
+                      key={form.id}
+                      onClick={() => onViewForm(form)}
+                      className="w-full bg-white rounded-xl p-3 shadow-sm flex items-center gap-3 hover:shadow-md transition text-left"
+                    >
+                      <div className={`w-10 h-10 ${typeInfo.color} rounded-lg flex items-center justify-center text-lg`}>
+                        {typeInfo.emoji}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-gray-800 text-sm truncate">
+                          {form.data?.siteConducted || form.data?.site || form.data?.siteLocation || typeInfo.label}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {formDate.toLocaleDateString('en-AU')} {formDate.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {isBackedUp && <span className="text-green-500 text-xs">✓ Saved</span>}
+                        <span className="text-gray-400">›</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
             <div className="flex items-start gap-3">
@@ -1174,8 +1680,8 @@
         URL.revokeObjectURL(url);
       };
 
-      // Get QR Code URL for sharing
-      const getAppUrl = () => window.location.href;
+      // Get QR Code URL for sharing - always use the GitHub Pages URL
+      const getAppUrl = () => 'https://davidethepingpong.github.io/jmart-steel-safety-app/jmart-safety-app.html';
 
       // Course List View
       if (!selectedCourse) {
@@ -1184,8 +1690,8 @@
             {showQRCode && (
               <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowQRCode(false)}>
                 <div className="bg-white rounded-xl p-6 max-w-sm text-center" onClick={e => e.stopPropagation()}>
-                  <h3 className="font-bold text-lg mb-3">📱 Share Training App</h3>
-                  <p className="text-sm text-gray-600 mb-4">Workers can scan this QR code or use the link to access training on their phone</p>
+                  <h3 className="font-bold text-lg mb-3">📱 Share JMart Safety App</h3>
+                  <p className="text-sm text-gray-600 mb-4">Workers can scan this QR code to install the Safety App on their phone</p>
                   <div className="bg-gray-100 p-4 rounded-lg mb-4">
                     <img src={'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(getAppUrl())} alt="QR Code" className="mx-auto" />
                   </div>
