@@ -146,103 +146,367 @@
     };
 
     // ========================================
-    // PDF GENERATOR
+    // PDF GENERATOR - Professional Layout
     // ========================================
     const PDFGenerator = {
       folderMap: {
-        'prestart': 'Pre-Start Checklists',
-        'inspection': 'Site Inspections',
-        'itp': 'ITP Forms',
-        'incident': 'Incidents',
-        'toolbox': 'Toolbox Talks',
+        'prestart': 'Pre-Start Checklist',
+        'inspection': 'Site Inspection',
+        'itp': 'ITP Form',
+        'incident': 'Incident Report',
+        'toolbox': 'Toolbox Talk',
         'steel-itp': 'Steel ITP',
-        'training': 'Training Certificates'
+        'training': 'Training Certificate'
+      },
+
+      // Field labels for better display
+      fieldLabels: {
+        supervisorName: 'Supervisor',
+        siteConducted: 'Site',
+        builder: 'Builder',
+        address: 'Address',
+        workAreas: 'Work Areas',
+        taskToComplete: 'Tasks This Shift',
+        plantEquipment: 'Plant/Equipment Used',
+        siteHazards: 'Site Specific Hazards',
+        permitsRequired: 'Permits Required',
+        highRiskWorks: 'High Risk Works',
+        swmsCovered: 'SWMS Covered',
+        safetyIssues: 'Safety Issues from Previous Shift',
+        workerName: 'Worker Name',
+        incidentDate: 'Incident Date',
+        incidentTime: 'Incident Time',
+        incidentType: 'Incident Type',
+        description: 'Description',
+        actionTaken: 'Action Taken',
+        witnesses: 'Witnesses',
+        injuries: 'Injuries',
+        topic: 'Topic',
+        attendees: 'Attendees',
+        keyPoints: 'Key Points',
+        location: 'Location',
+        inspectorName: 'Inspector',
+        notes: 'Notes',
+        comments: 'Comments'
+      },
+
+      // Checklist item labels
+      checklistLabels: {
+        siteAccess: 'Site access and egress points clear',
+        exclusionZones: 'Exclusion zones and barriers in place',
+        firstAid: 'First aid kit available and stocked',
+        emergencyAssembly: 'Emergency assembly point identified',
+        fireExtinguishers: 'Fire extinguishers available',
+        amenities: 'Site amenities available',
+        ppe: 'PPE requirements confirmed',
+        hazards: 'Hazards identified and controlled',
+        permits: 'Required permits obtained',
+        communication: 'Communication systems working'
+      },
+
+      // Colors
+      colors: {
+        primary: [234, 88, 12],      // Orange
+        secondary: [249, 115, 22],   // Light orange
+        success: [34, 197, 94],      // Green
+        danger: [239, 68, 68],       // Red
+        dark: [31, 41, 55],          // Dark gray
+        gray: [107, 114, 128],       // Gray
+        lightGray: [243, 244, 246],  // Light gray
+        white: [255, 255, 255]
       },
 
       generate: function(form) {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.getHeight();
+        const margin = 15;
+        const contentWidth = pageWidth - (margin * 2);
 
         const type = form.type || 'unknown';
         const folderName = this.folderMap[type] || type;
         const date = new Date(form.createdAt || Date.now());
         const dateStr = date.toLocaleDateString('en-AU').replace(/\//g, '-');
-        const timeStr = date.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' }).replace(':', '-');
 
-        // Header
-        doc.setFillColor(234, 88, 12);
-        doc.rect(0, 0, 210, 35, 'F');
-        doc.setTextColor(255, 255, 255);
-        doc.setFontSize(22);
-        doc.text('JMart Steel Safety', 105, 18, { align: 'center' });
-        doc.setFontSize(12);
-        doc.text(folderName, 105, 28, { align: 'center' });
+        let y = 0;
 
-        // Form details
-        doc.setTextColor(0, 0, 0);
-        doc.setFontSize(11);
-        let y = 50;
+        // Helper: Check page break
+        const checkPageBreak = (needed = 20) => {
+          if (y > pageHeight - needed - 20) {
+            doc.addPage();
+            y = 20;
+            return true;
+          }
+          return false;
+        };
 
-        doc.text('Date: ' + date.toLocaleDateString('en-AU'), 20, y);
-        doc.text('Time: ' + date.toLocaleTimeString('en-AU'), 120, y);
-        y += 15;
+        // Helper: Draw section header
+        const drawSectionHeader = (title) => {
+          checkPageBreak(25);
+          doc.setFillColor(...this.colors.lightGray);
+          doc.roundedRect(margin, y, contentWidth, 10, 2, 2, 'F');
+          doc.setTextColor(...this.colors.dark);
+          doc.setFontSize(11);
+          doc.setFont(undefined, 'bold');
+          doc.text(title, margin + 5, y + 7);
+          doc.setFont(undefined, 'normal');
+          y += 15;
+        };
 
-        // Form data
-        if (form.data) {
-          const data = form.data;
-          for (const [key, value] of Object.entries(data)) {
-            if (value && typeof value !== 'object') {
-              const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
-              const text = label + ': ' + value;
+        // Helper: Draw field row
+        const drawField = (label, value, fullWidth = false) => {
+          if (!value && value !== false && value !== 0) return;
+          checkPageBreak(15);
 
-              // Word wrap for long text
-              const lines = doc.splitTextToSize(text, 170);
-              lines.forEach(line => {
-                if (y > 270) {
-                  doc.addPage();
-                  y = 20;
-                }
-                doc.text(line, 20, y);
-                y += 7;
-              });
-            } else if (value && typeof value === 'object' && !Array.isArray(value)) {
-              // Handle nested objects (like inspection items)
-              const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
-              doc.setFontSize(12);
-              doc.setFont(undefined, 'bold');
-              if (y > 260) { doc.addPage(); y = 20; }
-              doc.text(label + ':', 20, y);
-              y += 8;
-              doc.setFontSize(10);
-              doc.setFont(undefined, 'normal');
+          const displayLabel = this.fieldLabels[label] || label.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase());
+          const displayValue = String(value);
 
-              for (const [subKey, subValue] of Object.entries(value)) {
-                if (subValue && typeof subValue !== 'object') {
-                  const subLabel = subKey.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
-                  const subText = '  • ' + subLabel + ': ' + subValue;
-                  const subLines = doc.splitTextToSize(subText, 165);
-                  subLines.forEach(line => {
-                    if (y > 270) { doc.addPage(); y = 20; }
-                    doc.text(line, 25, y);
-                    y += 6;
-                  });
-                }
-              }
-              doc.setFontSize(11);
+          doc.setFontSize(9);
+          doc.setTextColor(...this.colors.gray);
+          doc.text(displayLabel, margin + 3, y);
+
+          doc.setFontSize(10);
+          doc.setTextColor(...this.colors.dark);
+
+          const maxWidth = fullWidth ? contentWidth - 6 : contentWidth / 2 - 10;
+          const lines = doc.splitTextToSize(displayValue, maxWidth);
+          doc.text(lines, margin + 3, y + 5);
+          y += 5 + (lines.length * 5) + 3;
+        };
+
+        // Helper: Draw two-column field
+        const drawFieldPair = (label1, value1, label2, value2) => {
+          if ((!value1 && value1 !== false) && (!value2 && value2 !== false)) return;
+          checkPageBreak(15);
+
+          const halfWidth = contentWidth / 2;
+
+          if (value1 || value1 === false) {
+            const displayLabel1 = this.fieldLabels[label1] || label1.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase());
+            doc.setFontSize(9);
+            doc.setTextColor(...this.colors.gray);
+            doc.text(displayLabel1, margin + 3, y);
+            doc.setFontSize(10);
+            doc.setTextColor(...this.colors.dark);
+            doc.text(String(value1), margin + 3, y + 5);
+          }
+
+          if (value2 || value2 === false) {
+            const displayLabel2 = this.fieldLabels[label2] || label2.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase());
+            doc.setFontSize(9);
+            doc.setTextColor(...this.colors.gray);
+            doc.text(displayLabel2, margin + halfWidth + 3, y);
+            doc.setFontSize(10);
+            doc.setTextColor(...this.colors.dark);
+            doc.text(String(value2), margin + halfWidth + 3, y + 5);
+          }
+
+          y += 15;
+        };
+
+        // ========== HEADER ==========
+        // Orange header bar
+        doc.setFillColor(...this.colors.primary);
+        doc.rect(0, 0, pageWidth, 32, 'F');
+
+        // Company name
+        doc.setTextColor(...this.colors.white);
+        doc.setFontSize(20);
+        doc.setFont(undefined, 'bold');
+        doc.text('JMART STEEL', margin, 14);
+
+        // Form type badge
+        doc.setFontSize(10);
+        doc.setFont(undefined, 'normal');
+        doc.text(folderName.toUpperCase(), margin, 24);
+
+        // Date/Time on right
+        doc.setFontSize(9);
+        doc.text(date.toLocaleDateString('en-AU', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }), pageWidth - margin, 14, { align: 'right' });
+        doc.text(date.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' }), pageWidth - margin, 22, { align: 'right' });
+
+        y = 42;
+
+        // ========== FORM CONTENT ==========
+        const data = form.data || {};
+
+        // Site Details Section
+        if (data.supervisorName || data.siteConducted || data.builder || data.address) {
+          drawSectionHeader('SITE DETAILS');
+          drawFieldPair('supervisorName', data.supervisorName, 'siteConducted', data.siteConducted);
+          drawFieldPair('builder', data.builder, 'address', data.address);
+        }
+
+        // Work Information Section
+        if (data.workAreas || data.taskToComplete) {
+          drawSectionHeader('WORK INFORMATION');
+          if (data.workAreas) drawField('workAreas', data.workAreas, true);
+          if (data.taskToComplete) drawField('taskToComplete', data.taskToComplete, true);
+        }
+
+        // Safety Information Section
+        if (data.plantEquipment !== undefined || data.siteHazards || data.permitsRequired || data.highRiskWorks !== undefined || data.swmsCovered !== undefined) {
+          drawSectionHeader('SAFETY INFORMATION');
+          drawFieldPair('plantEquipment', data.plantEquipment ? 'Yes' : 'No', 'highRiskWorks', data.highRiskWorks ? 'Yes' : 'No');
+          drawFieldPair('swmsCovered', data.swmsCovered ? 'Yes' : 'No', 'safetyIssues', data.safetyIssues ? 'Yes' : 'No');
+          if (data.siteHazards) drawField('siteHazards', data.siteHazards, true);
+          if (data.permitsRequired) drawField('permitsRequired', data.permitsRequired, true);
+        }
+
+        // Checklist Section
+        if (data.checklist && typeof data.checklist === 'object') {
+          drawSectionHeader('SAFETY CHECKLIST');
+
+          const checklistItems = Object.entries(data.checklist);
+          const colWidth = contentWidth / 2;
+          let col = 0;
+          let startY = y;
+
+          checklistItems.forEach(([key, value], index) => {
+            const itemLabel = this.checklistLabels[key] || key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase());
+            const xPos = margin + (col * colWidth) + 3;
+
+            // Checkbox
+            doc.setDrawColor(...this.colors.gray);
+            doc.setLineWidth(0.3);
+            doc.rect(xPos, y - 3, 4, 4);
+
+            if (value === true || value === 'yes' || value === 'Yes') {
+              doc.setFillColor(...this.colors.success);
+              doc.rect(xPos + 0.5, y - 2.5, 3, 3, 'F');
+              doc.setTextColor(...this.colors.success);
+              doc.setFontSize(8);
+              doc.text('✓', xPos + 1, y + 0.5);
+            } else if (value === false || value === 'no' || value === 'No') {
+              doc.setFillColor(...this.colors.danger);
+              doc.rect(xPos + 0.5, y - 2.5, 3, 3, 'F');
+              doc.setTextColor(...this.colors.danger);
+              doc.setFontSize(8);
+              doc.text('✗', xPos + 1, y + 0.5);
             }
+
+            doc.setTextColor(...this.colors.dark);
+            doc.setFontSize(9);
+            const truncLabel = itemLabel.length > 35 ? itemLabel.substring(0, 35) + '...' : itemLabel;
+            doc.text(truncLabel, xPos + 7, y);
+
+            col++;
+            if (col >= 2) {
+              col = 0;
+              y += 8;
+              checkPageBreak(10);
+            }
+          });
+
+          if (col !== 0) y += 8;
+          y += 5;
+        }
+
+        // Incident-specific fields
+        if (type === 'incident') {
+          if (data.incidentDate || data.incidentTime || data.incidentType) {
+            drawSectionHeader('INCIDENT DETAILS');
+            drawFieldPair('incidentDate', data.incidentDate, 'incidentTime', data.incidentTime);
+            if (data.incidentType) drawField('incidentType', data.incidentType, true);
+          }
+          if (data.description) {
+            drawSectionHeader('DESCRIPTION');
+            drawField('description', data.description, true);
+          }
+          if (data.actionTaken) {
+            drawSectionHeader('ACTION TAKEN');
+            drawField('actionTaken', data.actionTaken, true);
+          }
+          if (data.injuries) drawField('injuries', data.injuries, true);
+          if (data.witnesses) drawField('witnesses', data.witnesses, true);
+        }
+
+        // Toolbox-specific fields
+        if (type === 'toolbox') {
+          if (data.topic) {
+            drawSectionHeader('TOOLBOX TALK DETAILS');
+            drawField('topic', data.topic, true);
+          }
+          if (data.keyPoints) drawField('keyPoints', data.keyPoints, true);
+          if (data.attendees) drawField('attendees', data.attendees, true);
+        }
+
+        // Notes/Comments
+        if (data.notes || data.comments) {
+          drawSectionHeader('NOTES');
+          if (data.notes) drawField('notes', data.notes, true);
+          if (data.comments) drawField('comments', data.comments, true);
+        }
+
+        // Workers Section
+        if (data.workers && Array.isArray(data.workers) && data.workers.length > 0) {
+          drawSectionHeader('WORKERS ON SITE');
+          data.workers.forEach((worker, idx) => {
+            checkPageBreak(25);
+            doc.setFontSize(10);
+            doc.setTextColor(...this.colors.dark);
+            doc.text((idx + 1) + '. ' + (worker.name || 'Worker ' + (idx + 1)), margin + 3, y);
+            y += 6;
+
+            // Draw signature if exists
+            if (worker.signature && worker.signature.startsWith('data:image')) {
+              try {
+                doc.addImage(worker.signature, 'PNG', margin + 5, y, 40, 15);
+                y += 18;
+              } catch (e) {
+                doc.setFontSize(8);
+                doc.setTextColor(...this.colors.gray);
+                doc.text('[Signature recorded]', margin + 5, y + 5);
+                y += 10;
+              }
+            }
+          });
+        }
+
+        // Signature Section
+        if (data.signature && data.signature.startsWith('data:image')) {
+          checkPageBreak(40);
+          drawSectionHeader('SIGNATURE');
+          try {
+            doc.addImage(data.signature, 'PNG', margin + 3, y, 50, 20);
+            y += 25;
+            if (data.supervisorName) {
+              doc.setFontSize(9);
+              doc.setTextColor(...this.colors.gray);
+              doc.text(data.supervisorName, margin + 3, y);
+              y += 5;
+            }
+          } catch (e) {
+            doc.setFontSize(9);
+            doc.setTextColor(...this.colors.gray);
+            doc.text('[Digital signature recorded]', margin + 3, y);
+            y += 10;
           }
         }
 
-        // Footer
-        doc.setFontSize(9);
-        doc.setTextColor(128, 128, 128);
-        doc.text('Generated: ' + new Date().toLocaleString('en-AU'), 105, 285, { align: 'center' });
+        // ========== FOOTER ==========
+        const totalPages = doc.internal.getNumberOfPages();
+        for (let i = 1; i <= totalPages; i++) {
+          doc.setPage(i);
 
-        // Generate filename: JobName_FormType_Date.pdf
-        const siteName = form.data?.siteConducted || form.data?.site || form.data?.siteLocation || form.data?.jobName || 'Form';
+          // Footer line
+          doc.setDrawColor(...this.colors.lightGray);
+          doc.setLineWidth(0.5);
+          doc.line(margin, pageHeight - 15, pageWidth - margin, pageHeight - 15);
+
+          // Footer text
+          doc.setFontSize(8);
+          doc.setTextColor(...this.colors.gray);
+          doc.text('JMart Steel Safety App', margin, pageHeight - 8);
+          doc.text('Page ' + i + ' of ' + totalPages, pageWidth / 2, pageHeight - 8, { align: 'center' });
+          doc.text('Generated: ' + new Date().toLocaleString('en-AU'), pageWidth - margin, pageHeight - 8, { align: 'right' });
+        }
+
+        // Generate filename
+        const siteName = data.siteConducted || data.site || data.siteLocation || data.jobName || 'Form';
         const safeSiteName = siteName.toString().replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '-').substring(0, 30);
-        const formTypeLabel = this.folderMap[type] || type;
-        const safeFormType = formTypeLabel.replace(/[^a-zA-Z0-9]/g, '-');
+        const safeFormType = folderName.replace(/[^a-zA-Z0-9]/g, '-');
         const filename = safeSiteName + '_' + safeFormType + '_' + dateStr + '.pdf';
 
         return { doc, filename, folderName };
