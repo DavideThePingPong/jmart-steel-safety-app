@@ -431,39 +431,184 @@
     // Start the scheduler
     DailyBackupScheduler.start();
 
-    // Firebase sync helper functions
+    // Firebase sync helper functions with retry queue
     const FirebaseSync = {
-      // Sync forms to Firebase
-      syncForms: async (forms) => {
-        if (!firebaseDb || !isFirebaseConfigured) return;
+      // Retry queue stored in localStorage
+      pendingQueue: [],
+      retryAttempts: {},
+      maxRetries: 5,
+      retryDelays: [1000, 5000, 15000, 30000, 60000], // Exponential backoff
+      syncListeners: [], // UI callbacks for sync status
+
+      // Initialize - load pending queue from localStorage
+      init: function() {
+        try {
+          const saved = localStorage.getItem('jmart-sync-queue');
+          this.pendingQueue = saved ? JSON.parse(saved) : [];
+          if (this.pendingQueue.length > 0) {
+            console.log(`Found ${this.pendingQueue.length} pending sync items`);
+            this.processQueue();
+          }
+        } catch (e) {
+          console.error('Error loading sync queue:', e);
+          this.pendingQueue = [];
+        }
+      },
+
+      // Save queue to localStorage
+      saveQueue: function() {
+        try {
+          localStorage.setItem('jmart-sync-queue', JSON.stringify(this.pendingQueue));
+        } catch (e) {
+          console.error('Error saving sync queue:', e);
+        }
+      },
+
+      // Add listener for sync status updates
+      onSyncStatusChange: function(callback) {
+        this.syncListeners.push(callback);
+        return () => {
+          this.syncListeners = this.syncListeners.filter(cb => cb !== callback);
+        };
+      },
+
+      // Notify listeners of status change
+      notifyListeners: function(status, details) {
+        this.syncListeners.forEach(cb => cb(status, details));
+      },
+
+      // Add item to retry queue
+      addToQueue: function(type, data) {
+        const item = {
+          id: Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+          type,
+          data,
+          timestamp: new Date().toISOString(),
+          attempts: 0
+        };
+        this.pendingQueue.push(item);
+        this.saveQueue();
+        this.notifyListeners('queued', { pending: this.pendingQueue.length });
+        return item.id;
+      },
+
+      // Process the retry queue
+      processQueue: async function() {
+        if (!navigator.onLine || !this.isConnected()) {
+          console.log('Offline - queue processing deferred');
+          return;
+        }
+
+        const itemsToProcess = [...this.pendingQueue];
+        for (const item of itemsToProcess) {
+          try {
+            await this.executeSync(item);
+            // Success - remove from queue
+            this.pendingQueue = this.pendingQueue.filter(i => i.id !== item.id);
+            this.saveQueue();
+            this.notifyListeners('synced', { pending: this.pendingQueue.length, item: item.type });
+            console.log(`Sync successful for ${item.type}`);
+          } catch (error) {
+            item.attempts++;
+            if (item.attempts >= this.maxRetries) {
+              console.error(`Max retries reached for ${item.type}, keeping in queue for manual retry`);
+              this.notifyListeners('failed', { pending: this.pendingQueue.length, error: error.message });
+            } else {
+              const delay = this.retryDelays[Math.min(item.attempts - 1, this.retryDelays.length - 1)];
+              console.log(`Retry ${item.attempts}/${this.maxRetries} for ${item.type} in ${delay}ms`);
+              setTimeout(() => this.processQueue(), delay);
+            }
+            this.saveQueue();
+          }
+        }
+      },
+
+      // Execute a single sync operation
+      executeSync: async function(item) {
+        if (!firebaseDb || !isFirebaseConfigured) {
+          throw new Error('Firebase not configured');
+        }
+
+        switch (item.type) {
+          case 'forms':
+            await firebaseDb.ref('jmart-safety/forms').set(item.data);
+            break;
+          case 'sites':
+            await firebaseDb.ref('jmart-safety/sites').set(item.data);
+            break;
+          case 'training':
+            await firebaseDb.ref('jmart-safety/training').set(item.data);
+            break;
+          case 'signatures':
+            await firebaseDb.ref('signatures').set(item.data);
+            break;
+          default:
+            throw new Error(`Unknown sync type: ${item.type}`);
+        }
+      },
+
+      // Sync forms to Firebase with retry support
+      syncForms: async function(forms) {
+        if (!firebaseDb || !isFirebaseConfigured) {
+          this.addToQueue('forms', forms);
+          return { success: false, queued: true };
+        }
         try {
           await firebaseDb.ref('jmart-safety/forms').set(forms);
           console.log('Forms synced to Firebase');
+          return { success: true };
         } catch (error) {
-          console.error('Error syncing forms:', error);
+          console.error('Error syncing forms, adding to retry queue:', error);
+          this.addToQueue('forms', forms);
+          this.notifyListeners('error', { message: 'Sync failed - will retry automatically' });
+          return { success: false, queued: true, error: error.message };
         }
       },
 
-      // Sync sites to Firebase
-      syncSites: async (sites) => {
-        if (!firebaseDb || !isFirebaseConfigured) return;
+      // Sync sites to Firebase with retry support
+      syncSites: async function(sites) {
+        if (!firebaseDb || !isFirebaseConfigured) {
+          this.addToQueue('sites', sites);
+          return { success: false, queued: true };
+        }
         try {
           await firebaseDb.ref('jmart-safety/sites').set(sites);
           console.log('Sites synced to Firebase');
+          return { success: true };
         } catch (error) {
-          console.error('Error syncing sites:', error);
+          console.error('Error syncing sites, adding to retry queue:', error);
+          this.addToQueue('sites', sites);
+          return { success: false, queued: true, error: error.message };
         }
       },
 
-      // Sync training records to Firebase
-      syncTraining: async (training) => {
-        if (!firebaseDb || !isFirebaseConfigured) return;
+      // Sync training records to Firebase with retry support
+      syncTraining: async function(training) {
+        if (!firebaseDb || !isFirebaseConfigured) {
+          this.addToQueue('training', training);
+          return { success: false, queued: true };
+        }
         try {
           await firebaseDb.ref('jmart-safety/training').set(training);
           console.log('Training synced to Firebase');
+          return { success: true };
         } catch (error) {
-          console.error('Error syncing training:', error);
+          console.error('Error syncing training, adding to retry queue:', error);
+          this.addToQueue('training', training);
+          return { success: false, queued: true, error: error.message };
         }
+      },
+
+      // Get pending queue count
+      getPendingCount: function() {
+        return this.pendingQueue.length;
+      },
+
+      // Manual retry all pending items
+      retryAll: function() {
+        this.pendingQueue.forEach(item => item.attempts = 0);
+        this.saveQueue();
+        this.processQueue();
       },
 
       // Listen for real-time form updates
@@ -473,6 +618,8 @@
         ref.on('value', (snapshot) => {
           const data = snapshot.val();
           if (data) callback(data);
+        }, (error) => {
+          console.error('Firebase listener error:', error);
         });
         return () => ref.off();
       },
@@ -484,6 +631,8 @@
         ref.on('value', (snapshot) => {
           const data = snapshot.val();
           if (data) callback(data);
+        }, (error) => {
+          console.error('Firebase sites listener error:', error);
         });
         return () => ref.off();
       },
@@ -495,13 +644,27 @@
         ref.on('value', (snapshot) => {
           const data = snapshot.val();
           if (data) callback(data);
+        }, (error) => {
+          console.error('Firebase training listener error:', error);
         });
         return () => ref.off();
       },
 
       // Check if Firebase is configured and connected
-      isConnected: () => isFirebaseConfigured && firebaseDb !== null
+      isConnected: () => isFirebaseConfigured && firebaseDb !== null,
+
+      // Firebase database reference (for direct access when needed)
+      db: firebaseDb
     };
+
+    // Initialize sync queue on load
+    FirebaseSync.init();
+
+    // Process queue when coming back online
+    window.addEventListener('online', () => {
+      console.log('Back online - processing sync queue');
+      FirebaseSync.processQueue();
+    });
 
     // ========================================
     // PDF GENERATOR - Professional Layout
@@ -1262,7 +1425,9 @@
       const [showInstallPrompt, setShowInstallPrompt] = useState(false);
       const [deferredPrompt, setDeferredPrompt] = useState(null);
       const [lastSynced, setLastSynced] = useState(null);
-      const [syncStatus, setSyncStatus] = useState(FirebaseSync.isConnected() ? 'synced' : 'local'); // 'synced', 'syncing', 'offline', 'local'
+      const [syncStatus, setSyncStatus] = useState(FirebaseSync.isConnected() ? 'synced' : 'local'); // 'synced', 'syncing', 'offline', 'local', 'pending', 'error'
+      const [pendingSyncCount, setPendingSyncCount] = useState(FirebaseSync.getPendingCount());
+      const [syncError, setSyncError] = useState(null);
       const [showSyncBanner, setShowSyncBanner] = useState(!FirebaseSync.isConnected());
       const [successModal, setSuccessModal] = useState(null); // { form, type } for PDF download modal
       const [viewFormModal, setViewFormModal] = useState(null); // Form being viewed
@@ -1404,6 +1569,23 @@
           window.removeEventListener('online', handleOnline);
           window.removeEventListener('offline', handleOffline);
         };
+      }, []);
+
+      // Sync status listener - updates UI when sync queue changes
+      useEffect(() => {
+        const unsubscribe = FirebaseSync.onSyncStatusChange((status, details) => {
+          setPendingSyncCount(details?.pending || 0);
+          if (status === 'synced' && details?.pending === 0) {
+            setSyncStatus('synced');
+            setSyncError(null);
+          } else if (status === 'queued' || (details?.pending > 0)) {
+            setSyncStatus('pending');
+          } else if (status === 'error' || status === 'failed') {
+            setSyncStatus('error');
+            setSyncError(details?.message || details?.error || 'Sync failed');
+          }
+        });
+        return unsubscribe;
       }, []);
 
       // PWA Install prompt
@@ -1845,6 +2027,31 @@
             </div>
           )}
 
+          {/* Sync Error/Pending Banner */}
+          {(syncStatus === 'error' || (syncStatus === 'pending' && pendingSyncCount > 0)) && (
+            <div className={`fixed bottom-20 left-3 right-3 ${syncStatus === 'error' ? 'bg-red-600' : 'bg-yellow-600'} text-white p-3 rounded-xl shadow-lg z-50`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">{syncStatus === 'error' ? '⚠️' : '🔄'}</span>
+                  <div>
+                    <p className="font-semibold text-sm">
+                      {syncStatus === 'error' ? 'Sync Failed' : `${pendingSyncCount} form(s) waiting to sync`}
+                    </p>
+                    <p className="text-xs opacity-80">
+                      {syncStatus === 'error' ? (syncError || 'Will retry automatically when online') : 'Will sync when connection is restored'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => { FirebaseSync.retryAll(); setSyncStatus('syncing'); }}
+                  className="bg-white text-gray-800 px-3 py-1 rounded-lg text-sm font-semibold"
+                >
+                  Retry Now
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Firebase Setup Banner */}
           {showSyncBanner && !FirebaseSync.isConnected() && (
             <div className="fixed bottom-20 left-3 right-3 bg-blue-600 text-white p-3 rounded-xl shadow-lg z-50 flex items-center justify-between">
@@ -1887,6 +2094,8 @@
                 <h1 className="font-bold text-lg leading-tight">JMart Steel</h1>
                 <p className="text-xs text-orange-200">
                   {!isOnline ? '📴 Offline Mode' :
+                   syncStatus === 'error' ? '⚠️ Sync Error' :
+                   syncStatus === 'pending' ? `🔄 ${pendingSyncCount} pending` :
                    syncStatus === 'synced' ? '☁️ Synced' :
                    syncStatus === 'syncing' ? '🔄 Syncing...' :
                    syncStatus === 'local' ? '💾 Local Only' : 'Safety Management'}
@@ -1896,6 +2105,8 @@
             <div className="flex items-center gap-1">
               {syncStatus === 'synced' && <span className="text-green-300 text-sm">●</span>}
               {syncStatus === 'syncing' && <span className="text-yellow-300 text-sm animate-pulse">●</span>}
+              {syncStatus === 'pending' && <span className="text-yellow-300 text-sm animate-pulse">●</span>}
+              {syncStatus === 'error' && <span className="text-red-400 text-sm">●</span>}
               {!isOnline && <span className="text-yellow-300 text-sm">●</span>}
             </div>
           </header>
@@ -3043,7 +3254,39 @@
         }
       };
 
+      // Validation for Pre-Start form - WHS compliance required fields
+      const [validationErrors, setValidationErrors] = useState([]);
+
+      const validateForm = () => {
+        const errors = [];
+        const signedCount = Object.values(signatures).filter(s => s !== null).length;
+
+        // Required fields for WHS compliance
+        if (!siteConducted) errors.push('Site/Location is required');
+        if (!supervisorName) errors.push('Supervisor name is required');
+        if (siteHazards.value === '' && siteHazards.notes.length === 0) errors.push('Site hazards must be identified');
+        if (highRiskWorks === null) errors.push('High-risk works question must be answered');
+        if (worksCoveredBySWMS === null) errors.push('SWMS coverage question must be answered');
+        if (highRiskWorks === 'yes' && worksCoveredBySWMS !== 'yes') errors.push('High-risk works require SWMS coverage');
+        if (isPlantEquipmentUsed === null) errors.push('Plant/equipment question must be answered');
+        if (signedCount === 0) errors.push('At least one worker must sign on');
+
+        // Checklist completion check
+        const items = checklistItems[checkType] || [];
+        const completedItems = Object.keys(checks).length;
+        if (completedItems < items.length) errors.push(`All ${items.length} checklist items must be completed (${completedItems} done)`);
+
+        return errors;
+      };
+
       const handleSubmit = () => {
+        const errors = validateForm();
+        if (errors.length > 0) {
+          setValidationErrors(errors);
+          return;
+        }
+        setValidationErrors([]);
+
         const formData = {
           type: checkType, checks, notes, signatures, supervisorName, siteConducted, builder, address,
           workAreas, tasksThisShift, machineryControls, siteHazards, permitsRequired,
@@ -3441,9 +3684,19 @@
               <p className="text-blue-800 font-medium">{signedCount} of {teamMembers.length} workers signed</p>
             </div>
 
+            {/* Validation Errors */}
+            {validationErrors.length > 0 && (
+              <div className="bg-red-50 border border-red-300 rounded-xl p-4">
+                <p className="text-red-800 font-semibold mb-2">⚠️ Cannot submit - please fix these issues:</p>
+                <ul className="text-red-700 text-sm space-y-1">
+                  {validationErrors.map((err, i) => <li key={i}>• {err}</li>)}
+                </ul>
+              </div>
+            )}
+
             <div className="flex gap-3">
-              <button onClick={() => setStep(2)} className="flex-1 border border-gray-300 text-gray-700 py-4 rounded-xl font-semibold">← Back</button>
-              <button onClick={handleSubmit} disabled={signedCount === 0} className="flex-1 bg-green-600 text-white py-4 rounded-xl font-semibold disabled:bg-gray-300">
+              <button onClick={() => { setValidationErrors([]); setStep(2); }} className="flex-1 border border-gray-300 text-gray-700 py-4 rounded-xl font-semibold">← Back</button>
+              <button onClick={handleSubmit} className="flex-1 bg-green-600 text-white py-4 rounded-xl font-semibold">
                 {isEditing ? '✓ Update Pre-Start' : '✓ Complete Pre-Start'}
               </button>
             </div>
@@ -3461,6 +3714,9 @@
         type: '', date: new Date().toISOString().split('T')[0], time: new Date().toTimeString().slice(0, 5),
         location: '', description: '', injuries: 'none', injuryDetails: '', witnesses: '', immediateActions: '', reportedBy: '',
       });
+      const [reporterSignature, setReporterSignature] = useState(null);
+      const [signingReporter, setSigningReporter] = useState(false);
+      const [validationError, setValidationError] = useState('');
 
       const incidentTypes = [
         { id: 'nearmiss', label: 'Near Miss', description: 'Could have caused injury', color: 'bg-yellow-500' },
@@ -3468,6 +3724,24 @@
         { id: 'damage', label: 'Property Damage', description: 'Equipment/property damage', color: 'bg-orange-500' },
         { id: 'environmental', label: 'Environmental', description: 'Spill/leak/environmental', color: 'bg-green-500' },
       ];
+
+      const handleIncidentSubmit = () => {
+        if (!reporterSignature) {
+          setValidationError('Signature is required to submit an incident report');
+          return;
+        }
+        if (!formData.reportedBy) {
+          setValidationError('Reporter name is required');
+          return;
+        }
+        if (!formData.immediateActions) {
+          setValidationError('Immediate actions taken must be documented');
+          return;
+        }
+        setValidationError('');
+        onSubmit({ ...formData, reporterSignature });
+        setStep(4);
+      };
 
       if (step === 4) {
         return (
@@ -3537,11 +3811,55 @@
                 <label className="block text-sm font-medium text-gray-700 mb-1">Reported By *</label>
                 <input type="text" value={formData.reportedBy} onChange={(e) => setFormData({...formData, reportedBy: e.target.value})} className="w-full border rounded-lg p-3" placeholder="Your name" />
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Witnesses (if any)</label>
+                <input type="text" value={formData.witnesses} onChange={(e) => setFormData({...formData, witnesses: e.target.value})} className="w-full border rounded-lg p-3" placeholder="Names of any witnesses" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Immediate Actions Taken *</label>
+                <textarea value={formData.immediateActions} onChange={(e) => setFormData({...formData, immediateActions: e.target.value})} className="w-full border rounded-lg p-3" rows={3} placeholder="What actions were taken immediately after the incident?" />
+              </div>
+
+              {/* Reporter Signature - REQUIRED */}
+              <div className="border-t pt-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Reporter Signature * <span className="text-red-500 text-xs">(Required for submission)</span></label>
+                {reporterSignature ? (
+                  <div className="relative inline-block">
+                    <div className="border-2 border-green-500 rounded-lg p-2 bg-green-50">
+                      <img src={reporterSignature} alt="signature" className="h-16 object-contain" />
+                    </div>
+                    <button onClick={() => setReporterSignature(null)}
+                      className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-sm">✕</button>
+                  </div>
+                ) : (
+                  <button onClick={() => setSigningReporter(true)}
+                    className="w-full h-20 border-2 border-dashed border-red-300 rounded-lg text-red-500 hover:border-red-500 bg-red-50 font-medium">
+                    ✍️ Tap to Sign (Required)
+                  </button>
+                )}
+              </div>
+
+              {/* Validation Error */}
+              {validationError && (
+                <div className="bg-red-50 border border-red-300 rounded-lg p-3">
+                  <p className="text-red-700 text-sm">⚠️ {validationError}</p>
+                </div>
+              )}
+
               <div className="flex gap-3">
-                <button onClick={() => setStep(2)} className="flex-1 border border-gray-300 text-gray-700 py-3 rounded-lg">Back</button>
-                <button onClick={() => { onSubmit(formData); setStep(4); }} disabled={!formData.reportedBy} className="flex-1 bg-red-600 text-white py-3 rounded-lg disabled:bg-gray-300">Submit Report</button>
+                <button onClick={() => { setValidationError(''); setStep(2); }} className="flex-1 border border-gray-300 text-gray-700 py-3 rounded-lg">Back</button>
+                <button onClick={handleIncidentSubmit} className="flex-1 bg-red-600 text-white py-3 rounded-lg">Submit Report</button>
               </div>
             </div>
+          )}
+
+          {/* Signature Pad Modal */}
+          {signingReporter && (
+            <SignaturePad
+              name={formData.reportedBy || "Reporter"}
+              onSave={(sig) => { setReporterSignature(sig); setSigningReporter(false); }}
+              onCancel={() => setSigningReporter(false)}
+            />
           )}
         </div>
       );
@@ -4953,25 +5271,54 @@
     if ('serviceWorker' in navigator) {
       // Create inline service worker
       const swCode = `
-        const CACHE_NAME = 'jmart-safety-v1';
+        const CACHE_NAME = 'jmart-safety-v2';
         const urlsToCache = [
           './',
           'https://cdn.tailwindcss.com',
           'https://unpkg.com/react@18/umd/react.production.min.js',
-          'https://unpkg.com/react-dom@18/umd/react-dom.production.min.js'
+          'https://unpkg.com/react-dom@18/umd/react-dom.production.min.js',
+          'https://unpkg.com/@babel/standalone/babel.min.js',
+          'https://unpkg.com/lucide@latest',
+          'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'
         ];
 
         self.addEventListener('install', event => {
+          self.skipWaiting(); // Activate new SW immediately
           event.waitUntil(
             caches.open(CACHE_NAME).then(cache => cache.addAll(urlsToCache))
+          );
+        });
+
+        self.addEventListener('activate', event => {
+          // Clean up old caches
+          event.waitUntil(
+            caches.keys().then(cacheNames => {
+              return Promise.all(
+                cacheNames.filter(name => name !== CACHE_NAME).map(name => caches.delete(name))
+              );
+            })
           );
         });
 
         self.addEventListener('fetch', event => {
           event.respondWith(
             caches.match(event.request).then(response => {
-              return response || fetch(event.request).catch(() => {
-                return new Response('Offline');
+              if (response) return response;
+              return fetch(event.request).then(fetchResponse => {
+                // Cache successful responses for offline use
+                if (fetchResponse && fetchResponse.status === 200) {
+                  const responseClone = fetchResponse.clone();
+                  caches.open(CACHE_NAME).then(cache => {
+                    cache.put(event.request, responseClone);
+                  });
+                }
+                return fetchResponse;
+              }).catch(() => {
+                // Return offline fallback for navigation requests
+                if (event.request.mode === 'navigate') {
+                  return caches.match('./');
+                }
+                return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
               });
             })
           );
