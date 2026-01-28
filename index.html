@@ -1129,6 +1129,7 @@
       const [successModal, setSuccessModal] = useState(null); // { form, type } for PDF download modal
       const [viewFormModal, setViewFormModal] = useState(null); // Form being viewed
       const [deleteConfirmModal, setDeleteConfirmModal] = useState(null); // Form to delete
+      const [editingForm, setEditingForm] = useState(null); // Form being edited
       const [backedUpForms, setBackedUpForms] = useState(() => {
         const saved = localStorage.getItem('jmart-backed-up-forms');
         return saved ? JSON.parse(saved) : [];
@@ -1326,6 +1327,50 @@
         setSuccessModal({ form: newForm, type: formType });
       };
 
+      const updateForm = (formId, formType, formData) => {
+        console.log('updateForm called for id:', formId);
+
+        setForms(prevForms => {
+          const updatedForms = prevForms.map(form => {
+            if (form.id === formId) {
+              return {
+                ...form,
+                data: formData,
+                updatedAt: new Date().toISOString()
+              };
+            }
+            return form;
+          });
+
+          // Immediately save to localStorage
+          localStorage.setItem('jmart-safety-forms', JSON.stringify(updatedForms));
+          console.log('Updated form saved to localStorage');
+
+          // Sync to Firebase
+          if (FirebaseSync.isConnected()) {
+            FirebaseSync.syncForms(updatedForms).then(() => {
+              console.log('Updated form synced to Firebase');
+            }).catch(err => console.error('Firebase sync error:', err));
+          }
+
+          return updatedForms;
+        });
+
+        // Clear editing state
+        setEditingForm(null);
+
+        // Auto-download updated PDF
+        setTimeout(() => {
+          const updatedForm = { id: formId, type: formType, data: formData, createdAt: editingForm?.createdAt, updatedAt: new Date().toISOString(), status: 'completed' };
+          const filename = PDFGenerator.download(updatedForm);
+          markAsBackedUp(formId);
+          console.log('Auto-saved updated PDF:', filename);
+
+          // Show success modal
+          setSuccessModal({ form: updatedForm, type: formType });
+        }, 500);
+      };
+
       const handleDownloadPDF = () => {
         if (successModal?.form) {
           const filename = PDFGenerator.download(successModal.form);
@@ -1336,6 +1381,7 @@
 
       const closeSuccessModal = () => {
         setSuccessModal(null);
+        setEditingForm(null);
         setCurrentView('dashboard');
       };
 
@@ -1454,6 +1500,16 @@
                   })}
                 </div>
                 <div className="p-4 border-t border-gray-200 space-y-2">
+                  <button
+                    onClick={() => {
+                      setEditingForm(viewFormModal);
+                      setViewFormModal(null);
+                      setCurrentView(viewFormModal.type);
+                    }}
+                    className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold flex items-center justify-center gap-2"
+                  >
+                    <span>✏️</span> Modify Form
+                  </button>
                   <button
                     onClick={() => {
                       PDFGenerator.download(viewFormModal);
@@ -1602,12 +1658,12 @@
           <main className="flex-1 p-4 pb-20">
             {currentView === 'dashboard' && <Dashboard setCurrentView={setCurrentView} forms={forms} onViewForm={setViewFormModal} isFormBackedUp={isFormBackedUp} />}
             {currentView === 'training' && <TrainingView />}
-            {currentView === 'prestart' && <PrestartView onSubmit={(data) => addForm('prestart', data)} previousPrestarts={previousPrestarts} sites={sites} />}
-            {currentView === 'steel-itp' && <SteelITPView onSubmit={(data) => addForm('steel-itp', data)} sites={sites} />}
-            {currentView === 'inspection' && <SubcontractorInspectionView onSubmit={(data) => addForm('inspection', data)} sites={sites} />}
-            {currentView === 'itp' && <ITPFormView onSubmit={(data) => addForm('itp', data)} sites={sites} />}
-            {currentView === 'incidents' && <IncidentView onSubmit={(data) => addForm('incident', data)} />}
-            {currentView === 'toolbox' && <ToolboxView onSubmit={(data) => addForm('toolbox', data)} sites={sites} />}
+            {currentView === 'prestart' && <PrestartView onSubmit={(data) => addForm('prestart', data)} onUpdate={updateForm} editingForm={editingForm?.type === 'prestart' ? editingForm : null} previousPrestarts={previousPrestarts} sites={sites} />}
+            {currentView === 'steel-itp' && <SteelITPView onSubmit={(data) => addForm('steel-itp', data)} onUpdate={updateForm} editingForm={editingForm?.type === 'steel-itp' ? editingForm : null} sites={sites} />}
+            {currentView === 'inspection' && <SubcontractorInspectionView onSubmit={(data) => addForm('inspection', data)} onUpdate={updateForm} editingForm={editingForm?.type === 'inspection' ? editingForm : null} sites={sites} />}
+            {currentView === 'itp' && <ITPFormView onSubmit={(data) => addForm('itp', data)} onUpdate={updateForm} editingForm={editingForm?.type === 'itp' ? editingForm : null} sites={sites} />}
+            {currentView === 'incidents' && <IncidentView onSubmit={(data) => addForm('incident', data)} onUpdate={updateForm} editingForm={editingForm?.type === 'incident' ? editingForm : null} />}
+            {currentView === 'toolbox' && <ToolboxView onSubmit={(data) => addForm('toolbox', data)} onUpdate={updateForm} editingForm={editingForm?.type === 'toolbox' ? editingForm : null} sites={sites} />}
             {currentView === 'emergency' && <EmergencyView />}
             {currentView === 'settings' && <SettingsView sites={sites} onUpdateSites={setSites} />}
           </main>
@@ -2595,43 +2651,48 @@
     }
 
     // Pre-Start View
-    function PrestartView({ onSubmit, previousPrestarts = [], sites = [] }) {
-      const [step, setStep] = useState(1);
-      const [checkType, setCheckType] = useState(null);
-      const [checks, setChecks] = useState({});
-      const [notes, setNotes] = useState('');
+    function PrestartView({ onSubmit, onUpdate, editingForm, previousPrestarts = [], sites = [] }) {
+      const isEditing = !!editingForm;
+      const editData = editingForm?.data || {};
+
+      const [step, setStep] = useState(isEditing ? 2 : 1);
+      const [checkType, setCheckType] = useState(editData.type || null);
+      const [checks, setChecks] = useState(editData.checks || {});
+      const [notes, setNotes] = useState(editData.notes || '');
       const [submitted, setSubmitted] = useState(false);
       const [signingWorker, setSigningWorker] = useState(null);
       const [showPreviousList, setShowPreviousList] = useState(false);
-      const [supervisorName, setSupervisorName] = useState('');
-      const [siteConducted, setSiteConducted] = useState('');
-      const [builder, setBuilder] = useState('');
-      const [address, setAddress] = useState('');
+      const [supervisorName, setSupervisorName] = useState(editData.supervisorName || '');
+      const [siteConducted, setSiteConducted] = useState(editData.siteConducted || '');
+      const [builder, setBuilder] = useState(editData.builder || '');
+      const [address, setAddress] = useState(editData.address || '');
       const [isLocating, setIsLocating] = useState(false);
+      const [formDate, setFormDate] = useState(editData.date ? new Date(editData.date) : new Date());
 
-      const [workAreas, setWorkAreas] = useState({ value: '', notes: [], media: [] });
-      const [tasksThisShift, setTasksThisShift] = useState({ value: '', notes: [], media: [] });
-      const [machineryControls, setMachineryControls] = useState({ value: '', notes: [], media: [] });
-      const [siteHazards, setSiteHazards] = useState({ value: '', notes: [], media: [] });
-      const [permitsRequired, setPermitsRequired] = useState({ value: '', notes: [], media: [] });
+      const [workAreas, setWorkAreas] = useState(editData.workAreas || { value: '', notes: [], media: [] });
+      const [tasksThisShift, setTasksThisShift] = useState(editData.tasksThisShift || { value: '', notes: [], media: [] });
+      const [machineryControls, setMachineryControls] = useState(editData.machineryControls || { value: '', notes: [], media: [] });
+      const [siteHazards, setSiteHazards] = useState(editData.siteHazards || { value: '', notes: [], media: [] });
+      const [permitsRequired, setPermitsRequired] = useState(editData.permitsRequired || { value: '', notes: [], media: [] });
 
       // New fields
-      const [isPlantEquipmentUsed, setIsPlantEquipmentUsed] = useState(null); // yes/no
-      const [highRiskWorks, setHighRiskWorks] = useState(null); // yes/no/na
-      const [worksCoveredBySWMS, setWorksCoveredBySWMS] = useState(null); // yes/no/na
-      const [hasSafetyIssues, setHasSafetyIssues] = useState(null); // yes/no
-      const [safetyIssuesPreviousShift, setSafetyIssuesPreviousShift] = useState({ value: '', notes: [], media: [] });
-      const [translatorRequired, setTranslatorRequired] = useState(null); // yes/no
-      const [translatorSignature, setTranslatorSignature] = useState(null);
-      const [translatorName, setTranslatorName] = useState('');
+      const [isPlantEquipmentUsed, setIsPlantEquipmentUsed] = useState(editData.isPlantEquipmentUsed ?? null); // yes/no
+      const [highRiskWorks, setHighRiskWorks] = useState(editData.highRiskWorks ?? null); // yes/no/na
+      const [worksCoveredBySWMS, setWorksCoveredBySWMS] = useState(editData.worksCoveredBySWMS ?? null); // yes/no/na
+      const [hasSafetyIssues, setHasSafetyIssues] = useState(editData.hasSafetyIssues ?? null); // yes/no
+      const [safetyIssuesPreviousShift, setSafetyIssuesPreviousShift] = useState(editData.safetyIssuesPreviousShift || { value: '', notes: [], media: [] });
+      const [translatorRequired, setTranslatorRequired] = useState(editData.translatorRequired ?? null); // yes/no
+      const [translatorSignature, setTranslatorSignature] = useState(editData.translatorSignature || null);
+      const [translatorName, setTranslatorName] = useState(editData.translatorName || '');
       const [signingTranslator, setSigningTranslator] = useState(false);
 
-      const [signatures, setSignatures] = useState({
+      const [signatures, setSignatures] = useState(editData.signatures || {
         'Jeff Fu': null, 'Scott Seeho': null, 'Davide Casolini': null,
         'Zonggang Jiang': null, 'Leon Yu': null, 'Wang Jia': null, 'Gen Bao': null,
       });
 
-      const todayDate = new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+      const displayDate = formDate.toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+      const displayTime = formDate.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
       const builders = ['Fdc Fitout and Refurbishment', 'Fdc Construction', 'Hunter Mason', 'Built', 'Landlease'];
       const defaultSites = ['Site 1 - Sydney CBD', 'Site 2 - Parramatta', 'Site 3 - North Sydney', 'Site 4 - Chatswood', 'Site 5 - Liverpool'];
       const sitesList = sites.length > 0 ? sites : defaultSites;
@@ -2717,13 +2778,19 @@
       };
 
       const handleSubmit = () => {
-        onSubmit({
+        const formData = {
           type: checkType, checks, notes, signatures, supervisorName, siteConducted, builder, address,
           workAreas, tasksThisShift, machineryControls, siteHazards, permitsRequired,
           isPlantEquipmentUsed, highRiskWorks, worksCoveredBySWMS, hasSafetyIssues, safetyIssuesPreviousShift,
           translatorRequired, translatorSignature, translatorName,
-          date: new Date().toISOString()
-        });
+          date: formDate.toISOString()
+        };
+
+        if (isEditing && onUpdate) {
+          onUpdate(editingForm.id, 'prestart', formData);
+        } else {
+          onSubmit(formData);
+        }
         setSubmitted(true);
       };
 
@@ -2753,10 +2820,10 @@
         return (
           <div className="text-center py-12">
             <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 text-4xl">✅</div>
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">Pre-Start Complete!</h2>
-            <p className="text-gray-600 mb-2">Your checklist has been recorded.</p>
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">{isEditing ? 'Pre-Start Updated!' : 'Pre-Start Complete!'}</h2>
+            <p className="text-gray-600 mb-2">{isEditing ? 'Your changes have been saved.' : 'Your checklist has been recorded.'}</p>
             <p className="text-sm text-gray-500 mb-6">{signedCount} worker(s) signed on</p>
-            <button onClick={resetForm} className="bg-orange-600 text-white px-6 py-3 rounded-lg font-semibold">Start Another Check</button>
+            <button onClick={resetForm} className="bg-orange-600 text-white px-6 py-3 rounded-lg font-semibold">{isEditing ? 'Back to Dashboard' : 'Start Another Check'}</button>
           </div>
         );
       }
@@ -2790,11 +2857,48 @@
           <div className="space-y-4">
             {signingWorker && <SignaturePad name={signingWorker} onSave={(data) => { setSignatures({...signatures, [signingWorker]: data}); setSigningWorker(null); }} onCancel={() => setSigningWorker(null)} />}
 
-            <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-xl p-4 text-white">
-              <div className="flex items-center gap-2">
-                <span>📅</span>
-                <span className="font-bold text-lg">{todayDate}</span>
+            {isEditing && (
+              <div className="bg-blue-100 border border-blue-300 rounded-xl p-3 flex items-center gap-2">
+                <span className="text-blue-600 text-xl">✏️</span>
+                <div>
+                  <p className="text-blue-800 font-semibold">Editing Mode</p>
+                  <p className="text-blue-600 text-sm">Modify this form and save your changes</p>
+                </div>
               </div>
+            )}
+
+            <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-xl p-4 text-white">
+              <div className="flex items-center gap-2 mb-2">
+                <span>📅</span>
+                <span className="font-bold text-lg">{displayDate}</span>
+                <span className="text-sm opacity-80">at {displayTime}</span>
+              </div>
+              {isEditing && (
+                <div className="flex gap-2 mt-2">
+                  <input
+                    type="date"
+                    value={formDate.toISOString().split('T')[0]}
+                    onChange={(e) => {
+                      const newDate = new Date(formDate);
+                      const [year, month, day] = e.target.value.split('-');
+                      newDate.setFullYear(parseInt(year), parseInt(month) - 1, parseInt(day));
+                      setFormDate(newDate);
+                    }}
+                    className="flex-1 bg-white/20 text-white border border-white/30 rounded-lg p-2 text-sm"
+                  />
+                  <input
+                    type="time"
+                    value={formDate.toTimeString().slice(0,5)}
+                    onChange={(e) => {
+                      const newDate = new Date(formDate);
+                      const [hours, minutes] = e.target.value.split(':');
+                      newDate.setHours(parseInt(hours), parseInt(minutes));
+                      setFormDate(newDate);
+                    }}
+                    className="bg-white/20 text-white border border-white/30 rounded-lg p-2 text-sm"
+                  />
+                </div>
+              )}
             </div>
 
             <div className="bg-white rounded-xl p-4 shadow-sm">
@@ -3072,7 +3176,7 @@
             <div className="flex gap-3">
               <button onClick={() => setStep(2)} className="flex-1 border border-gray-300 text-gray-700 py-4 rounded-xl font-semibold">← Back</button>
               <button onClick={handleSubmit} disabled={signedCount === 0} className="flex-1 bg-green-600 text-white py-4 rounded-xl font-semibold disabled:bg-gray-300">
-                ✓ Complete Pre-Start
+                {isEditing ? '✓ Update Pre-Start' : '✓ Complete Pre-Start'}
               </button>
             </div>
           </div>
