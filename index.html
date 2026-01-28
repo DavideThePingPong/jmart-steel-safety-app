@@ -853,33 +853,58 @@
         const data = form.data || {};
 
         // Site Details Section
-        if (data.supervisorName || data.siteConducted || data.builder || data.address) {
+        if (data.supervisorName || data.siteConducted || data.builder || data.address || data.preparedBy || data.location) {
           drawSectionHeader('SITE DETAILS');
-          drawFieldPair('supervisorName', data.supervisorName, 'siteConducted', data.siteConducted);
+          drawFieldPair('supervisorName', data.supervisorName || data.preparedBy, 'siteConducted', data.siteConducted);
           drawFieldPair('builder', data.builder, 'address', data.address);
+          if (data.location) drawFieldPair('location', data.location, 'jobStructure', data.jobStructure);
+          if (data.conductedOn) drawField('conductedOn', new Date(data.conductedOn).toLocaleDateString('en-AU'));
         }
 
-        // Work Information Section
-        if (data.workAreas || data.taskToComplete) {
+        // Work Information Section (Pre-Start)
+        if (data.workAreas || data.taskToComplete || data.tasksThisShift) {
           drawSectionHeader('WORK INFORMATION');
-          if (data.workAreas) drawField('workAreas', data.workAreas, true);
+          // Handle complex field objects (with value, notes, media)
+          const getFieldValue = (field) => {
+            if (!field) return null;
+            if (typeof field === 'object' && field.value !== undefined) return field.value;
+            return field;
+          };
+          if (getFieldValue(data.workAreas)) drawField('Work Areas', getFieldValue(data.workAreas), true);
+          if (getFieldValue(data.tasksThisShift)) drawField('Tasks This Shift', getFieldValue(data.tasksThisShift), true);
           if (data.taskToComplete) drawField('taskToComplete', data.taskToComplete, true);
+          if (getFieldValue(data.machineryControls)) drawField('Machinery & Controls', getFieldValue(data.machineryControls), true);
         }
 
         // Safety Information Section
-        if (data.plantEquipment !== undefined || data.siteHazards || data.permitsRequired || data.highRiskWorks !== undefined || data.swmsCovered !== undefined) {
+        if (data.plantEquipment !== undefined || data.isPlantEquipmentUsed !== undefined || data.siteHazards || data.permitsRequired || data.highRiskWorks !== undefined || data.swmsCovered !== undefined || data.worksCoveredBySWMS !== undefined) {
           drawSectionHeader('SAFETY INFORMATION');
-          drawFieldPair('plantEquipment', data.plantEquipment ? 'Yes' : 'No', 'highRiskWorks', data.highRiskWorks ? 'Yes' : 'No');
-          drawFieldPair('swmsCovered', data.swmsCovered ? 'Yes' : 'No', 'safetyIssues', data.safetyIssues ? 'Yes' : 'No');
-          if (data.siteHazards) drawField('siteHazards', data.siteHazards, true);
-          if (data.permitsRequired) drawField('permitsRequired', data.permitsRequired, true);
+          const plantUsed = data.plantEquipment !== undefined ? data.plantEquipment : data.isPlantEquipmentUsed;
+          const swmsCovered = data.swmsCovered !== undefined ? data.swmsCovered : data.worksCoveredBySWMS;
+          const safetyIssues = data.safetyIssues !== undefined ? data.safetyIssues : data.hasSafetyIssues;
+          drawFieldPair('Plant/Equipment Used', plantUsed ? 'Yes' : 'No', 'High Risk Works', data.highRiskWorks ? 'Yes' : 'No');
+          drawFieldPair('Works Covered by SWMS', swmsCovered ? 'Yes' : 'No', 'Safety Issues', safetyIssues ? 'Yes' : 'No');
+          // Handle complex field objects
+          const getFieldValue = (field) => {
+            if (!field) return null;
+            if (typeof field === 'object' && field.value !== undefined) return field.value;
+            return field;
+          };
+          if (getFieldValue(data.siteHazards)) drawField('Site Hazards', getFieldValue(data.siteHazards), true);
+          if (getFieldValue(data.permitsRequired)) drawField('Permits Required', getFieldValue(data.permitsRequired), true);
+          if (getFieldValue(data.safetyIssuesPreviousShift)) drawField('Safety Issues Previous Shift', getFieldValue(data.safetyIssuesPreviousShift), true);
+          if (data.translatorRequired !== undefined) drawField('Translator Required', data.translatorRequired ? 'Yes' : 'No');
+          if (data.translatorName) drawField('Translator Name', data.translatorName);
         }
 
-        // Checklist Section
-        if (data.checklist && typeof data.checklist === 'object') {
-          drawSectionHeader('SAFETY CHECKLIST');
+        // Checklist Section (handles both 'checklist' and 'checks' objects)
+        const checklistData = data.checklist || data.checks;
+        if (checklistData && typeof checklistData === 'object') {
+          // Determine header based on form type
+          const checklistHeader = data.checkType ? data.checkType.toUpperCase() + ' CHECKLIST' : 'SAFETY CHECKLIST';
+          drawSectionHeader(checklistHeader);
 
-          const checklistItems = Object.entries(data.checklist);
+          const checklistItems = Object.entries(checklistData);
           const colWidth = contentWidth / 2;
           let col = 0;
           let startY = y;
@@ -945,12 +970,127 @@
 
         // Toolbox-specific fields
         if (type === 'toolbox') {
-          if (data.topic) {
+          if (data.topic || data.topics) {
             drawSectionHeader('TOOLBOX TALK DETAILS');
-            drawField('topic', data.topic, true);
+            if (data.topics && Array.isArray(data.topics)) {
+              drawField('Topics Covered', data.topics.join(', '), true);
+            }
+            if (data.topic) drawField('topic', data.topic, true);
+            if (data.otherTopic) drawField('Other Topic', data.otherTopic, true);
           }
+          if (data.correctiveAction) drawField('Corrective Action', data.correctiveAction, true);
+          if (data.feedbackResponses) drawField('Feedback & Responses', data.feedbackResponses, true);
           if (data.keyPoints) drawField('keyPoints', data.keyPoints, true);
           if (data.attendees) drawField('attendees', data.attendees, true);
+        }
+
+        // ITP-specific fields (Glass and Steel ITP)
+        if (type === 'itp' || type === 'steel-itp') {
+          // Pre-Construction
+          if (data.preConstructionMeeting !== undefined || data.preConstMeeting !== undefined ||
+              data.highRiskWorkshop !== undefined || data.shopdrawingsApproved !== undefined) {
+            drawSectionHeader('PRE-CONSTRUCTION');
+            drawFieldPair('Pre-Construction Meeting', data.preConstructionMeeting || data.preConstMeeting, 'High Risk Workshop', data.highRiskWorkshop);
+            drawFieldPair('Shop Drawings Approved', data.shopdrawingsApproved, 'All Items Signed Off', data.allItemsSignedOff);
+            if (data.shopdrawingRevision) drawField('Shop Drawing Revision', data.shopdrawingRevision, true);
+          }
+
+          // Fabrication (Steel ITP)
+          if (data.materialsOrdered !== undefined || data.materialsCorrect !== undefined) {
+            drawSectionHeader('FABRICATION');
+            drawFieldPair('Materials Ordered', data.materialsOrdered, 'Materials Correct', data.materialsCorrect);
+            drawFieldPair('Visual Check', data.visualCheck, 'Shop Drawings Current', data.shopdrawingsCurrent);
+            drawFieldPair('Setout Correct', data.setoutCorrect, 'Tack Weld', data.tackWeld);
+            drawFieldPair('Fully Welded', data.fullyWelded, 'Pack Load', data.packLoad);
+          }
+
+          // Surface Finish (Steel ITP)
+          if (data.finishConfirmed !== undefined || data.deliveryBooked !== undefined) {
+            drawSectionHeader('SURFACE FINISH');
+            drawFieldPair('Finish Confirmed', data.finishConfirmed, 'Delivery Booked', data.deliveryBooked);
+            drawFieldPair('Sent to Painter', data.sentToPainter, 'Delivery Vehicle', data.deliveryVehicle);
+            if (data.afterDeliveryFinish) drawField('After Delivery Finish', data.afterDeliveryFinish);
+          }
+
+          // Glass Specification (Glass ITP)
+          if (data.orderedGlassFrom || data.glassSpecification) {
+            drawSectionHeader('GLASS SPECIFICATION');
+            drawFieldPair('Ordered Glass From', data.orderedGlassFrom, 'Glass Specification', data.glassSpecification);
+            drawFieldPair('Glass Free From Damage', data.glassFreeFromDamage ? 'Yes' : 'No', 'Specification of Fixings', data.specificationOfFixings);
+          }
+
+          // Installation
+          if (data.installationMethod || data.setoutCompletedBy || data.surveyorMeasurements !== undefined) {
+            drawSectionHeader('INSTALLATION');
+            drawFieldPair('Setout Completed By', data.setoutCompletedBy, 'Installation Method', data.installationMethod);
+            drawFieldPair('Drawings Confirmed', data.drawingsConfirmed, 'Surveyor Measurements', data.surveyorMeasurements);
+            if (data.surveyorName) drawField('Surveyor Name', data.surveyorName);
+            if (data.clashesDetected) drawField('Clashes Detected', data.clashesDetected);
+          }
+
+          // Glass Installation (Glass ITP)
+          if (data.glassInstalledCorrectRL !== undefined || data.glassLockedWedgedGlued !== undefined) {
+            drawSectionHeader('GLASS INSTALLATION');
+            drawFieldPair('Glass Installed Correct RL', data.glassInstalledCorrectRL ? 'Yes' : 'No', 'Glass Locked/Wedged/Glued', data.glassLockedWedgedGlued ? 'Yes' : 'No');
+            if (data.removeWedgesCaulk) drawField('Remove Wedges & Caulk', data.removeWedgesCaulk);
+          }
+
+          // Anchoring & Fixing (Steel ITP)
+          if (data.chemicalAnchors !== undefined || data.anchorsInstalled !== undefined) {
+            drawSectionHeader('ANCHORING & FIXING');
+            drawFieldPair('Chemical Anchors', data.chemicalAnchors, 'Anchors Installed', data.anchorsInstalled);
+            drawFieldPair('Level & Plumb', data.levelPlumb, 'Bolts Torqued', data.boltsTorqued);
+            drawFieldPair('Welding Completed', data.weldingCompleted, 'Grouting Completed', data.groutingCompleted);
+          }
+
+          // Handrail (Glass ITP)
+          if (data.handrailSpecConfirmed !== undefined || data.spigotsCouplingsTight !== undefined) {
+            drawSectionHeader('HANDRAIL');
+            drawFieldPair('Handrail Spec Confirmed', data.handrailSpecConfirmed ? 'Yes' : 'No', 'Spigots/Couplings Tight', data.spigotsCouplingsTight ? 'Yes' : 'No');
+            drawFieldPair('Handrail Compliant Height', data.handrailCompliantHeight ? 'Yes' : 'No', 'Thread on Fixings', data.threadOnFixings ? 'Yes' : 'No');
+            if (data.fullWeldingJunctions !== undefined) drawField('Full Welding Junctions', data.fullWeldingJunctions ? 'Yes' : 'No');
+          }
+
+          // Quality Check
+          if (data.itemsChecked !== undefined || data.finishAcceptable !== undefined || data.allGlassNoDefects !== undefined) {
+            drawSectionHeader('QUALITY CHECK');
+            drawFieldPair('Items Checked', data.itemsChecked, 'Finish Acceptable', data.finishAcceptable);
+            drawFieldPair('Fixings Torqued', data.fixingsTorqued, 'All Glass No Defects', data.allGlassNoDefects ? 'Yes' : 'No');
+            drawFieldPair('All Handrail No Defects', data.allHandrailNoDefects ? 'Yes' : 'No', 'Balustrade As Per Design', data.balustradeAsPerDesign ? 'Yes' : 'No');
+          }
+
+          // Weld Testing (Steel ITP)
+          if (data.weldTestingBooked !== undefined || data.weldsPassed !== undefined) {
+            drawSectionHeader('WELD TESTING');
+            drawFieldPair('Weld Testing Booked', data.weldTestingBooked, 'Welds Passed', data.weldsPassed);
+            if (data.testingIssues) drawField('Testing Issues', data.testingIssues, true);
+          }
+
+          // Final Check & Handover
+          if (data.colourConfirmed !== undefined || data.handoverAccepted !== undefined) {
+            drawSectionHeader('FINAL CHECK & HANDOVER');
+            drawFieldPair('Colour Confirmed', data.colourConfirmed, 'Defects Checked', data.defectsChecked);
+            if (data.handoverAccepted !== undefined) drawField('Handover Accepted', data.handoverAccepted);
+          }
+
+          // Future Correspondence
+          if (data.futureCorrespondence) {
+            drawSectionHeader('NOTES & CORRESPONDENCE');
+            drawField('Items for Future Correspondence', data.futureCorrespondence, true);
+          }
+        }
+
+        // Inspection-specific fields
+        if (type === 'inspection') {
+          if (data.inspectionItems && typeof data.inspectionItems === 'object') {
+            drawSectionHeader('INSPECTION ITEMS');
+            Object.entries(data.inspectionItems).forEach(([key, value]) => {
+              if (value !== undefined && value !== null) {
+                const itemLabel = key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase());
+                drawField(itemLabel, value);
+              }
+            });
+          }
         }
 
         // Notes/Comments
@@ -960,7 +1100,7 @@
           if (data.comments) drawField('comments', data.comments, true);
         }
 
-        // Workers Section
+        // Workers Section (legacy array format)
         if (data.workers && Array.isArray(data.workers) && data.workers.length > 0) {
           drawSectionHeader('WORKERS ON SITE');
           data.workers.forEach((worker, idx) => {
@@ -985,7 +1125,151 @@
           });
         }
 
-        // Signature Section
+        // Team Signatures Section (object format: { 'Name': signatureData })
+        if (data.signatures && typeof data.signatures === 'object' && !Array.isArray(data.signatures)) {
+          const signedMembers = Object.entries(data.signatures).filter(([name, sig]) => sig && sig.startsWith && sig.startsWith('data:image'));
+
+          if (signedMembers.length > 0) {
+            checkPageBreak(40);
+            drawSectionHeader('TEAM SIGNATURES');
+
+            // Draw signatures in a 2-column grid for better layout
+            const sigWidth = 55;
+            const sigHeight = 22;
+            const colWidth = contentWidth / 2;
+            let col = 0;
+            let rowStartY = y;
+
+            signedMembers.forEach(([name, signature], idx) => {
+              const xPos = margin + (col * colWidth);
+
+              // Check if we need a new page
+              if (col === 0) {
+                checkPageBreak(sigHeight + 15);
+                rowStartY = y;
+              }
+
+              // Draw signature box with border
+              doc.setDrawColor(...this.colors.lightGray);
+              doc.setLineWidth(0.3);
+              doc.roundedRect(xPos + 2, rowStartY, sigWidth, sigHeight, 2, 2, 'S');
+
+              // Draw signature image
+              try {
+                doc.addImage(signature, 'PNG', xPos + 4, rowStartY + 2, sigWidth - 6, sigHeight - 8);
+              } catch (e) {
+                doc.setFontSize(8);
+                doc.setTextColor(...this.colors.gray);
+                doc.text('[Signature]', xPos + 10, rowStartY + sigHeight / 2);
+              }
+
+              // Draw name below signature
+              doc.setFontSize(9);
+              doc.setTextColor(...this.colors.dark);
+              doc.setFont(undefined, 'bold');
+              doc.text(name, xPos + 2, rowStartY + sigHeight + 5);
+              doc.setFont(undefined, 'normal');
+
+              col++;
+              if (col >= 2) {
+                col = 0;
+                y = rowStartY + sigHeight + 12;
+              }
+            });
+
+            // Ensure y is updated if we ended on an odd column
+            if (col !== 0) {
+              y = rowStartY + sigHeight + 12;
+            }
+            y += 5;
+          }
+        }
+
+        // Translator Signature Section
+        if (data.translatorSignature && data.translatorSignature.startsWith('data:image')) {
+          checkPageBreak(40);
+          drawSectionHeader('TRANSLATOR SIGNATURE');
+          try {
+            doc.addImage(data.translatorSignature, 'PNG', margin + 3, y, 50, 20);
+            y += 25;
+            if (data.translatorName) {
+              doc.setFontSize(9);
+              doc.setTextColor(...this.colors.gray);
+              doc.text('Translator: ' + data.translatorName, margin + 3, y);
+              y += 5;
+            }
+          } catch (e) {
+            doc.setFontSize(9);
+            doc.setTextColor(...this.colors.gray);
+            doc.text('[Translator signature recorded]', margin + 3, y);
+            y += 10;
+          }
+        }
+
+        // Completed By Signature Section (for inspections)
+        if (data.completedBySignature && data.completedBySignature.startsWith('data:image')) {
+          checkPageBreak(40);
+          drawSectionHeader('COMPLETED BY');
+          try {
+            doc.addImage(data.completedBySignature, 'PNG', margin + 3, y, 50, 20);
+            y += 25;
+            if (data.completedBy) {
+              doc.setFontSize(9);
+              doc.setTextColor(...this.colors.gray);
+              doc.text(data.completedBy, margin + 3, y);
+              y += 5;
+            }
+          } catch (e) {
+            doc.setFontSize(9);
+            doc.setTextColor(...this.colors.gray);
+            doc.text('[Signature recorded]', margin + 3, y);
+            y += 10;
+          }
+        }
+
+        // Manager Signature Section (for Steel ITP)
+        if (data.managerSignature && data.managerSignature.startsWith('data:image')) {
+          checkPageBreak(40);
+          drawSectionHeader('MANAGER APPROVAL');
+          try {
+            doc.addImage(data.managerSignature, 'PNG', margin + 3, y, 50, 20);
+            y += 25;
+            if (data.managerName) {
+              doc.setFontSize(9);
+              doc.setTextColor(...this.colors.gray);
+              doc.text(data.managerName, margin + 3, y);
+              y += 5;
+            }
+          } catch (e) {
+            doc.setFontSize(9);
+            doc.setTextColor(...this.colors.gray);
+            doc.text('[Manager signature recorded]', margin + 3, y);
+            y += 10;
+          }
+        }
+
+        // Builder Signature Section (for Steel ITP and Glass ITP)
+        if (data.builderSignature && data.builderSignature.startsWith('data:image')) {
+          checkPageBreak(40);
+          drawSectionHeader('BUILDER SIGN-OFF');
+          try {
+            doc.addImage(data.builderSignature, 'PNG', margin + 3, y, 50, 20);
+            y += 25;
+            if (data.builderName || data.builderSignoffName) {
+              doc.setFontSize(9);
+              doc.setTextColor(...this.colors.gray);
+              doc.text(data.builderName || data.builderSignoffName, margin + 3, y);
+              y += 5;
+            }
+          } catch (e) {
+            doc.setFontSize(9);
+            doc.setTextColor(...this.colors.gray);
+            doc.text('[Builder signature recorded]', margin + 3, y);
+            y += 10;
+          }
+        }
+
+        // Main Signature Section (legacy)
         if (data.signature && data.signature.startsWith('data:image')) {
           checkPageBreak(40);
           drawSectionHeader('SIGNATURE');
