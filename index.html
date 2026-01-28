@@ -1444,6 +1444,7 @@
         return saved ? JSON.parse(saved) : {};
       });
       const isInitialLoad = useRef(true);
+      const deletingFormRef = useRef(false); // Track when we're deleting to prevent Firebase restore
 
       // Load saved data from localStorage first, then listen to Firebase
       useEffect(() => {
@@ -1477,6 +1478,17 @@
           const unsubForms = FirebaseSync.onFormsChange((firebaseForms) => {
             const formsArray = Array.isArray(firebaseForms) ? firebaseForms : Object.values(firebaseForms || {});
             console.log('Firebase forms received:', formsArray.length, 'forms');
+
+            // If we just deleted a form, use Firebase data as source of truth (don't merge)
+            if (deletingFormRef.current) {
+              console.log('Delete operation in progress - using Firebase as source of truth');
+              deletingFormRef.current = false;
+              setForms(formsArray);
+              localStorage.setItem('jmart-safety-forms', JSON.stringify(formsArray));
+              setSyncStatus('synced');
+              setLastSynced(new Date().toISOString());
+              return;
+            }
 
             // Merge: use Firebase data if it has more forms, otherwise keep local
             // This prevents data loss when Firebase is empty but local has data
@@ -1799,13 +1811,19 @@
         localStorage.setItem('jmart-safety-forms', JSON.stringify(updatedForms));
         console.log('Form deleted, saved to localStorage:', updatedForms.length, 'forms remaining');
 
+        // Set flag to prevent Firebase listener from restoring deleted form
+        deletingFormRef.current = true;
+
         // Sync deletion to Firebase
         if (FirebaseSync.isConnected()) {
           FirebaseSync.syncForms(updatedForms).then(() => {
             console.log('Deletion synced to Firebase');
           }).catch(err => {
             console.error('Failed to sync deletion to Firebase:', err);
+            deletingFormRef.current = false; // Reset flag on error
           });
+        } else {
+          deletingFormRef.current = false; // Reset flag if not connected
         }
       };
 
