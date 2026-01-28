@@ -1794,6 +1794,19 @@
         setForms(updatedForms);
         setDeleteConfirmModal(null);
         setViewFormModal(null);
+
+        // Immediately save to localStorage
+        localStorage.setItem('jmart-safety-forms', JSON.stringify(updatedForms));
+        console.log('Form deleted, saved to localStorage:', updatedForms.length, 'forms remaining');
+
+        // Sync deletion to Firebase
+        if (FirebaseSync.isConnected()) {
+          FirebaseSync.syncForms(updatedForms).then(() => {
+            console.log('Deletion synced to Firebase');
+          }).catch(err => {
+            console.error('Failed to sync deletion to Firebase:', err);
+          });
+        }
       };
 
       // Check if form is backed up
