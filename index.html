@@ -2846,18 +2846,25 @@
       const [isLocating, setIsLocating] = useState(false);
       const [formDate, setFormDate] = useState(editData.date ? new Date(editData.date) : new Date());
 
-      const [workAreas, setWorkAreas] = useState(editData.workAreas || { value: '', notes: [], media: [] });
-      const [tasksThisShift, setTasksThisShift] = useState(editData.tasksThisShift || { value: '', notes: [], media: [] });
-      const [machineryControls, setMachineryControls] = useState(editData.machineryControls || { value: '', notes: [], media: [] });
-      const [siteHazards, setSiteHazards] = useState(editData.siteHazards || { value: '', notes: [], media: [] });
-      const [permitsRequired, setPermitsRequired] = useState(editData.permitsRequired || { value: '', notes: [], media: [] });
+      // Helper to ensure media fields have proper structure
+      const ensureMediaStructure = (data) => ({
+        value: data?.value || '',
+        notes: Array.isArray(data?.notes) ? data.notes : [],
+        media: Array.isArray(data?.media) ? data.media : []
+      });
+
+      const [workAreas, setWorkAreas] = useState(ensureMediaStructure(editData.workAreas));
+      const [tasksThisShift, setTasksThisShift] = useState(ensureMediaStructure(editData.tasksThisShift));
+      const [machineryControls, setMachineryControls] = useState(ensureMediaStructure(editData.machineryControls));
+      const [siteHazards, setSiteHazards] = useState(ensureMediaStructure(editData.siteHazards));
+      const [permitsRequired, setPermitsRequired] = useState(ensureMediaStructure(editData.permitsRequired));
 
       // New fields
       const [isPlantEquipmentUsed, setIsPlantEquipmentUsed] = useState(editData.isPlantEquipmentUsed ?? null); // yes/no
       const [highRiskWorks, setHighRiskWorks] = useState(editData.highRiskWorks ?? null); // yes/no/na
       const [worksCoveredBySWMS, setWorksCoveredBySWMS] = useState(editData.worksCoveredBySWMS ?? null); // yes/no/na
       const [hasSafetyIssues, setHasSafetyIssues] = useState(editData.hasSafetyIssues ?? null); // yes/no
-      const [safetyIssuesPreviousShift, setSafetyIssuesPreviousShift] = useState(editData.safetyIssuesPreviousShift || { value: '', notes: [], media: [] });
+      const [safetyIssuesPreviousShift, setSafetyIssuesPreviousShift] = useState(ensureMediaStructure(editData.safetyIssuesPreviousShift));
       const [translatorRequired, setTranslatorRequired] = useState(editData.translatorRequired ?? null); // yes/no
       const [translatorSignature, setTranslatorSignature] = useState(editData.translatorSignature || null);
       const [translatorName, setTranslatorName] = useState(editData.translatorName || '');
