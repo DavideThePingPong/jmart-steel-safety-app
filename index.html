@@ -266,6 +266,69 @@
         return { success: true, uploaded: results.length, total: todaysForms.length, results };
       },
 
+      // Search for files by name pattern
+      searchFiles: async function(namePattern) {
+        if (!this.accessToken) return [];
+
+        try {
+          const query = `name contains '${namePattern}' and '${this.folderId}' in parents and trashed=false`;
+          const response = await fetch(
+            `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name,createdTime)`,
+            { headers: { 'Authorization': `Bearer ${this.accessToken}` } }
+          );
+          const data = await response.json();
+          return data.files || [];
+        } catch (error) {
+          console.error('Search error:', error);
+          return [];
+        }
+      },
+
+      // Delete a file by ID
+      deleteFile: async function(fileId) {
+        if (!this.accessToken) return false;
+
+        try {
+          const response = await fetch(
+            `https://www.googleapis.com/drive/v3/files/${fileId}`,
+            {
+              method: 'DELETE',
+              headers: { 'Authorization': `Bearer ${this.accessToken}` }
+            }
+          );
+          if (response.ok || response.status === 204) {
+            console.log('Deleted file from Drive:', fileId);
+            return true;
+          }
+          return false;
+        } catch (error) {
+          console.error('Delete error:', error);
+          return false;
+        }
+      },
+
+      // Delete old versions of a form PDF
+      deleteOldFormPDFs: async function(formId, siteName) {
+        if (!this.accessToken || !this.folderId) return { deleted: 0 };
+
+        try {
+          // Search for files matching this form's pattern
+          const files = await this.searchFiles(siteName);
+          let deleted = 0;
+
+          for (const file of files) {
+            const result = await this.deleteFile(file.id);
+            if (result) deleted++;
+          }
+
+          console.log(`Deleted ${deleted} old PDF(s) for form ${formId}`);
+          return { deleted, files };
+        } catch (error) {
+          console.error('Error deleting old PDFs:', error);
+          return { deleted: 0, error };
+        }
+      },
+
       // Disconnect
       disconnect: function() {
         this.accessToken = null;
@@ -1130,6 +1193,8 @@
       const [viewFormModal, setViewFormModal] = useState(null); // Form being viewed
       const [deleteConfirmModal, setDeleteConfirmModal] = useState(null); // Form to delete
       const [editingForm, setEditingForm] = useState(null); // Form being edited
+      const [updateConfirmModal, setUpdateConfirmModal] = useState(null); // { form, formType, formData } for update confirmation
+      const [isUpdating, setIsUpdating] = useState(false); // Loading state during update
       const [backedUpForms, setBackedUpForms] = useState(() => {
         const saved = localStorage.getItem('jmart-backed-up-forms');
         return saved ? JSON.parse(saved) : [];
@@ -1327,48 +1392,99 @@
         setSuccessModal({ form: newForm, type: formType });
       };
 
+      // Show confirmation modal before updating
       const updateForm = (formId, formType, formData) => {
-        console.log('updateForm called for id:', formId);
+        console.log('updateForm called - showing confirmation for id:', formId);
+        const updatedForm = {
+          id: formId,
+          type: formType,
+          data: formData,
+          createdAt: editingForm?.createdAt,
+          updatedAt: new Date().toISOString(),
+          status: 'completed'
+        };
+        setUpdateConfirmModal({ form: updatedForm, formType, formData, originalForm: editingForm });
+      };
 
-        setForms(prevForms => {
-          const updatedForms = prevForms.map(form => {
-            if (form.id === formId) {
-              return {
-                ...form,
-                data: formData,
-                updatedAt: new Date().toISOString()
-              };
-            }
-            return form;
-          });
+      // Go back to editing mode
+      const continueEditing = () => {
+        setUpdateConfirmModal(null);
+        // Stay in edit mode - editingForm is still set
+      };
 
-          // Immediately save to localStorage
-          localStorage.setItem('jmart-safety-forms', JSON.stringify(updatedForms));
-          console.log('Updated form saved to localStorage');
+      // Confirm and sync the update
+      const confirmUpdate = async () => {
+        if (!updateConfirmModal) return;
 
-          // Sync to Firebase
-          if (FirebaseSync.isConnected()) {
-            FirebaseSync.syncForms(updatedForms).then(() => {
-              console.log('Updated form synced to Firebase');
-            }).catch(err => console.error('Firebase sync error:', err));
+        setIsUpdating(true);
+        const { form, formType, formData, originalForm } = updateConfirmModal;
+        const siteName = formData.siteConducted || formData.site || '';
+
+        try {
+          // 1. Delete old PDFs from Google Drive (if connected)
+          if (GoogleDriveSync.isConnected() && siteName) {
+            console.log('Searching for old PDFs to delete...');
+            await GoogleDriveSync.deleteOldFormPDFs(form.id, siteName);
           }
 
-          return updatedForms;
-        });
+          // 2. Update form in state and localStorage
+          setForms(prevForms => {
+            const updatedForms = prevForms.map(f => {
+              if (f.id === form.id) {
+                return {
+                  ...f,
+                  data: formData,
+                  updatedAt: new Date().toISOString()
+                };
+              }
+              return f;
+            });
 
-        // Clear editing state
+            // Save to localStorage
+            localStorage.setItem('jmart-safety-forms', JSON.stringify(updatedForms));
+            console.log('Updated form saved to localStorage');
+
+            // 3. Sync to Firebase
+            if (FirebaseSync.isConnected()) {
+              FirebaseSync.syncForms(updatedForms).then(() => {
+                console.log('Updated form synced to Firebase');
+              }).catch(err => console.error('Firebase sync error:', err));
+            }
+
+            return updatedForms;
+          });
+
+          // 4. Download new PDF
+          const filename = PDFGenerator.download(form);
+          markAsBackedUp(form.id);
+          console.log('Downloaded updated PDF:', filename);
+
+          // 5. Upload new PDF to Google Drive (if connected)
+          if (GoogleDriveSync.isConnected()) {
+            const { doc } = PDFGenerator.generate(form);
+            const pdfBlob = doc.output('blob');
+            await GoogleDriveSync.uploadPDF(pdfBlob, filename);
+            console.log('Uploaded new PDF to Drive');
+          }
+
+          // Clear states and show success
+          setUpdateConfirmModal(null);
+          setEditingForm(null);
+          setIsUpdating(false);
+          setSuccessModal({ form, type: formType, wasUpdated: true });
+
+        } catch (error) {
+          console.error('Error during update:', error);
+          setIsUpdating(false);
+          alert('Error updating form. Please try again.');
+        }
+      };
+
+      // Cancel update and go back to dashboard
+      const cancelUpdate = () => {
+        setUpdateConfirmModal(null);
         setEditingForm(null);
-
-        // Auto-download updated PDF
-        setTimeout(() => {
-          const updatedForm = { id: formId, type: formType, data: formData, createdAt: editingForm?.createdAt, updatedAt: new Date().toISOString(), status: 'completed' };
-          const filename = PDFGenerator.download(updatedForm);
-          markAsBackedUp(formId);
-          console.log('Auto-saved updated PDF:', filename);
-
-          // Show success modal
-          setSuccessModal({ form: updatedForm, type: formType });
-        }, 500);
+        setCurrentView('dashboard');
       };
 
       const handleDownloadPDF = () => {
@@ -1570,6 +1686,67 @@
                     <button
                       onClick={() => setDeleteConfirmModal(null)}
                       className="w-full bg-gray-100 text-gray-700 py-3 rounded-xl font-medium"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Update Confirmation Modal */}
+          {updateConfirmModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[120] p-4">
+              <div className="bg-white rounded-2xl max-w-sm w-full shadow-2xl overflow-hidden">
+                <div className="bg-blue-600 text-white p-4 text-center">
+                  <span className="text-4xl">🔄</span>
+                  <h2 className="text-lg font-bold mt-2">Update Form?</h2>
+                </div>
+                <div className="p-4 space-y-4">
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                    <p className="text-blue-800 text-sm font-medium">You've made changes to this form.</p>
+                    <p className="text-blue-700 text-xs mt-1">
+                      {GoogleDriveSync.isConnected()
+                        ? 'This will update Firebase and replace the old PDF on Google Drive.'
+                        : 'This will update the form in Firebase.'}
+                    </p>
+                  </div>
+
+                  {updateConfirmModal.formData?.siteConducted && (
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <p className="text-gray-600 text-xs">Site</p>
+                      <p className="text-gray-800 font-medium">{updateConfirmModal.formData.siteConducted}</p>
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <button
+                      onClick={confirmUpdate}
+                      disabled={isUpdating}
+                      className="w-full bg-green-600 text-white py-3 rounded-xl font-semibold disabled:bg-gray-400 flex items-center justify-center gap-2"
+                    >
+                      {isUpdating ? (
+                        <>
+                          <span className="animate-spin">⏳</span> Updating...
+                        </>
+                      ) : (
+                        <>
+                          <span>✓</span> Yes, Replace Old Version
+                        </>
+                      )}
+                    </button>
+                    <button
+                      onClick={continueEditing}
+                      disabled={isUpdating}
+                      className="w-full bg-blue-100 text-blue-700 py-3 rounded-xl font-semibold disabled:bg-gray-200"
+                    >
+                      ✏️ Keep Editing
+                    </button>
+                    <button
+                      onClick={cancelUpdate}
+                      disabled={isUpdating}
+                      className="w-full bg-gray-100 text-gray-700 py-3 rounded-xl font-medium disabled:bg-gray-200"
                     >
                       Cancel
                     </button>
@@ -2787,11 +2964,13 @@
         };
 
         if (isEditing && onUpdate) {
+          // When editing, the confirmation modal will handle the flow
           onUpdate(editingForm.id, 'prestart', formData);
+          // Don't set submitted - the modal will handle navigation
         } else {
           onSubmit(formData);
+          setSubmitted(true);
         }
-        setSubmitted(true);
       };
 
       const resetForm = () => {
