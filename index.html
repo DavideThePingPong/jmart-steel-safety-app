@@ -711,8 +711,50 @@
         comments: 'Comments'
       },
 
-      // Checklist item labels
+      // Checklist item labels - all form types
       checklistLabels: {
+        // Site Pre-Start
+        s1: 'Site access and egress points clear',
+        s2: 'Exclusion zones and barriers in place',
+        s3: 'First aid kit available and stocked',
+        s4: 'Emergency assembly point identified',
+        s5: 'Fire extinguishers available',
+        s6: 'Site amenities available',
+        s7: 'Electrical leads safe',
+        s8: 'Work area clean and tidy',
+        s9: 'Weather conditions suitable',
+        s10: 'All workers inducted',
+        // Crane/Hoist
+        c1: 'Visual inspection completed',
+        c2: 'Safety devices operational',
+        c3: 'Load chart available',
+        c4: 'Wire ropes in good condition',
+        c5: 'Hooks and latches functioning',
+        // Forklift
+        f1: 'Pre-operational walk around done',
+        f2: 'Tyres in good condition',
+        f3: 'Forks not bent or cracked',
+        f4: 'Brakes functioning',
+        f5: 'Horn and lights working',
+        // Vehicle
+        v1: 'Lights and indicators working',
+        v2: 'Tyres in good condition',
+        v3: 'Brakes functioning',
+        v4: 'Windscreen clear',
+        v5: 'First aid kit present',
+        // Welding
+        w1: 'Welding leads inspected',
+        w2: 'Earth clamp secure',
+        w3: 'Gas bottles secured',
+        w4: 'Fire extinguisher nearby',
+        w5: 'PPE available',
+        // Scaffold
+        sc1: 'Scaffold tag current',
+        sc2: 'Base plates in place',
+        sc3: 'Guardrails in place',
+        sc4: 'Safe access provided',
+        sc5: 'No overloading',
+        // Legacy labels
         siteAccess: 'Site access and egress points clear',
         exclusionZones: 'Exclusion zones and barriers in place',
         firstAid: 'First aid kit available and stocked',
@@ -887,42 +929,63 @@
           // Draw media/photos if any
           if (media && media.length > 0) {
             checkPageBreak(45);
-            doc.setFontSize(8);
+            doc.setFontSize(9);
+            doc.setFont(undefined, 'bold');
             doc.setTextColor(...this.colors.gray);
-            doc.text('Photos:', margin + 5, y);
-            y += 5;
+            doc.text('Attached Photos (' + media.length + '):', margin + 5, y);
+            doc.setFont(undefined, 'normal');
+            y += 8;
 
-            const imgWidth = 40;
-            const imgHeight = 30;
-            const imgsPerRow = Math.floor((contentWidth - 10) / (imgWidth + 5));
+            const imgWidth = 45;
+            const imgHeight = 35;
+            const imgsPerRow = 3;
             let imgX = margin + 5;
             let imgCount = 0;
 
             media.forEach((item, idx) => {
               if (item.data && item.data.startsWith('data:image')) {
                 try {
-                  checkPageBreak(imgHeight + 10);
-                  doc.addImage(item.data, 'JPEG', imgX, y, imgWidth, imgHeight);
+                  checkPageBreak(imgHeight + 15);
 
-                  // Add small label under image
-                  doc.setFontSize(6);
-                  doc.setTextColor(...this.colors.gray);
-                  const imgLabel = item.name ? item.name.substring(0, 15) : 'Photo ' + (idx + 1);
-                  doc.text(imgLabel, imgX, y + imgHeight + 3);
+                  // Detect image format from data URL
+                  let imgFormat = 'PNG';
+                  if (item.data.includes('image/jpeg') || item.data.includes('image/jpg')) {
+                    imgFormat = 'JPEG';
+                  } else if (item.data.includes('image/png')) {
+                    imgFormat = 'PNG';
+                  }
 
-                  imgX += imgWidth + 5;
+                  // Draw border around image
+                  doc.setDrawColor(...this.colors.lightGray);
+                  doc.setLineWidth(0.5);
+                  doc.roundedRect(imgX - 1, y - 1, imgWidth + 2, imgHeight + 2, 2, 2, 'S');
+
+                  // Add image
+                  doc.addImage(item.data, imgFormat, imgX, y, imgWidth, imgHeight);
+
+                  // Add label under image
+                  doc.setFontSize(7);
+                  doc.setTextColor(...this.colors.dark);
+                  const imgLabel = item.name ? item.name.substring(0, 20) : 'Photo ' + (idx + 1);
+                  doc.text(imgLabel, imgX, y + imgHeight + 5);
+
+                  imgX += imgWidth + 10;
                   imgCount++;
 
                   if (imgCount >= imgsPerRow) {
                     imgX = margin + 5;
                     imgCount = 0;
-                    y += imgHeight + 8;
+                    y += imgHeight + 12;
                   }
                 } catch (e) {
+                  // Draw placeholder if image fails
+                  doc.setDrawColor(...this.colors.gray);
+                  doc.setFillColor(245, 245, 245);
+                  doc.roundedRect(imgX, y, imgWidth, imgHeight, 2, 2, 'FD');
                   doc.setFontSize(8);
                   doc.setTextColor(...this.colors.gray);
-                  doc.text('[Photo ' + (idx + 1) + ']', imgX, y + 10);
-                  imgX += imgWidth + 5;
+                  doc.text('Photo ' + (idx + 1), imgX + 10, y + imgHeight/2);
+                  imgX += imgWidth + 10;
                   imgCount++;
                 }
               }
