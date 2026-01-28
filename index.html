@@ -826,6 +826,116 @@
           y += 15;
         };
 
+        // Helper: Draw complex field with notes and media
+        const drawComplexField = (label, fieldData) => {
+          if (!fieldData) return;
+
+          // Get value, notes, and media from field object
+          let value = fieldData;
+          let notes = [];
+          let media = [];
+
+          if (typeof fieldData === 'object' && !Array.isArray(fieldData)) {
+            value = fieldData.value || '';
+            notes = fieldData.notes || [];
+            media = fieldData.media || [];
+          }
+
+          if (!value && notes.length === 0 && media.length === 0) return;
+
+          checkPageBreak(25);
+
+          // Draw label
+          const displayLabel = this.fieldLabels[label] || label;
+          doc.setFontSize(10);
+          doc.setFont(undefined, 'bold');
+          doc.setTextColor(...this.colors.primary);
+          doc.text(displayLabel, margin + 3, y);
+          doc.setFont(undefined, 'normal');
+          y += 6;
+
+          // Draw value if exists
+          if (value) {
+            doc.setFontSize(10);
+            doc.setTextColor(...this.colors.dark);
+            const lines = doc.splitTextToSize(String(value), contentWidth - 10);
+            doc.text(lines, margin + 5, y);
+            y += lines.length * 5 + 3;
+          }
+
+          // Draw notes if any
+          if (notes && notes.length > 0) {
+            checkPageBreak(15);
+            doc.setFontSize(8);
+            doc.setTextColor(...this.colors.gray);
+            doc.text('Notes:', margin + 5, y);
+            y += 4;
+
+            notes.forEach((note, idx) => {
+              checkPageBreak(10);
+              doc.setFillColor(240, 248, 255); // Light blue background
+              const noteLines = doc.splitTextToSize('• ' + note, contentWidth - 15);
+              const noteHeight = noteLines.length * 4 + 4;
+              doc.roundedRect(margin + 5, y - 2, contentWidth - 10, noteHeight, 1, 1, 'F');
+              doc.setFontSize(9);
+              doc.setTextColor(30, 64, 175); // Blue text
+              doc.text(noteLines, margin + 8, y + 2);
+              y += noteHeight + 2;
+            });
+          }
+
+          // Draw media/photos if any
+          if (media && media.length > 0) {
+            checkPageBreak(45);
+            doc.setFontSize(8);
+            doc.setTextColor(...this.colors.gray);
+            doc.text('Photos:', margin + 5, y);
+            y += 5;
+
+            const imgWidth = 40;
+            const imgHeight = 30;
+            const imgsPerRow = Math.floor((contentWidth - 10) / (imgWidth + 5));
+            let imgX = margin + 5;
+            let imgCount = 0;
+
+            media.forEach((item, idx) => {
+              if (item.data && item.data.startsWith('data:image')) {
+                try {
+                  checkPageBreak(imgHeight + 10);
+                  doc.addImage(item.data, 'JPEG', imgX, y, imgWidth, imgHeight);
+
+                  // Add small label under image
+                  doc.setFontSize(6);
+                  doc.setTextColor(...this.colors.gray);
+                  const imgLabel = item.name ? item.name.substring(0, 15) : 'Photo ' + (idx + 1);
+                  doc.text(imgLabel, imgX, y + imgHeight + 3);
+
+                  imgX += imgWidth + 5;
+                  imgCount++;
+
+                  if (imgCount >= imgsPerRow) {
+                    imgX = margin + 5;
+                    imgCount = 0;
+                    y += imgHeight + 8;
+                  }
+                } catch (e) {
+                  doc.setFontSize(8);
+                  doc.setTextColor(...this.colors.gray);
+                  doc.text('[Photo ' + (idx + 1) + ']', imgX, y + 10);
+                  imgX += imgWidth + 5;
+                  imgCount++;
+                }
+              }
+            });
+
+            if (imgCount > 0) {
+              y += imgHeight + 8;
+            }
+          }
+
+          y += 5;
+        };
+
         // ========== HEADER ==========
         // Orange header bar
         doc.setFillColor(...this.colors.primary);
@@ -861,22 +971,17 @@
           if (data.conductedOn) drawField('conductedOn', new Date(data.conductedOn).toLocaleDateString('en-AU'));
         }
 
-        // Work Information Section (Pre-Start)
-        if (data.workAreas || data.taskToComplete || data.tasksThisShift) {
+        // Work Information Section (Pre-Start) - with notes and media support
+        if (data.workAreas || data.taskToComplete || data.tasksThisShift || data.machineryControls) {
           drawSectionHeader('WORK INFORMATION');
-          // Handle complex field objects (with value, notes, media)
-          const getFieldValue = (field) => {
-            if (!field) return null;
-            if (typeof field === 'object' && field.value !== undefined) return field.value;
-            return field;
-          };
-          if (getFieldValue(data.workAreas)) drawField('Work Areas', getFieldValue(data.workAreas), true);
-          if (getFieldValue(data.tasksThisShift)) drawField('Tasks This Shift', getFieldValue(data.tasksThisShift), true);
+          // Use drawComplexField for fields that can have notes and media
+          drawComplexField('Work Areas', data.workAreas);
+          drawComplexField('Tasks This Shift', data.tasksThisShift);
+          drawComplexField('Machinery & Controls', data.machineryControls);
           if (data.taskToComplete) drawField('taskToComplete', data.taskToComplete, true);
-          if (getFieldValue(data.machineryControls)) drawField('Machinery & Controls', getFieldValue(data.machineryControls), true);
         }
 
-        // Safety Information Section
+        // Safety Information Section - with notes and media support
         if (data.plantEquipment !== undefined || data.isPlantEquipmentUsed !== undefined || data.siteHazards || data.permitsRequired || data.highRiskWorks !== undefined || data.swmsCovered !== undefined || data.worksCoveredBySWMS !== undefined) {
           drawSectionHeader('SAFETY INFORMATION');
           const plantUsed = data.plantEquipment !== undefined ? data.plantEquipment : data.isPlantEquipmentUsed;
@@ -884,15 +989,10 @@
           const safetyIssues = data.safetyIssues !== undefined ? data.safetyIssues : data.hasSafetyIssues;
           drawFieldPair('Plant/Equipment Used', plantUsed ? 'Yes' : 'No', 'High Risk Works', data.highRiskWorks ? 'Yes' : 'No');
           drawFieldPair('Works Covered by SWMS', swmsCovered ? 'Yes' : 'No', 'Safety Issues', safetyIssues ? 'Yes' : 'No');
-          // Handle complex field objects
-          const getFieldValue = (field) => {
-            if (!field) return null;
-            if (typeof field === 'object' && field.value !== undefined) return field.value;
-            return field;
-          };
-          if (getFieldValue(data.siteHazards)) drawField('Site Hazards', getFieldValue(data.siteHazards), true);
-          if (getFieldValue(data.permitsRequired)) drawField('Permits Required', getFieldValue(data.permitsRequired), true);
-          if (getFieldValue(data.safetyIssuesPreviousShift)) drawField('Safety Issues Previous Shift', getFieldValue(data.safetyIssuesPreviousShift), true);
+          // Use drawComplexField for fields that can have notes and media
+          drawComplexField('Site Hazards', data.siteHazards);
+          drawComplexField('Permits Required', data.permitsRequired);
+          drawComplexField('Safety Issues Previous Shift', data.safetyIssuesPreviousShift);
           if (data.translatorRequired !== undefined) drawField('Translator Required', data.translatorRequired ? 'Yes' : 'No');
           if (data.translatorName) drawField('Translator Name', data.translatorName);
         }
