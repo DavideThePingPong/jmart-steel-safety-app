@@ -1026,6 +1026,20 @@
       const canvasRef = useRef(null);
       const [isDrawing, setIsDrawing] = useState(false);
       const [hasSignature, setHasSignature] = useState(false);
+      const [showSavedOptions, setShowSavedOptions] = useState(false);
+
+      // Get saved signatures from localStorage
+      const savedSignatures = useMemo(() => {
+        try {
+          const saved = localStorage.getItem('jmart-team-signatures');
+          return saved ? JSON.parse(saved) : {};
+        } catch (e) {
+          return {};
+        }
+      }, []);
+
+      // Check if this person has a saved signature
+      const hasSavedSignature = savedSignatures[name] && savedSignatures[name].startsWith('data:image');
 
       const getCoordinates = (e) => {
         const canvas = canvasRef.current;
@@ -1068,14 +1082,75 @@
       };
       const saveSignature = () => onSave(canvasRef.current.toDataURL('image/png'));
 
+      // Use saved signature
+      const useSavedSignature = () => {
+        if (hasSavedSignature) {
+          onSave(savedSignatures[name]);
+        }
+      };
+
+      // Use another team member's saved signature
+      const useOtherSignature = (memberName) => {
+        if (savedSignatures[memberName]) {
+          onSave(savedSignatures[memberName]);
+        }
+        setShowSavedOptions(false);
+      };
+
+      // Get list of team members with saved signatures
+      const membersWithSignatures = Object.entries(savedSignatures)
+        .filter(([_, sig]) => sig && sig.startsWith('data:image'))
+        .map(([memberName]) => memberName);
+
       return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl w-full max-w-md">
             <div className="p-4 border-b">
               <h3 className="font-semibold text-gray-800">Sign: {name}</h3>
-              <p className="text-sm text-gray-500">Draw your signature below</p>
+              <p className="text-sm text-gray-500">Draw your signature below or use a saved one</p>
             </div>
+
+            {/* Saved Signature Option */}
+            {hasSavedSignature && (
+              <div className="p-4 bg-green-50 border-b border-green-100">
+                <p className="text-sm text-green-700 mb-2">✓ {name} has a saved signature</p>
+                <button
+                  onClick={useSavedSignature}
+                  className="w-full bg-green-600 text-white py-2 rounded-lg font-medium flex items-center justify-center gap-2"
+                >
+                  <span>✍️</span> Use Saved Signature
+                </button>
+              </div>
+            )}
+
+            {/* Other Saved Signatures */}
+            {membersWithSignatures.length > 0 && (
+              <div className="px-4 pt-3">
+                <button
+                  onClick={() => setShowSavedOptions(!showSavedOptions)}
+                  className="text-sm text-blue-600 underline"
+                >
+                  {showSavedOptions ? '▼ Hide' : '▶ Select from team'} ({membersWithSignatures.length} saved)
+                </button>
+                {showSavedOptions && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {membersWithSignatures.map(memberName => (
+                      <button
+                        key={memberName}
+                        onClick={() => useOtherSignature(memberName)}
+                        className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm hover:bg-blue-200 flex items-center gap-1"
+                      >
+                        <img src={savedSignatures[memberName]} alt="" className="h-4 inline" />
+                        {memberName}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="p-4">
+              <p className="text-xs text-gray-500 mb-2">Or draw a new signature:</p>
               <div className="border-2 border-gray-300 rounded-lg bg-gray-50 relative">
                 <canvas ref={canvasRef} width={350} height={150} className="w-full touch-none"
                   onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing}
@@ -1198,6 +1273,10 @@
       const [backedUpForms, setBackedUpForms] = useState(() => {
         const saved = localStorage.getItem('jmart-backed-up-forms');
         return saved ? JSON.parse(saved) : [];
+      });
+      const [savedSignatures, setSavedSignatures] = useState(() => {
+        const saved = localStorage.getItem('jmart-team-signatures');
+        return saved ? JSON.parse(saved) : {};
       });
       const isInitialLoad = useRef(true);
 
@@ -1506,6 +1585,16 @@
         const newBackedUp = [...backedUpForms, formId];
         setBackedUpForms(newBackedUp);
         localStorage.setItem('jmart-backed-up-forms', JSON.stringify(newBackedUp));
+      };
+
+      // Update team signatures
+      const updateSignatures = (newSignatures) => {
+        setSavedSignatures(newSignatures);
+        localStorage.setItem('jmart-team-signatures', JSON.stringify(newSignatures));
+        // Sync to Firebase
+        if (FirebaseSync.isConnected()) {
+          FirebaseSync.db.ref('signatures').set(newSignatures);
+        }
       };
 
       // Download PDF and mark as backed up
@@ -1842,7 +1931,7 @@
             {currentView === 'incidents' && <IncidentView onSubmit={(data) => addForm('incident', data)} onUpdate={updateForm} editingForm={editingForm?.type === 'incident' ? editingForm : null} />}
             {currentView === 'toolbox' && <ToolboxView onSubmit={(data) => addForm('toolbox', data)} onUpdate={updateForm} editingForm={editingForm?.type === 'toolbox' ? editingForm : null} sites={sites} />}
             {currentView === 'emergency' && <EmergencyView />}
-            {currentView === 'settings' && <SettingsView sites={sites} onUpdateSites={setSites} />}
+            {currentView === 'settings' && <SettingsView sites={sites} onUpdateSites={setSites} signatures={savedSignatures} onUpdateSignatures={updateSignatures} />}
           </main>
 
           <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around py-2 px-1 z-30">
@@ -4601,14 +4690,53 @@
     }
 
     // Settings View
-    function SettingsView({ sites = [], onUpdateSites }) {
+    function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSignatures }) {
       const [newSite, setNewSite] = useState('');
       const [showAddSite, setShowAddSite] = useState(false);
       const [driveConnected, setDriveConnected] = useState(GoogleDriveSync.isConnected());
       const [backupStatus, setBackupStatus] = useState('');
       const [isBackingUp, setIsBackingUp] = useState(false);
+      const [showSignaturePad, setShowSignaturePad] = useState(null); // Name of person to sign
+      const [newMemberName, setNewMemberName] = useState('');
+      const [showAddMember, setShowAddMember] = useState(false);
       const defaultSites = ['Site 1 - Sydney CBD', 'Site 2 - Parramatta', 'Site 3 - North Sydney'];
       const currentSites = sites.length > 0 ? sites : defaultSites;
+
+      // Default team members
+      const defaultMembers = ['Jeff Fu', 'Scott Seeho', 'Davide Casolini', 'Zonggang Jiang', 'Leon Yu', 'Wang Jia', 'Gen Bao'];
+      // Get all members (default + any custom added via signatures)
+      const allMembers = [...new Set([...defaultMembers, ...Object.keys(signatures).filter(name => !defaultMembers.includes(name))])];
+
+      const saveSignature = (name, signatureData) => {
+        const newSignatures = { ...signatures, [name]: signatureData };
+        onUpdateSignatures(newSignatures);
+        setShowSignaturePad(null);
+      };
+
+      const deleteSignature = (name) => {
+        const newSignatures = { ...signatures };
+        delete newSignatures[name];
+        onUpdateSignatures(newSignatures);
+      };
+
+      const addNewMember = () => {
+        if (newMemberName.trim() && !allMembers.includes(newMemberName.trim())) {
+          // Add member with empty signature (will show "Add Signature" button)
+          const newSignatures = { ...signatures, [newMemberName.trim()]: null };
+          onUpdateSignatures(newSignatures);
+          setNewMemberName('');
+          setShowAddMember(false);
+        }
+      };
+
+      const deleteMember = (name) => {
+        // Only allow deleting custom members (not in defaultMembers)
+        if (!defaultMembers.includes(name)) {
+          const newSignatures = { ...signatures };
+          delete newSignatures[name];
+          onUpdateSignatures(newSignatures);
+        }
+      };
 
       const addSite = () => {
         if (newSite.trim()) {
@@ -4742,13 +4870,65 @@
               ))}
             </div>
           </div>
+          {/* Team Signatures Section */}
           <div className="bg-white rounded-xl shadow-sm p-4">
-            <h3 className="font-semibold text-gray-800 mb-2">Team Members</h3>
-            <ul className="text-sm text-gray-600 space-y-1">
-              <li>• Jeff Fu</li><li>• Scott Seeho</li><li>• Davide Casolini</li>
-              <li>• Zonggang Jiang</li><li>• Leon Yu</li><li>• Wang Jia</li><li>• Gen Bao</li>
-            </ul>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-gray-800">✍️ Team Signatures</h3>
+              <button onClick={() => setShowAddMember(!showAddMember)} className="bg-green-600 text-white px-3 py-1 rounded-lg text-sm">+ Add Member</button>
+            </div>
+            <p className="text-xs text-gray-500 mb-3">Save signatures once and use them automatically in all forms</p>
+
+            {showAddMember && (
+              <div className="mb-4 flex gap-2">
+                <input
+                  type="text"
+                  value={newMemberName}
+                  onChange={(e) => setNewMemberName(e.target.value)}
+                  className="flex-1 border rounded-lg p-2 text-sm"
+                  placeholder="Enter team member name"
+                />
+                <button onClick={addNewMember} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm">Add</button>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              {allMembers.map((name, idx) => (
+                <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div className="flex items-center gap-3 flex-1">
+                    <span className="text-sm font-medium text-gray-700">{name}</span>
+                    {signatures[name] ? (
+                      <img src={signatures[name]} alt={`${name}'s signature`} className="h-8 border rounded bg-white px-2" />
+                    ) : (
+                      <span className="text-xs text-gray-400 italic">No signature saved</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowSignaturePad(name)}
+                      className={`px-3 py-1 rounded-lg text-sm ${signatures[name] ? 'bg-orange-100 text-orange-600' : 'bg-green-600 text-white'}`}
+                    >
+                      {signatures[name] ? '✏️ Update' : '➕ Add'}
+                    </button>
+                    {signatures[name] && (
+                      <button onClick={() => deleteSignature(name)} className="text-red-500 text-lg">🗑️</button>
+                    )}
+                    {!defaultMembers.includes(name) && (
+                      <button onClick={() => deleteMember(name)} className="text-red-500 text-xs underline ml-1">Remove</button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
+
+          {/* Signature Pad Modal */}
+          {showSignaturePad && (
+            <SignaturePad
+              name={showSignaturePad}
+              onSave={(sig) => saveSignature(showSignaturePad, sig)}
+              onCancel={() => setShowSignaturePad(null)}
+            />
+          )}
           <div className="bg-white rounded-xl shadow-sm p-4">
             <p className="text-sm text-gray-600">JMart Steel Safety App v1.0</p>
             <p className="text-sm text-gray-600">NSW WHS Act 2011 Compliant</p>
