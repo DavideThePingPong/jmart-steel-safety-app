@@ -33,10 +33,9 @@
   <script src="https://unpkg.com/lucide@latest"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
-  <!-- Firebase SDK for Cloud Sync -->
+  <!-- Firebase SDK for Cloud Sync (Database only - photos use Google Drive) -->
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
 
   <!-- Google API for Drive Integration -->
   <script src="https://apis.google.com/js/api.js"></script>
@@ -912,77 +911,12 @@
     };
 
     // ========================================
-    // PHOTO UPLOAD MANAGER
+    // PHOTO UPLOAD MANAGER (Google Drive Only)
     // ========================================
     const PhotoUploadManager = {
-      firebaseStorage: null,
-
-      // Initialize Firebase Storage
+      // Initialize - just log that we're using Google Drive
       init: function() {
-        if (firebaseApp && isFirebaseConfigured) {
-          try {
-            this.firebaseStorage = firebase.storage();
-            console.log('Firebase Storage initialized successfully');
-          } catch (error) {
-            console.error('Firebase Storage init error:', error);
-          }
-        } else {
-          console.log('Firebase not configured - photo uploads will only go to Google Drive');
-        }
-      },
-
-      // Upload photo to Firebase Storage
-      uploadToFirebase: async function(file, jobName) {
-        if (!this.firebaseStorage) {
-          console.warn('Firebase Storage not available - skipping Firebase upload');
-          return null;
-        }
-
-        // Make job name safe for Firebase path (no special characters)
-        const safeJobName = jobName.replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '_');
-        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-        const timestamp = Date.now();
-        const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-        const path = `photos/${safeJobName}/${today}/${timestamp}_${safeName}`;
-
-        console.log('Attempting Firebase upload to:', path);
-        console.log('File details:', { name: file.name, size: file.size, type: file.type });
-
-        try {
-          const storageRef = this.firebaseStorage.ref(path);
-
-          // Use uploadBytes for better mobile compatibility
-          const snapshot = await storageRef.put(file, {
-            contentType: file.type,
-            customMetadata: {
-              'originalName': file.name,
-              'uploadedAt': new Date().toISOString(),
-              'jobName': jobName
-            }
-          });
-
-          console.log('Upload snapshot:', snapshot.state);
-
-          const downloadUrl = await snapshot.ref.getDownloadURL();
-
-          console.log('✅ Uploaded to Firebase:', path);
-          console.log('Download URL:', downloadUrl);
-
-          return { path, downloadUrl };
-        } catch (error) {
-          console.error('❌ Firebase upload error:', error);
-          console.error('Error code:', error.code);
-          console.error('Error message:', error.message);
-
-          // Check for common errors
-          if (error.code === 'storage/unauthorized') {
-            console.error('Firebase Storage rules may need to be updated to allow uploads');
-          } else if (error.code === 'storage/quota-exceeded') {
-            console.error('Firebase Storage quota exceeded');
-          }
-
-          return null;
-        }
+        console.log('PhotoUploadManager initialized - using Google Drive for photo storage');
       },
 
       // Get or create job folder in Google Drive
@@ -1143,25 +1077,20 @@
         }
       },
 
-      // Upload photo to both Firebase and Google Drive
+      // Upload photo to Google Drive
       uploadPhoto: async function(file, jobName, onProgress) {
         const results = {
-          firebase: null,
           drive: null,
           success: false
         };
 
-        // Upload to Firebase
-        if (onProgress) onProgress('Uploading to Firebase...', 25);
-        results.firebase = await this.uploadToFirebase(file, jobName);
-
         // Upload to Google Drive
-        if (onProgress) onProgress('Uploading to Google Drive...', 60);
+        if (onProgress) onProgress('Uploading to Google Drive...', 30);
         results.drive = await this.uploadToDrive(file, jobName);
 
         if (onProgress) onProgress('Complete!', 100);
 
-        results.success = results.firebase !== null || results.drive !== null;
+        results.success = results.drive !== null;
 
         // Log to Firebase for tracking
         if (firebaseDb && results.success) {
@@ -1172,7 +1101,6 @@
               size: file.size,
               type: file.type,
               uploadedAt: new Date().toISOString(),
-              firebase: results.firebase ? results.firebase.path : null,
               driveFileId: results.drive ? results.drive.fileId : null,
               deviceId: DeviceAuthManager.deviceId
             };
