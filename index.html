@@ -78,6 +78,418 @@
     }
 
     // ========================================
+    // DEVICE AUTHORIZATION SYSTEM
+    // ========================================
+    // Controls which devices can access the app
+    // First device to register becomes admin
+    // New devices require admin approval
+    // ========================================
+    const DeviceAuth = {
+      deviceId: null,
+      deviceInfo: null,
+      isApproved: false,
+      isAdmin: false,
+      pendingDevices: [],
+      approvedDevices: [],
+      statusListeners: [],
+      notificationListeners: [],
+
+      // Generate unique device fingerprint
+      generateDeviceId: function() {
+        const stored = localStorage.getItem('jmart-device-id');
+        if (stored) {
+          this.deviceId = stored;
+          return stored;
+        }
+
+        // Create fingerprint from browser characteristics
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        ctx.textBaseline = 'top';
+        ctx.font = '14px Arial';
+        ctx.fillText('JMart Device Fingerprint', 2, 2);
+        const canvasData = canvas.toDataURL();
+
+        const fingerprint = [
+          navigator.userAgent,
+          navigator.language,
+          screen.width + 'x' + screen.height,
+          screen.colorDepth,
+          new Date().getTimezoneOffset(),
+          canvasData.slice(-50),
+          navigator.hardwareConcurrency || 'unknown',
+          navigator.platform
+        ].join('|');
+
+        // Simple hash function
+        let hash = 0;
+        for (let i = 0; i < fingerprint.length; i++) {
+          const char = fingerprint.charCodeAt(i);
+          hash = ((hash << 5) - hash) + char;
+          hash = hash & hash;
+        }
+
+        this.deviceId = 'DEV-' + Math.abs(hash).toString(36).toUpperCase() + '-' + Date.now().toString(36).toUpperCase();
+        localStorage.setItem('jmart-device-id', this.deviceId);
+        return this.deviceId;
+      },
+
+      // Get device info for display
+      getDeviceInfo: function() {
+        const ua = navigator.userAgent;
+        let deviceType = 'Unknown Device';
+        let browser = 'Unknown Browser';
+
+        // Detect device type
+        if (/iPhone/i.test(ua)) deviceType = 'iPhone';
+        else if (/iPad/i.test(ua)) deviceType = 'iPad';
+        else if (/Android/i.test(ua) && /Mobile/i.test(ua)) deviceType = 'Android Phone';
+        else if (/Android/i.test(ua)) deviceType = 'Android Tablet';
+        else if (/Windows/i.test(ua)) deviceType = 'Windows PC';
+        else if (/Mac/i.test(ua)) deviceType = 'Mac';
+        else if (/Linux/i.test(ua)) deviceType = 'Linux PC';
+
+        // Detect browser
+        if (/Chrome/i.test(ua) && !/Edg/i.test(ua)) browser = 'Chrome';
+        else if (/Safari/i.test(ua) && !/Chrome/i.test(ua)) browser = 'Safari';
+        else if (/Firefox/i.test(ua)) browser = 'Firefox';
+        else if (/Edg/i.test(ua)) browser = 'Edge';
+
+        this.deviceInfo = {
+          id: this.deviceId,
+          type: deviceType,
+          browser: browser,
+          screen: screen.width + 'x' + screen.height,
+          registeredAt: new Date().toISOString(),
+          lastSeen: new Date().toISOString()
+        };
+
+        return this.deviceInfo;
+      },
+
+      // Initialize device auth
+      init: async function() {
+        this.generateDeviceId();
+        this.getDeviceInfo();
+        console.log('Device ID:', this.deviceId);
+
+        if (!firebaseDb || !isFirebaseConfigured) {
+          // No Firebase - approve locally (offline mode)
+          this.isApproved = true;
+          this.isAdmin = true;
+          this.notifyStatusListeners();
+          return { approved: true, admin: true, offline: true };
+        }
+
+        // Check if this device is approved
+        const result = await this.checkDeviceStatus();
+        return result;
+      },
+
+      // Check device status in Firebase
+      checkDeviceStatus: async function() {
+        if (!firebaseDb) return { approved: false };
+
+        try {
+          // Check approved devices
+          const approvedSnap = await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId).once('value');
+          if (approvedSnap.exists()) {
+            const data = approvedSnap.val();
+            this.isApproved = true;
+            this.isAdmin = data.isAdmin || false;
+
+            // Update last seen
+            await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId + '/lastSeen').set(new Date().toISOString());
+
+            this.notifyStatusListeners();
+            console.log('Device approved, admin:', this.isAdmin);
+            return { approved: true, admin: this.isAdmin };
+          }
+
+          // Check if any devices exist (first device becomes admin)
+          const allApprovedSnap = await firebaseDb.ref('jmart-safety/devices/approved').once('value');
+          if (!allApprovedSnap.exists() || allApprovedSnap.numChildren() === 0) {
+            // First device - auto approve as admin
+            console.log('First device - auto-approving as admin');
+            await this.registerAsApproved(true);
+            return { approved: true, admin: true, firstDevice: true };
+          }
+
+          // Check if already pending
+          const pendingSnap = await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).once('value');
+          if (!pendingSnap.exists()) {
+            // Register as pending
+            await this.registerAsPending();
+          }
+
+          this.isApproved = false;
+          this.notifyStatusListeners();
+          return { approved: false, pending: true };
+
+        } catch (error) {
+          console.error('Error checking device status:', error);
+          return { approved: false, error: error.message };
+        }
+      },
+
+      // Register device as pending approval
+      registerAsPending: async function() {
+        if (!firebaseDb) return;
+
+        const deviceData = {
+          ...this.deviceInfo,
+          requestedAt: new Date().toISOString(),
+          status: 'pending'
+        };
+
+        await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).set(deviceData);
+        console.log('Device registered as pending approval');
+
+        // Notify all admins of new device request
+        this.notifyAdminsOfNewDevice(deviceData);
+      },
+
+      // Register device as approved
+      registerAsApproved: async function(isAdmin = false) {
+        if (!firebaseDb) return;
+
+        const deviceData = {
+          ...this.deviceInfo,
+          isAdmin: isAdmin,
+          approvedAt: new Date().toISOString(),
+          approvedBy: isAdmin ? 'SYSTEM (First Device)' : 'Admin',
+          lastSeen: new Date().toISOString()
+        };
+
+        await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId).set(deviceData);
+
+        // Remove from pending if exists
+        await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).remove();
+
+        this.isApproved = true;
+        this.isAdmin = isAdmin;
+        this.notifyStatusListeners();
+        console.log('Device registered as approved, admin:', isAdmin);
+      },
+
+      // Approve a pending device (admin only)
+      approveDevice: async function(deviceId, makeAdmin = false) {
+        if (!this.isAdmin || !firebaseDb) {
+          console.error('Only admins can approve devices');
+          return false;
+        }
+
+        try {
+          // Get pending device data
+          const pendingSnap = await firebaseDb.ref('jmart-safety/devices/pending/' + deviceId).once('value');
+          if (!pendingSnap.exists()) {
+            console.error('Device not found in pending list');
+            return false;
+          }
+
+          const deviceData = pendingSnap.val();
+          const approvedData = {
+            ...deviceData,
+            isAdmin: makeAdmin,
+            approvedAt: new Date().toISOString(),
+            approvedBy: this.deviceId,
+            status: 'approved'
+          };
+
+          // Move to approved
+          await firebaseDb.ref('jmart-safety/devices/approved/' + deviceId).set(approvedData);
+          await firebaseDb.ref('jmart-safety/devices/pending/' + deviceId).remove();
+
+          console.log('Device approved:', deviceId);
+          return true;
+        } catch (error) {
+          console.error('Error approving device:', error);
+          return false;
+        }
+      },
+
+      // Deny/reject a pending device (admin only)
+      denyDevice: async function(deviceId) {
+        if (!this.isAdmin || !firebaseDb) {
+          console.error('Only admins can deny devices');
+          return false;
+        }
+
+        try {
+          // Remove from pending and add to denied
+          const pendingSnap = await firebaseDb.ref('jmart-safety/devices/pending/' + deviceId).once('value');
+          if (pendingSnap.exists()) {
+            const deviceData = pendingSnap.val();
+            await firebaseDb.ref('jmart-safety/devices/denied/' + deviceId).set({
+              ...deviceData,
+              deniedAt: new Date().toISOString(),
+              deniedBy: this.deviceId
+            });
+            await firebaseDb.ref('jmart-safety/devices/pending/' + deviceId).remove();
+          }
+
+          console.log('Device denied:', deviceId);
+          return true;
+        } catch (error) {
+          console.error('Error denying device:', error);
+          return false;
+        }
+      },
+
+      // Revoke an approved device (admin only)
+      revokeDevice: async function(deviceId) {
+        if (!this.isAdmin || !firebaseDb) {
+          console.error('Only admins can revoke devices');
+          return false;
+        }
+
+        // Cannot revoke self
+        if (deviceId === this.deviceId) {
+          console.error('Cannot revoke own device');
+          return false;
+        }
+
+        try {
+          await firebaseDb.ref('jmart-safety/devices/approved/' + deviceId).remove();
+          console.log('Device revoked:', deviceId);
+          return true;
+        } catch (error) {
+          console.error('Error revoking device:', error);
+          return false;
+        }
+      },
+
+      // Listen for pending device changes (for admin notifications)
+      listenForPendingDevices: function(callback) {
+        if (!firebaseDb || !this.isAdmin) return () => {};
+
+        const ref = firebaseDb.ref('jmart-safety/devices/pending');
+
+        ref.on('value', (snapshot) => {
+          const data = snapshot.val();
+          this.pendingDevices = data ? Object.entries(data).map(([id, info]) => ({ id, ...info })) : [];
+          callback(this.pendingDevices);
+        });
+
+        // Also listen for child_added for new device notifications
+        ref.on('child_added', (snapshot) => {
+          const newDevice = { id: snapshot.key, ...snapshot.val() };
+          this.notifyNotificationListeners('new_device', newDevice);
+        });
+
+        return () => {
+          ref.off('value');
+          ref.off('child_added');
+        };
+      },
+
+      // Listen for approved devices
+      listenForApprovedDevices: function(callback) {
+        if (!firebaseDb) return () => {};
+
+        const ref = firebaseDb.ref('jmart-safety/devices/approved');
+        ref.on('value', (snapshot) => {
+          const data = snapshot.val();
+          this.approvedDevices = data ? Object.entries(data).map(([id, info]) => ({ id, ...info })) : [];
+          callback(this.approvedDevices);
+        });
+
+        return () => ref.off('value');
+      },
+
+      // Listen for own device status changes (in case revoked)
+      listenForOwnDeviceStatus: function(callback) {
+        if (!firebaseDb) return () => {};
+
+        const ref = firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId);
+        ref.on('value', (snapshot) => {
+          if (!snapshot.exists() && this.isApproved) {
+            // Device was revoked
+            this.isApproved = false;
+            this.isAdmin = false;
+            callback({ revoked: true });
+          }
+        });
+
+        return () => ref.off('value');
+      },
+
+      // Notify admins of new device request
+      notifyAdminsOfNewDevice: async function(deviceData) {
+        if (!firebaseDb) return;
+
+        // Store notification in Firebase for all admins
+        const notification = {
+          type: 'new_device_request',
+          device: deviceData,
+          timestamp: new Date().toISOString(),
+          read: false
+        };
+
+        await firebaseDb.ref('jmart-safety/notifications').push(notification);
+      },
+
+      // Add status listener
+      onStatusChange: function(callback) {
+        this.statusListeners.push(callback);
+        // Immediately call with current status
+        callback({ approved: this.isApproved, admin: this.isAdmin });
+        return () => {
+          this.statusListeners = this.statusListeners.filter(cb => cb !== callback);
+        };
+      },
+
+      // Notify status listeners
+      notifyStatusListeners: function() {
+        this.statusListeners.forEach(cb => cb({ approved: this.isApproved, admin: this.isAdmin }));
+      },
+
+      // Add notification listener
+      onNotification: function(callback) {
+        this.notificationListeners.push(callback);
+        return () => {
+          this.notificationListeners = this.notificationListeners.filter(cb => cb !== callback);
+        };
+      },
+
+      // Notify notification listeners
+      notifyNotificationListeners: function(type, data) {
+        this.notificationListeners.forEach(cb => cb(type, data));
+      },
+
+      // Request browser notification permission
+      requestNotificationPermission: async function() {
+        if (!('Notification' in window)) {
+          console.log('Browser does not support notifications');
+          return false;
+        }
+
+        if (Notification.permission === 'granted') {
+          return true;
+        }
+
+        if (Notification.permission !== 'denied') {
+          const permission = await Notification.requestPermission();
+          return permission === 'granted';
+        }
+
+        return false;
+      },
+
+      // Show browser notification for new device
+      showBrowserNotification: function(title, body) {
+        if (Notification.permission === 'granted') {
+          new Notification(title, {
+            body: body,
+            icon: '🛡️',
+            tag: 'jmart-device-auth',
+            requireInteraction: true
+          });
+        }
+      }
+    };
+
+    // ========================================
     // GOOGLE DRIVE CONFIGURATION
     // ========================================
     // Get your Client ID from Google Cloud Console:
@@ -3601,6 +4013,78 @@
       const isInitialLoad = useRef(true);
       const deletingFormRef = useRef(false); // Track when we're deleting to prevent Firebase restore
 
+      // Device Authorization State
+      const [deviceAuthStatus, setDeviceAuthStatus] = useState('checking'); // 'checking', 'approved', 'pending', 'denied'
+      const [isDeviceAdmin, setIsDeviceAdmin] = useState(false);
+      const [pendingDevices, setPendingDevices] = useState([]);
+      const [approvedDevices, setApprovedDevices] = useState([]);
+      const [newDeviceNotification, setNewDeviceNotification] = useState(null);
+
+      // Initialize Device Authorization
+      useEffect(() => {
+        const initDeviceAuth = async () => {
+          const result = await DeviceAuth.init();
+
+          if (result.approved) {
+            setDeviceAuthStatus('approved');
+            setIsDeviceAdmin(result.admin);
+
+            // If admin, listen for pending devices and show notifications
+            if (result.admin) {
+              DeviceAuth.requestNotificationPermission();
+
+              // Listen for pending device requests
+              DeviceAuth.listenForPendingDevices((devices) => {
+                setPendingDevices(devices);
+              });
+
+              // Listen for new device notifications
+              DeviceAuth.onNotification((type, data) => {
+                if (type === 'new_device') {
+                  setNewDeviceNotification(data);
+                  DeviceAuth.showBrowserNotification(
+                    'New Device Request',
+                    `${data.type} (${data.browser}) wants to access JMart Safety`
+                  );
+                  // Auto-dismiss after 10 seconds
+                  setTimeout(() => setNewDeviceNotification(null), 10000);
+                }
+              });
+            }
+
+            // Listen for approved devices (for settings display)
+            DeviceAuth.listenForApprovedDevices((devices) => {
+              setApprovedDevices(devices);
+            });
+
+            // Listen for own device being revoked
+            DeviceAuth.listenForOwnDeviceStatus((status) => {
+              if (status.revoked) {
+                setDeviceAuthStatus('denied');
+                alert('Your device access has been revoked by an administrator.');
+              }
+            });
+          } else {
+            setDeviceAuthStatus('pending');
+
+            // Poll for approval every 5 seconds
+            const pollInterval = setInterval(async () => {
+              const checkResult = await DeviceAuth.checkDeviceStatus();
+              if (checkResult.approved) {
+                setDeviceAuthStatus('approved');
+                setIsDeviceAdmin(checkResult.admin);
+                clearInterval(pollInterval);
+                window.location.reload(); // Reload to fully initialize
+              }
+            }, 5000);
+
+            return () => clearInterval(pollInterval);
+          }
+        };
+
+        initDeviceAuth();
+      }, []);
+
       // Load saved data from localStorage first, then listen to Firebase
       useEffect(() => {
         // Load local data first (for offline support)
@@ -4121,8 +4605,136 @@
         { id: 'settings', label: 'Settings', emoji: '⚙️' },
       ];
 
+      // Show loading while checking device authorization
+      if (deviceAuthStatus === 'checking') {
+        return (
+          <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+            <div className="text-center">
+              <div className="text-6xl mb-4">🛡️</div>
+              <h2 className="text-xl font-bold text-gray-800">JMart Steel Safety</h2>
+              <p className="text-gray-600 mt-2">Verifying device authorization...</p>
+              <div className="mt-4">
+                <div className="animate-spin inline-block w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full"></div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      // Show pending approval screen if device is not approved
+      if (deviceAuthStatus === 'pending' || deviceAuthStatus === 'denied') {
+        return (
+          <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden">
+              <div className={`p-6 text-center ${deviceAuthStatus === 'denied' ? 'bg-red-500' : 'bg-orange-500'} text-white`}>
+                <div className="text-6xl mb-4">{deviceAuthStatus === 'denied' ? '🚫' : '🔐'}</div>
+                <h2 className="text-2xl font-bold">
+                  {deviceAuthStatus === 'denied' ? 'Access Denied' : 'Authorization Required'}
+                </h2>
+              </div>
+              <div className="p-6 space-y-4">
+                {deviceAuthStatus === 'pending' ? (
+                  <>
+                    <p className="text-gray-600 text-center">
+                      This device is not yet authorized to access JMart Steel Safety.
+                    </p>
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                      <p className="text-yellow-800 font-medium text-center">Waiting for Admin Approval</p>
+                      <p className="text-yellow-700 text-sm text-center mt-1">
+                        Your request has been sent. An administrator will review it shortly.
+                      </p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                      <p className="text-sm text-gray-500">Your Device:</p>
+                      <p className="font-medium text-gray-800">{DeviceAuth.deviceInfo?.type} ({DeviceAuth.deviceInfo?.browser})</p>
+                      <p className="text-xs text-gray-400">ID: {DeviceAuth.deviceId}</p>
+                    </div>
+                    <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
+                      <div className="animate-pulse w-2 h-2 bg-orange-500 rounded-full"></div>
+                      <span>Checking for approval...</span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-gray-600 text-center">
+                      Your device access has been denied or revoked by an administrator.
+                    </p>
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                      <p className="text-red-800 text-center">
+                        Please contact your administrator if you believe this is an error.
+                      </p>
+                    </div>
+                  </>
+                )}
+                <button
+                  onClick={() => window.location.reload()}
+                  className="w-full bg-gray-200 text-gray-700 py-3 rounded-xl font-medium hover:bg-gray-300 transition"
+                >
+                  Refresh
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
       return (
         <div className="min-h-screen bg-gray-100 flex flex-col safe-top">
+          {/* New Device Request Notification for Admins */}
+          {newDeviceNotification && isDeviceAdmin && (
+            <div className="fixed top-4 left-4 right-4 bg-blue-600 text-white p-4 rounded-xl shadow-lg z-[200] animate-pulse">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">📱</span>
+                  <div>
+                    <p className="font-semibold">New Device Request!</p>
+                    <p className="text-sm text-blue-100">
+                      {newDeviceNotification.type} ({newDeviceNotification.browser}) wants access
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={async () => {
+                      await DeviceAuth.approveDevice(newDeviceNotification.id);
+                      setNewDeviceNotification(null);
+                    }}
+                    className="bg-green-500 text-white px-3 py-1 rounded-lg text-sm font-medium hover:bg-green-600"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    onClick={async () => {
+                      await DeviceAuth.denyDevice(newDeviceNotification.id);
+                      setNewDeviceNotification(null);
+                    }}
+                    className="bg-red-500 text-white px-3 py-1 rounded-lg text-sm font-medium hover:bg-red-600"
+                  >
+                    Deny
+                  </button>
+                  <button
+                    onClick={() => setNewDeviceNotification(null)}
+                    className="text-white opacity-70 px-2"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Pending Devices Banner for Admins */}
+          {pendingDevices.length > 0 && isDeviceAdmin && !newDeviceNotification && (
+            <div
+              onClick={() => setCurrentView('settings')}
+              className="bg-blue-500 text-white p-2 text-center cursor-pointer hover:bg-blue-600 transition"
+            >
+              <span className="text-sm font-medium">
+                📱 {pendingDevices.length} device(s) waiting for approval - Tap to review
+              </span>
+            </div>
+          )}
+
           {/* Offline Banner */}
           {!isOnline && (
             <div className="offline-banner">
@@ -4451,7 +5063,7 @@
             {currentView === 'incidents' && <IncidentView onSubmit={(data) => addForm('incident', data)} onUpdate={updateForm} editingForm={editingForm?.type === 'incident' ? editingForm : null} />}
             {currentView === 'toolbox' && <ToolboxView onSubmit={(data) => addForm('toolbox', data)} onUpdate={updateForm} editingForm={editingForm?.type === 'toolbox' ? editingForm : null} sites={sites} />}
             {currentView === 'emergency' && <EmergencyView />}
-            {currentView === 'settings' && <SettingsView sites={sites} onUpdateSites={setSites} signatures={savedSignatures} onUpdateSignatures={updateSignatures} isAdmin={isAdmin} />}
+            {currentView === 'settings' && <SettingsView sites={sites} onUpdateSites={setSites} signatures={savedSignatures} onUpdateSignatures={updateSignatures} isAdmin={isAdmin} isDeviceAdmin={isDeviceAdmin} pendingDevices={pendingDevices} approvedDevices={approvedDevices} />}
             {currentView === 'recordings' && <RecordingsView forms={forms} sites={sites} />}
           </main>
 
@@ -7725,7 +8337,7 @@
     }
 
     // Settings View
-    function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSignatures, isAdmin = false }) {
+    function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSignatures, isAdmin = false, isDeviceAdmin = false, pendingDevices = [], approvedDevices = [] }) {
       const [newSite, setNewSite] = useState('');
       const [showAddSite, setShowAddSite] = useState(false);
       const [driveConnected, setDriveConnected] = useState(GoogleDriveSync.isConnected());
@@ -7736,6 +8348,7 @@
       const [showAddMember, setShowAddMember] = useState(false);
       const [devices, setDevices] = useState({ pending: [], approved: [], denied: [] });
       const [pendingCount, setPendingCount] = useState(0);
+      const [deviceActionLoading, setDeviceActionLoading] = useState(null);
       const defaultSites = ['Site 1 - Sydney CBD', 'Site 2 - Parramatta', 'Site 3 - North Sydney'];
       const currentSites = sites.length > 0 ? sites : defaultSites;
 
@@ -7751,14 +8364,18 @@
       }, [isAdmin]);
 
       const handleApproveDevice = async (deviceId) => {
+        setDeviceActionLoading(deviceId);
         const success = await DeviceAuthManager.approveDevice(deviceId);
+        setDeviceActionLoading(null);
         if (!success) {
           alert('Failed to approve device');
         }
       };
 
       const handleDenyDevice = async (deviceId) => {
+        setDeviceActionLoading(deviceId);
         const success = await DeviceAuthManager.denyDevice(deviceId);
+        setDeviceActionLoading(null);
         if (!success) {
           alert('Failed to deny device');
         }
@@ -7766,7 +8383,9 @@
 
       const handleRemoveDevice = async (deviceId) => {
         if (confirm('Are you sure you want to remove this device?')) {
+          setDeviceActionLoading(deviceId);
           const success = await DeviceAuthManager.removeDevice(deviceId);
+          setDeviceActionLoading(null);
           if (!success) {
             alert('Failed to remove device');
           }
@@ -7857,6 +8476,110 @@
         <div className="space-y-4">
           <div className="bg-white rounded-xl p-4 shadow-sm">
             <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">⚙️ Settings</h2>
+            {isDeviceAdmin && (
+              <p className="text-xs text-green-600 mt-1">🛡️ Admin Mode - You can manage device access</p>
+            )}
+          </div>
+
+          {/* Device Management Section (Admin Only) */}
+          {isDeviceAdmin && (
+            <div className="bg-white rounded-xl shadow-sm p-4">
+              <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                <span className="text-2xl">📱</span> Device Management
+              </h3>
+
+              {/* Pending Device Requests */}
+              {pendingDevices.length > 0 && (
+                <div className="mb-4">
+                  <p className="text-sm font-medium text-orange-600 mb-2">
+                    ⏳ Pending Requests ({pendingDevices.length})
+                  </p>
+                  <div className="space-y-2">
+                    {pendingDevices.map((device) => (
+                      <div key={device.id} className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-medium text-gray-800">{device.type}</p>
+                            <p className="text-xs text-gray-500">{device.browser} - {device.screen}</p>
+                            <p className="text-xs text-gray-400">
+                              Requested: {new Date(device.requestedAt).toLocaleString('en-AU')}
+                            </p>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleApproveDevice(device.id)}
+                              disabled={deviceActionLoading === device.id}
+                              className="bg-green-500 text-white px-3 py-1 rounded-lg text-sm font-medium disabled:opacity-50"
+                            >
+                              {deviceActionLoading === device.id ? '...' : '✓'}
+                            </button>
+                            <button
+                              onClick={() => handleDenyDevice(device.id)}
+                              disabled={deviceActionLoading === device.id}
+                              className="bg-red-500 text-white px-3 py-1 rounded-lg text-sm font-medium disabled:opacity-50"
+                            >
+                              {deviceActionLoading === device.id ? '...' : '✕'}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Approved Devices */}
+              <div>
+                <p className="text-sm font-medium text-green-600 mb-2">
+                  ✓ Approved Devices ({approvedDevices.length})
+                </p>
+                <div className="space-y-2">
+                  {approvedDevices.map((device) => (
+                    <div key={device.id} className={`bg-gray-50 border rounded-lg p-3 ${device.id === DeviceAuth.deviceId ? 'border-blue-300 bg-blue-50' : 'border-gray-200'}`}>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium text-gray-800">
+                            {device.type}
+                            {device.id === DeviceAuth.deviceId && <span className="text-blue-600 text-xs ml-2">(This device)</span>}
+                            {device.isAdmin && <span className="text-orange-600 text-xs ml-2">Admin</span>}
+                          </p>
+                          <p className="text-xs text-gray-500">{device.browser} - {device.screen}</p>
+                          <p className="text-xs text-gray-400">
+                            Last seen: {new Date(device.lastSeen).toLocaleString('en-AU')}
+                          </p>
+                        </div>
+                        {device.id !== DeviceAuth.deviceId && (
+                          <button
+                            onClick={() => handleRevokeDevice(device.id)}
+                            disabled={deviceActionLoading === device.id}
+                            className="bg-red-100 text-red-600 px-3 py-1 rounded-lg text-sm font-medium disabled:opacity-50"
+                          >
+                            Revoke
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {pendingDevices.length === 0 && approvedDevices.length === 0 && (
+                <p className="text-gray-500 text-sm text-center py-4">No devices registered yet</p>
+              )}
+            </div>
+          )}
+
+          {/* Current Device Info (for all users) */}
+          <div className="bg-white rounded-xl shadow-sm p-4">
+            <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+              <span className="text-2xl">🔐</span> This Device
+            </h3>
+            <div className="bg-gray-50 rounded-lg p-3 space-y-1">
+              <p className="text-sm"><span className="text-gray-500">Type:</span> <span className="font-medium">{DeviceAuth.deviceInfo?.type}</span></p>
+              <p className="text-sm"><span className="text-gray-500">Browser:</span> <span className="font-medium">{DeviceAuth.deviceInfo?.browser}</span></p>
+              <p className="text-sm"><span className="text-gray-500">Screen:</span> <span className="font-medium">{DeviceAuth.deviceInfo?.screen}</span></p>
+              <p className="text-xs text-gray-400 mt-2">Device ID: {DeviceAuth.deviceId}</p>
+            </div>
           </div>
 
           {/* Device Management Section - Admin Only */}
