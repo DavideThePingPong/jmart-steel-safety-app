@@ -922,34 +922,65 @@
         if (firebaseApp && isFirebaseConfigured) {
           try {
             this.firebaseStorage = firebase.storage();
-            console.log('Firebase Storage initialized');
+            console.log('Firebase Storage initialized successfully');
           } catch (error) {
             console.error('Firebase Storage init error:', error);
           }
+        } else {
+          console.log('Firebase not configured - photo uploads will only go to Google Drive');
         }
       },
 
       // Upload photo to Firebase Storage
       uploadToFirebase: async function(file, jobName) {
         if (!this.firebaseStorage) {
-          console.error('Firebase Storage not initialized');
+          console.warn('Firebase Storage not available - skipping Firebase upload');
           return null;
         }
 
+        // Make job name safe for Firebase path (no special characters)
+        const safeJobName = jobName.replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '_');
         const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
         const timestamp = Date.now();
         const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-        const path = `photos/${jobName}/${today}/${timestamp}_${safeName}`;
+        const path = `photos/${safeJobName}/${today}/${timestamp}_${safeName}`;
+
+        console.log('Attempting Firebase upload to:', path);
+        console.log('File details:', { name: file.name, size: file.size, type: file.type });
 
         try {
           const storageRef = this.firebaseStorage.ref(path);
-          const snapshot = await storageRef.put(file);
+
+          // Use uploadBytes for better mobile compatibility
+          const snapshot = await storageRef.put(file, {
+            contentType: file.type,
+            customMetadata: {
+              'originalName': file.name,
+              'uploadedAt': new Date().toISOString(),
+              'jobName': jobName
+            }
+          });
+
+          console.log('Upload snapshot:', snapshot.state);
+
           const downloadUrl = await snapshot.ref.getDownloadURL();
 
-          console.log('Uploaded to Firebase:', path);
+          console.log('✅ Uploaded to Firebase:', path);
+          console.log('Download URL:', downloadUrl);
+
           return { path, downloadUrl };
         } catch (error) {
-          console.error('Firebase upload error:', error);
+          console.error('❌ Firebase upload error:', error);
+          console.error('Error code:', error.code);
+          console.error('Error message:', error.message);
+
+          // Check for common errors
+          if (error.code === 'storage/unauthorized') {
+            console.error('Firebase Storage rules may need to be updated to allow uploads');
+          } else if (error.code === 'storage/quota-exceeded') {
+            console.error('Firebase Storage quota exceeded');
+          }
+
           return null;
         }
       },
@@ -3523,7 +3554,9 @@
       const [selectedJob, setSelectedJob] = useState(null);
       const [uploadProgress, setUploadProgress] = useState(null);
       const [uploadStatus, setUploadStatus] = useState(null);
-      const photoInputRef = useRef(null);
+      const [menuStep, setMenuStep] = useState('jobs'); // 'jobs' or 'capture'
+      const cameraInputRef = useRef(null);
+      const galleryInputRef = useRef(null);
 
       const formTypeLabels = {
         'prestart': { label: 'Pre-Start', emoji: '📋', color: 'bg-green-500' },
@@ -3541,37 +3574,61 @@
 
       const handleJobSelect = (job) => {
         setSelectedJob(job);
+        setMenuStep('capture');
+      };
+
+      const handleCameraClick = () => {
         setShowPhotoMenu(false);
-        // Trigger file input
-        setTimeout(() => photoInputRef.current?.click(), 100);
+        setTimeout(() => cameraInputRef.current?.click(), 100);
+      };
+
+      const handleGalleryClick = () => {
+        setShowPhotoMenu(false);
+        setTimeout(() => galleryInputRef.current?.click(), 100);
+      };
+
+      const handleBackToJobs = () => {
+        setMenuStep('jobs');
+        setSelectedJob(null);
       };
 
       const handlePhotoCapture = async (e) => {
         const files = e.target.files;
-        if (!files || files.length === 0 || !selectedJob) return;
+        if (!files || files.length === 0 || !selectedJob) {
+          console.log('No files or job selected', { files: files?.length, selectedJob });
+          return;
+        }
 
-        setUploadProgress('Preparing...');
+        setUploadProgress(`Uploading ${files.length} photo(s)...`);
         setUploadStatus(null);
 
         let successCount = 0;
         let failCount = 0;
+        let errorMessages = [];
 
-        for (const file of files) {
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
           try {
+            setUploadProgress(`Uploading ${i + 1}/${files.length}: ${file.name}`);
+
             const result = await PhotoUploadManager.uploadPhoto(
               file,
               selectedJob,
-              (message, percent) => setUploadProgress(`${message} (${percent}%)`)
+              (message, percent) => setUploadProgress(`${i + 1}/${files.length}: ${message}`)
             );
+
+            console.log('Upload result:', result);
 
             if (result.success) {
               successCount++;
             } else {
               failCount++;
+              errorMessages.push(`${file.name}: Upload failed`);
             }
           } catch (error) {
             console.error('Upload error:', error);
             failCount++;
+            errorMessages.push(`${file.name}: ${error.message}`);
           }
         }
 
@@ -3581,27 +3638,35 @@
         } else if (successCount > 0 && failCount > 0) {
           setUploadStatus({ type: 'warning', message: `⚠️ ${successCount} uploaded, ${failCount} failed` });
         } else {
-          setUploadStatus({ type: 'error', message: `❌ Upload failed` });
+          setUploadStatus({ type: 'error', message: `❌ Upload failed. ${errorMessages[0] || 'Check console for details'}` });
         }
 
         setUploadProgress(null);
         setSelectedJob(null);
+        setMenuStep('jobs');
 
         // Clear file input
         e.target.value = '';
 
-        // Auto-hide status after 5 seconds
-        setTimeout(() => setUploadStatus(null), 5000);
+        // Auto-hide status after 8 seconds
+        setTimeout(() => setUploadStatus(null), 8000);
       };
 
       return (
         <div className="space-y-6">
-          {/* Photo Upload Input (hidden) */}
+          {/* Photo Upload Inputs (hidden) */}
           <input
-            ref={photoInputRef}
+            ref={cameraInputRef}
             type="file"
             accept="image/*"
             capture="environment"
+            onChange={handlePhotoCapture}
+            className="hidden"
+          />
+          <input
+            ref={galleryInputRef}
+            type="file"
+            accept="image/*"
             multiple
             onChange={handlePhotoCapture}
             className="hidden"
@@ -3629,31 +3694,64 @@
             {/* Photo Upload Button */}
             <div className="absolute top-3 right-3">
               <button
-                onClick={() => setShowPhotoMenu(!showPhotoMenu)}
+                onClick={() => { setShowPhotoMenu(!showPhotoMenu); setMenuStep('jobs'); }}
                 className="w-10 h-10 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center text-xl backdrop-blur-sm"
               >
                 📷
               </button>
 
-              {/* Job Dropdown Menu */}
+              {/* Photo Menu */}
               {showPhotoMenu && (
-                <div className="absolute top-12 right-0 bg-white rounded-xl shadow-lg border border-gray-200 w-64 max-h-80 overflow-y-auto z-50">
-                  <div className="p-3 border-b border-gray-100">
-                    <p className="text-sm font-semibold text-gray-800">Upload Photos to Job</p>
-                    <p className="text-xs text-gray-500">Select which job these photos belong to</p>
-                  </div>
-                  <div className="p-2">
-                    {allJobs.map((job, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => handleJobSelect(job)}
-                        className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-orange-50 rounded-lg flex items-center gap-2"
-                      >
-                        <span className="text-lg">🏗️</span>
-                        <span className="truncate">{job}</span>
-                      </button>
-                    ))}
-                  </div>
+                <div className="absolute top-12 right-0 bg-white rounded-xl shadow-lg border border-gray-200 w-72 max-h-96 overflow-y-auto z-50">
+                  {menuStep === 'jobs' ? (
+                    <>
+                      <div className="p-3 border-b border-gray-100">
+                        <p className="text-sm font-semibold text-gray-800">📷 Upload Site Photos</p>
+                        <p className="text-xs text-gray-500">Select which job these photos belong to</p>
+                      </div>
+                      <div className="p-2 max-h-60 overflow-y-auto">
+                        {allJobs.map((job, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => handleJobSelect(job)}
+                            className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-orange-50 rounded-lg flex items-center gap-2"
+                          >
+                            <span className="text-lg">🏗️</span>
+                            <span className="truncate">{job}</span>
+                            <span className="ml-auto text-gray-400">→</span>
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="p-3 border-b border-gray-100">
+                        <button onClick={handleBackToJobs} className="text-orange-600 text-sm flex items-center gap-1 mb-2">
+                          ← Back
+                        </button>
+                        <p className="text-sm font-semibold text-gray-800">Upload to: {selectedJob}</p>
+                      </div>
+                      <div className="p-3 space-y-2">
+                        <button
+                          onClick={handleCameraClick}
+                          className="w-full bg-purple-600 text-white py-3 px-4 rounded-lg font-medium flex items-center justify-center gap-2 hover:bg-purple-700"
+                        >
+                          <span className="text-xl">📸</span>
+                          Take Photo
+                        </button>
+                        <button
+                          onClick={handleGalleryClick}
+                          className="w-full bg-green-600 text-white py-3 px-4 rounded-lg font-medium flex items-center justify-center gap-2 hover:bg-green-700"
+                        >
+                          <span className="text-xl">🖼️</span>
+                          Choose from Gallery
+                        </button>
+                        <p className="text-xs text-gray-500 text-center mt-2">
+                          Gallery allows multiple photos
+                        </p>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>
