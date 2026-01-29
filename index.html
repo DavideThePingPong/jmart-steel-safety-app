@@ -4906,8 +4906,13 @@
               <h3 className="font-semibold text-gray-800">Site Details</h3>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">👤 Supervisor Name *</label>
-                <input type="text" value={supervisorName} onChange={(e) => setSupervisorName(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg p-3" placeholder="Enter supervisor name" />
+                <select value={supervisorName} onChange={(e) => setSupervisorName(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg p-3 bg-white">
+                  <option value="">Select Supervisor</option>
+                  <option value="Jeff Fu">Jeff Fu</option>
+                  <option value="Scott Seeho">Scott Seeho</option>
+                  <option value="Davide Casolini">Davide Casolini</option>
+                </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Site Conducted *</label>
@@ -5365,7 +5370,7 @@
 
       const todayDate = new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
       const teamMembers = ['Jeff Fu', 'Scott Seeho', 'Davide Casolini', 'Zonggang Jiang', 'Leon Yu', 'Wang Jia', 'Gen Bao'];
-      const preparers = ['Scott Seeho', 'Davide Casolini'];
+      const preparers = ['Jeff Fu', 'Scott Seeho', 'Davide Casolini'];
       const builders = ['Fdc Fitout and Refurbishment', 'Fdc Construction', 'Hunter Mason', 'Built', 'Landlease'];
       const defaultSites = ['Site 1 - Sydney CBD', 'Site 2 - Parramatta', 'Site 3 - North Sydney', 'Site 4 - Chatswood', 'Site 5 - Liverpool'];
       const sitesList = sites.length > 0 ? sites : defaultSites;
@@ -5617,7 +5622,7 @@
       });
 
       const todayDate = new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-      const preparers = ['Scott Seeho', 'Davide Casolini'];
+      const preparers = ['Jeff Fu', 'Scott Seeho', 'Davide Casolini'];
       const inspectors = ['Scott Seeho', 'Davide Casolini'];
       const defaultSites = ['Site 1 - Sydney CBD', 'Site 2 - Parramatta', 'Site 3 - North Sydney', 'Site 4 - Chatswood', 'Site 5 - Liverpool'];
       const sitesList = sites.length > 0 ? sites : defaultSites;
@@ -5855,7 +5860,7 @@
       const [futureCorrespondence, setFutureCorrespondence] = useState('');
 
       const todayDate = new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-      const preparers = ['Scott Seeho', 'Davide Casolini'];
+      const preparers = ['Jeff Fu', 'Scott Seeho', 'Davide Casolini'];
       const defaultSites = ['Site 1 - Sydney CBD', 'Site 2 - Parramatta', 'Site 3 - North Sydney'];
       const sitesList = sites.length > 0 ? sites : defaultSites;
 
@@ -6300,7 +6305,12 @@
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Prepared By</label>
-                <input type="text" value={preparedBy} onChange={e => setPreparedBy(e.target.value)} placeholder="Enter name" className="w-full p-3 border rounded-lg" />
+                <select value={preparedBy} onChange={e => setPreparedBy(e.target.value)} className="w-full p-3 border rounded-lg bg-white">
+                  <option value="">Select person</option>
+                  <option value="Jeff Fu">Jeff Fu</option>
+                  <option value="Scott Seeho">Scott Seeho</option>
+                  <option value="Davide Casolini">Davide Casolini</option>
+                </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
