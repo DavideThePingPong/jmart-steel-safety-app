@@ -90,31 +90,8 @@
     // ========================================
     const GOOGLE_CLIENT_ID = '920798274486-rh1p59hihjkj9k04qmn5e3rbs57g55q8.apps.googleusercontent.com';
     const GOOGLE_API_KEY = ''; // Optional - only needed for public files
-    const DRIVE_FOLDER_NAME = 'JMart Steel';  // Main company folder - consolidated structure
+    const DRIVE_FOLDER_NAME = 'JMart Steel Safety Forms';
     const DRIVE_SCOPES = 'https://www.googleapis.com/auth/drive.file';
-
-    // ========================================
-    // DRIVE FOLDER STRUCTURE CONFIGURATION
-    // Unified folder structure for all JMart Steel files
-    // ========================================
-    const DRIVE_FOLDERS = {
-      // Safety forms go into 01_Safety_Compliance subfolders
-      forms: {
-        'prestart': '01_Safety_Compliance/Pre-Start_Checklists',
-        'inspection': '01_Safety_Compliance/Site_Inspections',
-        'incident': '01_Safety_Compliance/Incident_Reports',
-        'toolbox': '01_Safety_Compliance/Toolbox_Talks',
-        'itp': '03_ITPs/General',
-        'steel-itp': '03_ITPs/Structural_Steel',
-        'training': '05_Training/Certificates'
-      },
-      // Photos go into project folders
-      photos: '02_Projects',  // Will create {ProjectName}/Photos/{Date}/
-      // Finance/receipts for future Steel integration
-      finance: '11_Finance',
-      // AI agent outputs for future Steel integration
-      agents: '12_AI_Agents'
-    };
 
     // Check if Google Drive is configured
     const isGoogleDriveConfigured = GOOGLE_CLIENT_ID !== 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com';
@@ -216,58 +193,8 @@
         }
       },
 
-      // Helper: Get or create nested folder path (e.g., "01_Safety_Compliance/Pre-Start_Checklists")
-      getOrCreateNestedFolder: async function(folderPath, parentId = null) {
-        if (!this.accessToken) return null;
-
-        const parent = parentId || this.folderId;
-        if (!parent) {
-          await this.getOrCreateFolder();
-        }
-
-        const parts = folderPath.split('/').filter(p => p.trim());
-        let currentParent = parent || this.folderId;
-
-        for (const folderName of parts) {
-          try {
-            // Search for folder
-            const searchResponse = await fetch(
-              `https://www.googleapis.com/drive/v3/files?q=name='${folderName}' and '${currentParent}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-              { headers: { 'Authorization': `Bearer ${this.accessToken}` } }
-            );
-            const searchData = await searchResponse.json();
-
-            if (searchData.files && searchData.files.length > 0) {
-              currentParent = searchData.files[0].id;
-            } else {
-              // Create folder
-              const createResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
-                method: 'POST',
-                headers: {
-                  'Authorization': `Bearer ${this.accessToken}`,
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  name: folderName,
-                  mimeType: 'application/vnd.google-apps.folder',
-                  parents: [currentParent],
-                }),
-              });
-              const createData = await createResponse.json();
-              currentParent = createData.id;
-              console.log(`Created folder: ${folderName}`, currentParent);
-            }
-          } catch (error) {
-            console.error(`Error creating folder ${folderName}:`, error);
-            return null;
-          }
-        }
-
-        return currentParent;
-      },
-
-      // Upload a PDF to Google Drive (with optional subfolder)
-      uploadPDF: async function(pdfBlob, filename, formType = null) {
+      // Upload a PDF to Google Drive
+      uploadPDF: async function(pdfBlob, filename) {
         if (!this.accessToken) {
           console.error('Not connected to Google Drive');
           return null;
@@ -278,22 +205,10 @@
         }
 
         try {
-          // Determine target folder based on form type
-          let targetFolderId = this.folderId;
-
-          if (formType && DRIVE_FOLDERS.forms[formType]) {
-            const subfolderPath = DRIVE_FOLDERS.forms[formType];
-            targetFolderId = await this.getOrCreateNestedFolder(subfolderPath);
-            if (!targetFolderId) {
-              console.warn(`Could not create subfolder for ${formType}, using root folder`);
-              targetFolderId = this.folderId;
-            }
-          }
-
           const metadata = {
             name: filename,
             mimeType: 'application/pdf',
-            parents: [targetFolderId],
+            parents: [this.folderId],
           };
 
           const formData = new FormData();
@@ -310,7 +225,7 @@
           );
 
           const data = await response.json();
-          console.log('Uploaded to Drive:', filename, 'in folder:', formType || 'root', data.id);
+          console.log('Uploaded to Drive:', filename, data.id);
           return data;
         } catch (error) {
           console.error('Upload error:', error);
@@ -338,7 +253,7 @@
           try {
             const { doc, filename } = PDFGenerator.generate(form);
             const pdfBlob = doc.output('blob');
-            const result = await this.uploadPDF(pdfBlob, filename, form.type);
+            const result = await this.uploadPDF(pdfBlob, filename);
             if (result) {
               results.push({ form: form.id, filename, driveId: result.id });
             }
@@ -752,143 +667,6 @@
     });
 
     // ========================================
-    // SHARED JOBS MANAGER
-    // Unified job system for Safety App + Steel agents
-    // Jobs stored in Firebase: jmart-safety/jobs/
-    // ========================================
-    const JobsManager = {
-      jobs: [],
-      listeners: [],
-
-      // Initialize and load jobs from Firebase
-      init: async function() {
-        if (!firebaseDb || !isFirebaseConfigured) {
-          console.log('JobsManager: Firebase not configured');
-          return;
-        }
-
-        // Listen for real-time job updates
-        firebaseDb.ref('jmart-safety/jobs').on('value', (snapshot) => {
-          const data = snapshot.val();
-          this.jobs = data ? Object.entries(data).map(([id, job]) => ({ id, ...job })) : [];
-          this.notifyListeners();
-          console.log('JobsManager: Loaded', this.jobs.length, 'jobs');
-        });
-
-        // Migrate old sites to new jobs structure if needed
-        this.migrateFromSites();
-      },
-
-      // Migrate from old 'sites' structure to new 'jobs' structure
-      migrateFromSites: async function() {
-        if (!firebaseDb) return;
-
-        try {
-          const sitesSnap = await firebaseDb.ref('jmart-safety/sites').once('value');
-          const sites = sitesSnap.val();
-
-          if (sites && Array.isArray(sites)) {
-            const jobsSnap = await firebaseDb.ref('jmart-safety/jobs').once('value');
-            if (!jobsSnap.val()) {
-              console.log('JobsManager: Migrating', sites.length, 'sites to jobs...');
-              for (const site of sites) {
-                if (site && site.name) {
-                  await this.addJob({
-                    name: site.name,
-                    client: site.builder || '',
-                    address: site.address || '',
-                    status: 'active',
-                    createdAt: new Date().toISOString(),
-                    source: 'migrated-from-sites'
-                  });
-                }
-              }
-              console.log('JobsManager: Migration complete');
-            }
-          }
-        } catch (error) {
-          console.error('JobsManager: Migration error:', error);
-        }
-      },
-
-      // Add a new job
-      addJob: async function(jobData) {
-        if (!firebaseDb) return null;
-
-        const job = {
-          name: jobData.name,
-          client: jobData.client || '',
-          address: jobData.address || '',
-          status: jobData.status || 'active',
-          createdAt: jobData.createdAt || new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          source: jobData.source || 'safety-app'
-        };
-
-        try {
-          const ref = await firebaseDb.ref('jmart-safety/jobs').push(job);
-          console.log('JobsManager: Added job', job.name, ref.key);
-          return { id: ref.key, ...job };
-        } catch (error) {
-          console.error('JobsManager: Error adding job:', error);
-          return null;
-        }
-      },
-
-      // Update a job
-      updateJob: async function(jobId, updates) {
-        if (!firebaseDb || !jobId) return false;
-
-        try {
-          updates.updatedAt = new Date().toISOString();
-          await firebaseDb.ref(`jmart-safety/jobs/${jobId}`).update(updates);
-          console.log('JobsManager: Updated job', jobId);
-          return true;
-        } catch (error) {
-          console.error('JobsManager: Error updating job:', error);
-          return false;
-        }
-      },
-
-      // Get all active jobs
-      getActiveJobs: function() {
-        return this.jobs.filter(j => j.status === 'active');
-      },
-
-      // Get all jobs
-      getAllJobs: function() {
-        return this.jobs;
-      },
-
-      // Find job by name (case-insensitive)
-      findByName: function(name) {
-        return this.jobs.find(j => j.name.toLowerCase() === name.toLowerCase());
-      },
-
-      // Subscribe to job updates
-      subscribe: function(callback) {
-        this.listeners.push(callback);
-        callback(this.jobs); // Initial call
-        return () => {
-          this.listeners = this.listeners.filter(l => l !== callback);
-        };
-      },
-
-      // Notify all listeners
-      notifyListeners: function() {
-        this.listeners.forEach(callback => callback(this.jobs));
-      },
-
-      // Get jobs as simple name array (for dropdowns)
-      getJobNames: function() {
-        return this.getActiveJobs().map(j => j.name);
-      }
-    };
-
-    // Initialize Jobs Manager
-    JobsManager.init();
-
-    // ========================================
     // DEVICE AUTHENTICATION MANAGER
     // ========================================
     const DeviceAuthManager = {
@@ -1134,57 +912,97 @@
 
     // ========================================
     // PHOTO UPLOAD MANAGER (Google Drive Only)
-    // Uses project-based folder structure:
-    // JMart Steel/02_Projects/{JobName}/Photos/{YYYY-MM-DD}/
     // ========================================
     const PhotoUploadManager = {
       // Initialize - just log that we're using Google Drive
       init: function() {
         console.log('PhotoUploadManager initialized - using Google Drive for photo storage');
-        console.log('Photo structure: JMart Steel/02_Projects/{Job}/Photos/{Date}/');
       },
 
-      // Get or create project folder with Photos subfolder
-      // Structure: 02_Projects/{JobName}/Photos/{Date}/
+      // Get or create job folder in Google Drive
       getOrCreateJobFolder: async function(jobName) {
         if (!GoogleDriveSync.isConnected()) return null;
 
         try {
-          // Ensure main folder exists
+          // First ensure main photos folder exists
+          const mainFolderName = 'Site Photos';
+          let mainFolderId = null;
+
+          // Check if main folder exists within the JMart folder
           if (!GoogleDriveSync.folderId) {
             await GoogleDriveSync.getOrCreateFolder();
           }
 
-          const safeJobName = jobName.replace(/[<>:"/\\|?*]/g, '_');
+          // Search for Site Photos folder
+          const mainSearch = await fetch(
+            `https://www.googleapis.com/drive/v3/files?q=name='${mainFolderName}' and '${GoogleDriveSync.folderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+            { headers: { 'Authorization': `Bearer ${GoogleDriveSync.accessToken}` } }
+          );
+          const mainData = await mainSearch.json();
 
-          // Create nested path: 02_Projects/{JobName}/Photos
-          const folderPath = `${DRIVE_FOLDERS.photos}/${safeJobName}/Photos`;
-          const photosFolderId = await GoogleDriveSync.getOrCreateNestedFolder(folderPath);
-
-          if (photosFolderId) {
-            console.log(`Photo folder ready: 02_Projects/${safeJobName}/Photos`);
-            return photosFolderId;
+          if (mainData.files && mainData.files.length > 0) {
+            mainFolderId = mainData.files[0].id;
+          } else {
+            // Create Site Photos folder
+            const createMain = await fetch('https://www.googleapis.com/drive/v3/files', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${GoogleDriveSync.accessToken}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                name: mainFolderName,
+                mimeType: 'application/vnd.google-apps.folder',
+                parents: [GoogleDriveSync.folderId],
+              }),
+            });
+            const mainResult = await createMain.json();
+            mainFolderId = mainResult.id;
           }
 
-          // Fallback: create in root if nested creation fails
-          console.warn('Could not create project photo folder, using root');
-          return GoogleDriveSync.folderId;
+          // Now search for job folder within Site Photos
+          const safeJobName = jobName.replace(/[<>:"/\\|?*]/g, '_');
+          const jobSearch = await fetch(
+            `https://www.googleapis.com/drive/v3/files?q=name='${safeJobName}' and '${mainFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+            { headers: { 'Authorization': `Bearer ${GoogleDriveSync.accessToken}` } }
+          );
+          const jobData = await jobSearch.json();
+
+          if (jobData.files && jobData.files.length > 0) {
+            return jobData.files[0].id;
+          }
+
+          // Create job folder
+          const createJob = await fetch('https://www.googleapis.com/drive/v3/files', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${GoogleDriveSync.accessToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              name: safeJobName,
+              mimeType: 'application/vnd.google-apps.folder',
+              parents: [mainFolderId],
+            }),
+          });
+          const jobResult = await createJob.json();
+          return jobResult.id;
         } catch (error) {
           console.error('Error creating job folder:', error);
           return null;
         }
       },
 
-      // Get or create date subfolder within Photos folder
-      getOrCreateDateFolder: async function(photosFolderId) {
-        if (!GoogleDriveSync.isConnected() || !photosFolderId) return photosFolderId;
+      // Get or create date subfolder within job folder
+      getOrCreateDateFolder: async function(jobFolderId) {
+        if (!GoogleDriveSync.isConnected() || !jobFolderId) return jobFolderId;
 
         const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
         try {
           // Search for today's folder
           const dateSearch = await fetch(
-            `https://www.googleapis.com/drive/v3/files?q=name='${today}' and '${photosFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+            `https://www.googleapis.com/drive/v3/files?q=name='${today}' and '${jobFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
             { headers: { 'Authorization': `Bearer ${GoogleDriveSync.accessToken}` } }
           );
           const dateData = await dateSearch.json();
@@ -1203,15 +1021,14 @@
             body: JSON.stringify({
               name: today,
               mimeType: 'application/vnd.google-apps.folder',
-              parents: [photosFolderId],
+              parents: [jobFolderId],
             }),
           });
           const dateResult = await createDate.json();
-          console.log(`Created date folder: ${today}`);
           return dateResult.id;
         } catch (error) {
           console.error('Error creating date folder:', error);
-          return photosFolderId; // Fallback to Photos folder
+          return jobFolderId; // Fallback to job folder
         }
       },
 
@@ -3199,8 +3016,8 @@
           if (GoogleDriveSync.isConnected()) {
             const { doc } = PDFGenerator.generate(form);
             const pdfBlob = doc.output('blob');
-            await GoogleDriveSync.uploadPDF(pdfBlob, filename, form.type);
-            console.log('Uploaded new PDF to Drive:', form.type);
+            await GoogleDriveSync.uploadPDF(pdfBlob, filename);
+            console.log('Uploaded new PDF to Drive');
           }
 
           // Clear states and show success
@@ -5510,4 +5327,1666 @@
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Witnesses (if any)</label>
-                <input type="text" value={formData.witnesses} onChange={(e) => setFormData({...formData, witnesses: e.target.value})} className="w-full border rou
+                <input type="text" value={formData.witnesses} onChange={(e) => setFormData({...formData, witnesses: e.target.value})} className="w-full border rounded-lg p-3" placeholder="Names of any witnesses" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Immediate Actions Taken *</label>
+                <textarea value={formData.immediateActions} onChange={(e) => setFormData({...formData, immediateActions: e.target.value})} className="w-full border rounded-lg p-3" rows={3} placeholder="What actions were taken immediately after the incident?" />
+              </div>
+
+              {/* Reporter Signature - REQUIRED */}
+              <div className="border-t pt-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Reporter Signature * <span className="text-red-500 text-xs">(Required for submission)</span></label>
+                {reporterSignature ? (
+                  <div className="relative inline-block">
+                    <div className="border-2 border-green-500 rounded-lg p-2 bg-green-50">
+                      <img src={reporterSignature} alt="signature" className="h-16 object-contain" />
+                    </div>
+                    <button onClick={() => setReporterSignature(null)}
+                      className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-sm">✕</button>
+                  </div>
+                ) : (
+                  <button onClick={() => setSigningReporter(true)}
+                    className="w-full h-20 border-2 border-dashed border-red-300 rounded-lg text-red-500 hover:border-red-500 bg-red-50 font-medium">
+                    ✍️ Tap to Sign (Required)
+                  </button>
+                )}
+              </div>
+
+              {/* Validation Error */}
+              {validationError && (
+                <div className="bg-red-50 border border-red-300 rounded-lg p-3">
+                  <p className="text-red-700 text-sm">⚠️ {validationError}</p>
+                </div>
+              )}
+
+              <div className="flex gap-3">
+                <button onClick={() => { setValidationError(''); setStep(2); }} className="flex-1 border border-gray-300 text-gray-700 py-3 rounded-lg">Back</button>
+                <button onClick={handleIncidentSubmit} className="flex-1 bg-red-600 text-white py-3 rounded-lg">Submit Report</button>
+              </div>
+            </div>
+          )}
+
+          {/* Signature Pad Modal */}
+          {signingReporter && (
+            <SignaturePad
+              name={formData.reportedBy || "Reporter"}
+              onSave={(sig) => { setReporterSignature(sig); setSigningReporter(false); }}
+              onCancel={() => setSigningReporter(false)}
+            />
+          )}
+        </div>
+      );
+    }
+
+    // Toolbox View
+    function ToolboxView({ onSubmit, sites = [] }) {
+      const [step, setStep] = useState(1);
+      const [signingWorker, setSigningWorker] = useState(null);
+      const [siteConducted, setSiteConducted] = useState('');
+      const [builder, setBuilder] = useState('');
+      const [address, setAddress] = useState('');
+      const [isLocating, setIsLocating] = useState(false);
+      const [preparedBy, setPreparedBy] = useState('');
+      const [selectedTopics, setSelectedTopics] = useState([]);
+      const [otherTopic, setOtherTopic] = useState('');
+      const [correctiveAction, setCorrectiveAction] = useState('');
+      const [feedbackResponses, setFeedbackResponses] = useState('');
+      const [signatures, setSignatures] = useState({ 'Jeff Fu': null, 'Scott Seeho': null, 'Davide Casolini': null, 'Zonggang Jiang': null, 'Leon Yu': null, 'Wang Jia': null, 'Gen Bao': null });
+
+      const todayDate = new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+      const teamMembers = ['Jeff Fu', 'Scott Seeho', 'Davide Casolini', 'Zonggang Jiang', 'Leon Yu', 'Wang Jia', 'Gen Bao'];
+      const preparers = ['Jeff Fu', 'Scott Seeho', 'Davide Casolini'];
+      const builders = ['Fdc Fitout and Refurbishment', 'Fdc Construction', 'Hunter Mason', 'Built', 'Landlease'];
+      const defaultSites = ['Site 1 - Sydney CBD', 'Site 2 - Parramatta', 'Site 3 - North Sydney', 'Site 4 - Chatswood', 'Site 5 - Liverpool'];
+      const sitesList = sites.length > 0 ? sites : defaultSites;
+
+      const topics = [
+        'Manual Handling', 'Working at Heights', 'Hot Work Safety', 'PPE Requirements',
+        'Emergency Procedures', 'Electrical Safety', 'Housekeeping', 'Slips, Trips & Falls',
+        'Fire Safety', 'First Aid', 'Hazard Identification', 'Risk Assessment',
+        'Confined Spaces', 'Scaffolding Safety', 'Crane & Lifting Operations', 'Welding Safety',
+        'Chemical Handling', 'Noise & Hearing Protection', 'Sun & Heat Safety', 'Mental Health & Wellbeing',
+        'Tool Safety', 'Mobile Plant Safety', 'Traffic Management', 'Asbestos Awareness',
+        'Lock Out Tag Out (LOTO)', 'Incident Reporting', 'Near Miss Reporting', 'Safe Work Method Statements (SWMS)'
+      ];
+
+      const signedCount = Object.values(signatures).filter(s => s !== null).length;
+
+      const toggleTopic = (topic) => {
+        if (selectedTopics.includes(topic)) {
+          setSelectedTopics(selectedTopics.filter(t => t !== topic));
+        } else {
+          setSelectedTopics([...selectedTopics, topic]);
+        }
+      };
+
+      const getLocation = () => {
+        setIsLocating(true);
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            async (position) => {
+              try {
+                const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${position.coords.latitude}&lon=${position.coords.longitude}`);
+                const data = await response.json();
+                setAddress(data.display_name || `${position.coords.latitude}, ${position.coords.longitude}`);
+              } catch (e) {
+                setAddress(`${position.coords.latitude}, ${position.coords.longitude}`);
+              }
+              setIsLocating(false);
+            },
+            () => { alert('Unable to get location'); setIsLocating(false); },
+            { enableHighAccuracy: true, timeout: 10000 }
+          );
+        }
+      };
+
+      const handleSubmit = () => {
+        onSubmit({
+          siteConducted, builder, address, preparedBy,
+          topics: selectedTopics, otherTopic, correctiveAction, feedbackResponses,
+          signatures, date: new Date().toISOString()
+        });
+        setStep(3);
+      };
+
+      const resetForm = () => {
+        setStep(1);
+        setSiteConducted(''); setBuilder(''); setAddress(''); setPreparedBy('');
+        setSelectedTopics([]); setOtherTopic(''); setCorrectiveAction(''); setFeedbackResponses('');
+        setSignatures({ 'Jeff Fu': null, 'Scott Seeho': null, 'Davide Casolini': null, 'Zonggang Jiang': null, 'Leon Yu': null, 'Wang Jia': null, 'Gen Bao': null });
+      };
+
+      if (step === 3) {
+        return (
+          <div className="text-center py-12">
+            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 text-4xl">✅</div>
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">Toolbox Talk Recorded!</h2>
+            <p className="text-gray-600 mb-6">{signedCount} attendees signed on</p>
+            <button onClick={resetForm} className="bg-orange-600 text-white px-6 py-3 rounded-lg font-semibold">Record Another</button>
+          </div>
+        );
+      }
+
+      return (
+        <div className="space-y-4">
+          {signingWorker && <SignaturePad name={signingWorker} onSave={(data) => { setSignatures({...signatures, [signingWorker]: data}); setSigningWorker(null); }} onCancel={() => setSigningWorker(null)} />}
+
+          {/* Date Banner */}
+          <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-xl p-4 text-white">
+            <div className="flex items-center gap-2">
+              <span>📅</span>
+              <span className="font-bold text-lg">{todayDate}</span>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl p-4 shadow-sm">
+            <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">👥 Toolbox Talk</h2>
+            <p className="text-gray-500 text-sm mt-1">Daily safety briefing record</p>
+          </div>
+
+          {step === 1 && (
+            <div className="space-y-4">
+              {/* Site Details */}
+              <div className="bg-white rounded-xl p-4 shadow-sm space-y-4">
+                <h3 className="font-semibold text-gray-800">Site Details</h3>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Site Conducted *</label>
+                  <select value={siteConducted} onChange={(e) => setSiteConducted(e.target.value)} className="w-full border border-gray-300 rounded-lg p-3 bg-white">
+                    <option value="">Select Site</option>
+                    {sitesList.map((site) => <option key={site} value={site}>{site}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Builder *</label>
+                  <select value={builder} onChange={(e) => setBuilder(e.target.value)} className="w-full border border-gray-300 rounded-lg p-3 bg-white">
+                    <option value="">Select Builder</option>
+                    {builders.map((b) => <option key={b} value={b}>{b}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">📍 Site Address *</label>
+                  <div className="flex gap-2">
+                    <input type="text" value={address} onChange={(e) => setAddress(e.target.value)}
+                      className="flex-1 border border-gray-300 rounded-lg p-3" placeholder="Enter site address" />
+                    <button onClick={getLocation} disabled={isLocating}
+                      className="bg-blue-600 text-white px-4 rounded-lg disabled:bg-blue-400">
+                      {isLocating ? '...' : '📍'}
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Prepared By *</label>
+                  <select value={preparedBy} onChange={(e) => setPreparedBy(e.target.value)} className="w-full border border-gray-300 rounded-lg p-3 bg-white">
+                    <option value="">Select Preparer</option>
+                    {preparers.map((p) => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* Topics Discussed */}
+              <div className="bg-white rounded-xl p-4 shadow-sm">
+                <h3 className="font-semibold text-gray-800 mb-3">📋 Topics Discussed</h3>
+                <p className="text-sm text-gray-500 mb-3">Select all topics covered in this toolbox talk</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {topics.map((topic) => (
+                    <button key={topic} onClick={() => toggleTopic(topic)}
+                      className={`p-2 rounded-lg text-sm text-left border-2 ${selectedTopics.includes(topic) ? 'bg-purple-100 border-purple-500 text-purple-700' : 'border-gray-200 text-gray-700'}`}>
+                      {selectedTopics.includes(topic) ? '✓ ' : ''}{topic}
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Other Topics</label>
+                  <textarea value={otherTopic} onChange={(e) => setOtherTopic(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg p-3 text-sm" rows={2}
+                    placeholder="Enter any other topics discussed..." />
+                </div>
+              </div>
+
+              {/* Corrective Action Required */}
+              <div className="bg-white rounded-xl p-4 shadow-sm">
+                <h4 className="font-semibold text-gray-800 text-orange-600 mb-3">Corrective Action Required</h4>
+                <textarea value={correctiveAction} onChange={(e) => setCorrectiveAction(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg p-3 text-sm min-h-[80px]"
+                  placeholder="Enter any corrective actions required..." />
+              </div>
+
+              {/* Feedback and Responses */}
+              <div className="bg-white rounded-xl p-4 shadow-sm">
+                <h4 className="font-semibold text-gray-800 text-orange-600 mb-3">Feedback and Responses</h4>
+                <textarea value={feedbackResponses} onChange={(e) => setFeedbackResponses(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg p-3 text-sm min-h-[80px]"
+                  placeholder="Enter feedback and responses from attendees..." />
+              </div>
+
+              <button onClick={() => setStep(2)}
+                disabled={!siteConducted || !builder || !address || !preparedBy || selectedTopics.length === 0}
+                className="w-full bg-orange-600 text-white py-4 rounded-xl font-semibold disabled:bg-gray-300">
+                Next: Attendance & Signatures →
+              </button>
+            </div>
+          )}
+
+          {step === 2 && (
+            <div className="space-y-4">
+              <div className="bg-white rounded-xl p-4 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xl font-bold text-gray-800">Attendance & Signatures</h2>
+                  <button onClick={() => setStep(1)} className="text-gray-500">← Back</button>
+                </div>
+                <p className="text-gray-500 text-sm mt-1">Tap on a signature box to sign</p>
+              </div>
+
+              <div className="bg-purple-50 border border-purple-200 rounded-xl p-3">
+                <p className="text-sm text-purple-800"><strong>Topics:</strong> {selectedTopics.join(', ')}</p>
+                {otherTopic && <p className="text-sm text-purple-800 mt-1"><strong>Other:</strong> {otherTopic}</p>}
+              </div>
+
+              <div className="bg-white rounded-xl shadow-sm divide-y">
+                {teamMembers.map((name) => (
+                  <div key={name} className="p-4 flex items-center justify-between">
+                    <span className="font-medium text-gray-800">{name}</span>
+                    {signatures[name] ? (
+                      <div className="relative">
+                        <div className="border-2 border-green-500 rounded-lg p-2 bg-green-50 h-16 w-32">
+                          <img src={signatures[name]} alt="signature" className="h-full w-full object-contain" />
+                        </div>
+                        <button onClick={() => setSignatures({...signatures, [name]: null})}
+                          className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-sm">✕</button>
+                      </div>
+                    ) : (
+                      <button onClick={() => setSigningWorker(name)}
+                        className="h-16 w-32 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-purple-500">
+                        Tap to sign
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                <p className="text-blue-800 font-medium">{signedCount} of {teamMembers.length} attendees signed</p>
+              </div>
+
+              <div className="flex gap-3">
+                <button onClick={() => setStep(1)} className="flex-1 border border-gray-300 text-gray-700 py-4 rounded-xl font-semibold">← Back</button>
+                <button onClick={handleSubmit} disabled={signedCount === 0} className="flex-1 bg-green-600 text-white py-4 rounded-xl font-semibold disabled:bg-gray-300">
+                  ✓ Complete Toolbox Talk
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // Subcontractor Site Inspection View
+    function SubcontractorInspectionView({ onSubmit, sites = [] }) {
+      const [step, setStep] = useState(1);
+      const [submitted, setSubmitted] = useState(false);
+      const [siteConducted, setSiteConducted] = useState('');
+      const [preparedBy, setPreparedBy] = useState('');
+      const [location, setLocation] = useState('');
+      const [isLocating, setIsLocating] = useState(false);
+      const [completedBy, setCompletedBy] = useState('');
+      const [completedBySignature, setCompletedBySignature] = useState(null);
+      const [signingInspector, setSigningInspector] = useState(false);
+
+      // Inspection items with Yes/No/N/A
+      const [inspectionItems, setInspectionItems] = useState({
+        siteBoxes: null,
+        electricalLeads: null,
+        toolsRetagging: null,
+        exclusionZones: null,
+        permitsCompleted: null,
+        permitsActive: null,
+        penetrationsCovered: null,
+        equipmentInspection: null,
+        workerSafetyConcerns: null,
+        builderRequests: null,
+      });
+
+      const todayDate = new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+      const preparers = ['Jeff Fu', 'Scott Seeho', 'Davide Casolini'];
+      const inspectors = ['Scott Seeho', 'Davide Casolini'];
+      const defaultSites = ['Site 1 - Sydney CBD', 'Site 2 - Parramatta', 'Site 3 - North Sydney', 'Site 4 - Chatswood', 'Site 5 - Liverpool'];
+      const sitesList = sites.length > 0 ? sites : defaultSites;
+
+      const inspectionQuestions = [
+        { id: 'siteBoxes', text: 'Site boxes in good condition and lockable' },
+        { id: 'electricalLeads', text: 'Electrical leads and tools are tagged and tested up to date' },
+        { id: 'toolsRetagging', text: 'Tools or Equipment needed retagging or testing soon' },
+        { id: 'exclusionZones', text: 'Exclusion zones set up around work areas (as required)' },
+        { id: 'permitsCompleted', text: 'Permits are completed (as required)' },
+        { id: 'permitsActive', text: 'Permits Active during inspection' },
+        { id: 'penetrationsCovered', text: 'Penetrations are covered or have barriers around them' },
+        { id: 'equipmentInspection', text: 'Equipment onsite has recent inspection completed' },
+        { id: 'workerSafetyConcerns', text: 'Any worker reports of safety concerns or improvements' },
+        { id: 'builderRequests', text: 'Any request from Builder' },
+      ];
+
+      const getLocation = () => {
+        setIsLocating(true);
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            async (position) => {
+              try {
+                const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${position.coords.latitude}&lon=${position.coords.longitude}`);
+                const data = await response.json();
+                setLocation(data.display_name || `${position.coords.latitude}, ${position.coords.longitude}`);
+              } catch (e) {
+                setLocation(`${position.coords.latitude}, ${position.coords.longitude}`);
+              }
+              setIsLocating(false);
+            },
+            () => { alert('Unable to get location'); setIsLocating(false); },
+            { enableHighAccuracy: true, timeout: 10000 }
+          );
+        }
+      };
+
+      const setInspectionValue = (id, value) => {
+        setInspectionItems({ ...inspectionItems, [id]: value });
+      };
+
+      const allAnswered = Object.values(inspectionItems).every(v => v !== null);
+
+      const handleSubmit = () => {
+        onSubmit({
+          siteConducted, preparedBy, location, completedBy, completedBySignature, inspectionItems,
+          date: new Date().toISOString()
+        });
+        setSubmitted(true);
+      };
+
+      const resetForm = () => {
+        setSiteConducted(''); setPreparedBy(''); setLocation(''); setCompletedBy('');
+        setCompletedBySignature(null); setSigningInspector(false);
+        setInspectionItems({
+          siteBoxes: null, electricalLeads: null, toolsRetagging: null, exclusionZones: null,
+          permitsCompleted: null, permitsActive: null, penetrationsCovered: null,
+          equipmentInspection: null, workerSafetyConcerns: null, builderRequests: null,
+        });
+        setSubmitted(false);
+      };
+
+      if (submitted) {
+        return (
+          <div className="text-center py-12">
+            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 text-4xl">✅</div>
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">Inspection Complete!</h2>
+            <p className="text-gray-600 mb-6">Site inspection has been recorded.</p>
+            <button onClick={resetForm} className="bg-orange-600 text-white px-6 py-3 rounded-lg font-semibold">Start Another Inspection</button>
+          </div>
+        );
+      }
+
+      return (
+        <div className="space-y-4">
+          {signingInspector && <SignaturePad name={completedBy || "Inspector"} onSave={(data) => { setCompletedBySignature(data); setSigningInspector(false); }} onCancel={() => setSigningInspector(false)} />}
+
+          {/* Date Banner */}
+          <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl p-4 text-white">
+            <div className="flex items-center gap-2">
+              <span>📅</span>
+              <span className="font-bold text-lg">{todayDate}</span>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl p-4 shadow-sm">
+            <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">🔍 Subcontractor Site Inspection</h2>
+            <p className="text-gray-500 text-sm mt-1">Complete site safety inspection</p>
+          </div>
+
+          {/* Site Details */}
+          <div className="bg-white rounded-xl p-4 shadow-sm space-y-4">
+            <h3 className="font-semibold text-gray-800">Site Details</h3>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Site Conducted *</label>
+              <select value={siteConducted} onChange={(e) => setSiteConducted(e.target.value)} className="w-full border border-gray-300 rounded-lg p-3 bg-white">
+                <option value="">Select Site</option>
+                {sitesList.map((site) => <option key={site} value={site}>{site}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Prepared By *</label>
+              <select value={preparedBy} onChange={(e) => setPreparedBy(e.target.value)} className="w-full border border-gray-300 rounded-lg p-3 bg-white">
+                <option value="">Select Preparer</option>
+                {preparers.map((p) => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">📍 Location *</label>
+              <div className="flex gap-2">
+                <input type="text" value={location} onChange={(e) => setLocation(e.target.value)}
+                  className="flex-1 border border-gray-300 rounded-lg p-3" placeholder="Enter location" />
+                <button onClick={getLocation} disabled={isLocating}
+                  className="bg-blue-600 text-white px-4 rounded-lg disabled:bg-blue-400">
+                  {isLocating ? '...' : '📍'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Inspection Questions */}
+          <div className="bg-white rounded-xl p-4 shadow-sm">
+            <h3 className="font-semibold text-gray-800 mb-4">📋 Inspection Checklist</h3>
+            <div className="space-y-4">
+              {inspectionQuestions.map((item, idx) => (
+                <div key={item.id} className="border-b border-gray-100 pb-4 last:border-0 last:pb-0">
+                  <p className="text-gray-700 mb-2 text-sm">{idx + 1}. {item.text}</p>
+                  <div className="flex gap-2">
+                    <button onClick={() => setInspectionValue(item.id, 'yes')}
+                      className={`flex-1 py-2 rounded-lg font-medium text-sm border-2 ${inspectionItems[item.id] === 'yes' ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 text-gray-700'}`}>
+                      Yes
+                    </button>
+                    <button onClick={() => setInspectionValue(item.id, 'no')}
+                      className={`flex-1 py-2 rounded-lg font-medium text-sm border-2 ${inspectionItems[item.id] === 'no' ? 'bg-red-500 border-red-500 text-white' : 'border-gray-300 text-gray-700'}`}>
+                      No
+                    </button>
+                    <button onClick={() => setInspectionValue(item.id, 'na')}
+                      className={`flex-1 py-2 rounded-lg font-medium text-sm border-2 ${inspectionItems[item.id] === 'na' ? 'bg-gray-500 border-gray-500 text-white' : 'border-gray-300 text-gray-700'}`}>
+                      N/A
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Inspection Completed By */}
+          <div className="bg-white rounded-xl p-4 shadow-sm space-y-4">
+            <h3 className="font-semibold text-gray-800">✅ Inspection Completed By *</h3>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Name *</label>
+              <select value={completedBy} onChange={(e) => { setCompletedBy(e.target.value); setCompletedBySignature(null); }} className="w-full border border-gray-300 rounded-lg p-3 bg-white">
+                <option value="">Select Inspector</option>
+                {inspectors.map((i) => <option key={i} value={i}>{i}</option>)}
+              </select>
+            </div>
+            {completedBy && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Signature *</label>
+                {completedBySignature ? (
+                  <div className="relative inline-block">
+                    <div className="border-2 border-green-500 rounded-lg p-2 bg-green-50 h-20 w-40">
+                      <img src={completedBySignature} alt="inspector signature" className="h-full w-full object-contain" />
+                    </div>
+                    <button onClick={() => setCompletedBySignature(null)}
+                      className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-sm">✕</button>
+                  </div>
+                ) : (
+                  <button onClick={() => setSigningInspector(true)}
+                    className="h-20 w-40 border-2 border-dashed border-blue-300 rounded-lg text-blue-500 hover:border-blue-500">
+                    Tap to sign
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          <button onClick={handleSubmit}
+            disabled={!siteConducted || !preparedBy || !location || !allAnswered || !completedBy || !completedBySignature}
+            className="w-full bg-green-600 text-white py-4 rounded-xl font-semibold disabled:bg-gray-300">
+            ✓ Complete Inspection
+          </button>
+        </div>
+      );
+    }
+
+    // ITP Form View
+    function ITPFormView({ onSubmit, sites = [] }) {
+      const [page, setPage] = useState(1);
+      const [submitted, setSubmitted] = useState(false);
+      const [signingPerson, setSigningPerson] = useState(null);
+
+      // Page 1 - Title Page
+      const [siteConducted, setSiteConducted] = useState('');
+      const [conductedOn, setConductedOn] = useState(new Date().toISOString().slice(0, 16));
+      const [preparedBy, setPreparedBy] = useState('');
+      const [location, setLocation] = useState('');
+      const [isLocating, setIsLocating] = useState(false);
+
+      // Page 2 - Inspection Items
+      const [preConstructionMeeting, setPreConstructionMeeting] = useState('');
+      const [highRiskWorkshop, setHighRiskWorkshop] = useState(null);
+      const [shopdrawingsApproved, setShopdrawingsApproved] = useState(null);
+      const [allItemsSignedOff, setAllItemsSignedOff] = useState(null);
+
+      // Procurement section
+      const [shopdrawingRevision, setShopdrawingRevision] = useState('');
+      const [orderedGlassFrom, setOrderedGlassFrom] = useState('');
+      const [glassSpecification, setGlassSpecification] = useState('');
+
+      // Installation of Glass section
+      const [glassFreeFromDamage, setGlassFreeFromDamage] = useState(null);
+      const [specificationOfFixings, setSpecificationOfFixings] = useState('');
+      const [setoutCompletedBy, setSetoutCompletedBy] = useState('');
+      const [installationMethod, setInstallationMethod] = useState('');
+      const [glassInstalledCorrectRL, setGlassInstalledCorrectRL] = useState(null);
+      const [glassLockedWedgedGlued, setGlassLockedWedgedGlued] = useState(null);
+      const [removeWedgesCaulk, setRemoveWedgesCaulk] = useState('');
+
+      // Installation of Handrails section
+      const [handrailSpecConfirmed, setHandrailSpecConfirmed] = useState(null);
+      const [spigotsCouplingsTight, setSpigotsCouplingsTight] = useState(null);
+      const [handrailCompliantHeight, setHandrailCompliantHeight] = useState(null);
+      const [threadOnFixings, setThreadOnFixings] = useState(null);
+      const [fullWeldingJunctions, setFullWeldingJunctions] = useState(null);
+
+      // Handover section
+      const [allGlassNoDefects, setAllGlassNoDefects] = useState(null);
+      const [allHandrailNoDefects, setAllHandrailNoDefects] = useState(null);
+      const [balustradeAsPerDesign, setBalustradeAsPerDesign] = useState(null);
+
+      // Page 3 - Sign off
+      const [builderSignoffName, setBuilderSignoffName] = useState('');
+      const [builderSignature, setBuilderSignature] = useState(null);
+      const [futureCorrespondence, setFutureCorrespondence] = useState('');
+
+      const todayDate = new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+      const preparers = ['Jeff Fu', 'Scott Seeho', 'Davide Casolini'];
+      const defaultSites = ['Site 1 - Sydney CBD', 'Site 2 - Parramatta', 'Site 3 - North Sydney'];
+      const sitesList = sites.length > 0 ? sites : defaultSites;
+
+      const getLocation = () => {
+        setIsLocating(true);
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            async (position) => {
+              try {
+                const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${position.coords.latitude}&lon=${position.coords.longitude}`);
+                const data = await response.json();
+                setLocation(data.display_name || `${position.coords.latitude}, ${position.coords.longitude}`);
+              } catch (e) {
+                setLocation(`${position.coords.latitude}, ${position.coords.longitude}`);
+              }
+              setIsLocating(false);
+            },
+            () => { alert('Unable to get location'); setIsLocating(false); },
+            { enableHighAccuracy: true, timeout: 10000 }
+          );
+        }
+      };
+
+      // Yes/No/NA Button Component
+      const YesNoNAButtons = ({ value, onChange, label }) => (
+        <div className="bg-white rounded-xl p-4 shadow-sm">
+          <p className="text-gray-700 mb-3 font-medium">{label}</p>
+          <div className="flex gap-2">
+            <button onClick={() => onChange('yes')}
+              className={`flex-1 py-2 rounded-lg font-medium text-sm border-2 ${value === 'yes' ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 text-gray-700'}`}>
+              Yes
+            </button>
+            <button onClick={() => onChange('no')}
+              className={`flex-1 py-2 rounded-lg font-medium text-sm border-2 ${value === 'no' ? 'bg-red-500 border-red-500 text-white' : 'border-gray-300 text-gray-700'}`}>
+              No
+            </button>
+            <button onClick={() => onChange('na')}
+              className={`flex-1 py-2 rounded-lg font-medium text-sm border-2 ${value === 'na' ? 'bg-gray-500 border-gray-500 text-white' : 'border-gray-300 text-gray-700'}`}>
+              N/A
+            </button>
+          </div>
+        </div>
+      );
+
+      // Text Input Box Component
+      const TextInputBox = ({ value, onChange, label, placeholder }) => (
+        <div className="bg-white rounded-xl p-4 shadow-sm">
+          <p className="text-gray-700 mb-2 font-medium">{label}</p>
+          <input type="text" value={value} onChange={(e) => onChange(e.target.value)}
+            className="w-full border border-gray-300 rounded-lg p-3 text-sm" placeholder={placeholder || "Tap to edit"} />
+        </div>
+      );
+
+      // Section Header Component
+      const SectionHeader = ({ title, progress }) => (
+        <div className="bg-indigo-400 rounded-xl p-3 flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <span className="text-white">▼</span>
+            <span className="text-white font-medium">{title}</span>
+          </div>
+          {progress && <span className="text-white text-sm">{progress}</span>}
+        </div>
+      );
+
+      const handleSubmit = () => {
+        onSubmit({
+          siteConducted, conductedOn, preparedBy, location,
+          preConstructionMeeting, highRiskWorkshop, shopdrawingsApproved, allItemsSignedOff,
+          shopdrawingRevision, orderedGlassFrom, glassSpecification,
+          glassFreeFromDamage, specificationOfFixings, setoutCompletedBy, installationMethod,
+          glassInstalledCorrectRL, glassLockedWedgedGlued, removeWedgesCaulk,
+          handrailSpecConfirmed, spigotsCouplingsTight, handrailCompliantHeight, threadOnFixings, fullWeldingJunctions,
+          allGlassNoDefects, allHandrailNoDefects, balustradeAsPerDesign,
+          builderSignoffName, builderSignature, futureCorrespondence,
+          date: new Date().toISOString()
+        });
+        setSubmitted(true);
+      };
+
+      const resetForm = () => {
+        setPage(1); setSubmitted(false);
+        setSiteConducted(''); setConductedOn(new Date().toISOString().slice(0, 16)); setPreparedBy(''); setLocation('');
+        setPreConstructionMeeting(''); setHighRiskWorkshop(null); setShopdrawingsApproved(null); setAllItemsSignedOff(null);
+        setShopdrawingRevision(''); setOrderedGlassFrom(''); setGlassSpecification('');
+        setGlassFreeFromDamage(null); setSpecificationOfFixings(''); setSetoutCompletedBy(''); setInstallationMethod('');
+        setGlassInstalledCorrectRL(null); setGlassLockedWedgedGlued(null); setRemoveWedgesCaulk('');
+        setHandrailSpecConfirmed(null); setSpigotsCouplingsTight(null); setHandrailCompliantHeight(null);
+        setThreadOnFixings(null); setFullWeldingJunctions(null);
+        setAllGlassNoDefects(null); setAllHandrailNoDefects(null); setBalustradeAsPerDesign(null);
+        setBuilderSignoffName(''); setBuilderSignature(null); setFutureCorrespondence('');
+      };
+
+      if (submitted) {
+        return (
+          <div className="text-center py-12">
+            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 text-4xl">✅</div>
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">ITP Form Complete!</h2>
+            <p className="text-gray-600 mb-6">Inspection Test Plan has been recorded.</p>
+            <button onClick={resetForm} className="bg-orange-600 text-white px-6 py-3 rounded-lg font-semibold">Start New ITP</button>
+          </div>
+        );
+      }
+
+      return (
+        <div className="space-y-4">
+          {signingPerson && <SignaturePad name={signingPerson} onSave={(data) => { setBuilderSignature(data); setSigningPerson(null); }} onCancel={() => setSigningPerson(null)} />}
+
+          {/* Header */}
+          <div className="bg-white rounded-xl p-4 shadow-sm">
+            <div className="flex justify-between items-center">
+              <div>
+                <h2 className="text-xl font-bold text-gray-800">📝 ITP Form</h2>
+                <p className="text-gray-500 text-sm">Page {page}/3</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Page 1 - Title Page */}
+          {page === 1 && (
+            <div className="space-y-4">
+              <div className="bg-gradient-to-r from-indigo-500 to-indigo-600 rounded-xl p-4 text-white">
+                <p className="font-bold text-lg">Title Page</p>
+                <p className="text-indigo-200 text-sm">Page 1/3</p>
+              </div>
+
+              <div className="bg-white rounded-xl p-4 shadow-sm space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">* Site Conducted</label>
+                  <select value={siteConducted} onChange={(e) => setSiteConducted(e.target.value)} className="w-full border border-gray-300 rounded-lg p-3 bg-indigo-100 text-indigo-800 font-medium">
+                    <option value="">Select Site</option>
+                    {sitesList.map((site) => <option key={site} value={site}>{site}</option>)}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Conducted on</label>
+                  <input type="datetime-local" value={conductedOn} onChange={(e) => setConductedOn(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg p-3 bg-gray-100" />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Prepared by</label>
+                  <select value={preparedBy} onChange={(e) => setPreparedBy(e.target.value)} className="w-full border border-gray-300 rounded-lg p-3 bg-white">
+                    <option value="">Select Preparer</option>
+                    {preparers.map((p) => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Location</label>
+                  <div className="flex gap-2">
+                    <input type="text" value={location} onChange={(e) => setLocation(e.target.value)}
+                      className="flex-1 border border-gray-300 rounded-lg p-3" placeholder="Enter location" />
+                    <button onClick={getLocation} disabled={isLocating}
+                      className="bg-indigo-500 text-white px-4 rounded-lg disabled:bg-indigo-300">
+                      {isLocating ? '...' : '📍'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end">
+                <button onClick={() => setPage(2)} disabled={!siteConducted || !preparedBy}
+                  className="bg-indigo-500 text-white px-6 py-3 rounded-lg font-medium disabled:bg-gray-300">
+                  Next → Page 2/3
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Page 2 - ITP Form */}
+          {page === 2 && (
+            <div className="space-y-4">
+              <div className="bg-gradient-to-r from-indigo-500 to-indigo-600 rounded-xl p-4 text-white">
+                <p className="font-bold text-lg">ITP Form</p>
+                <p className="text-indigo-200 text-sm">Page 2/3</p>
+              </div>
+
+              <TextInputBox label="* Pre-Construction Meeting completed with Builder : NAME" value={preConstructionMeeting} onChange={setPreConstructionMeeting} placeholder="Tap to edit" />
+
+              <YesNoNAButtons label="High Risk Workshop Completed: (If Applicable)" value={highRiskWorkshop} onChange={setHighRiskWorkshop} />
+
+              <YesNoNAButtons label="Shopdrawings Submitted to Builder and approved by Engineer" value={shopdrawingsApproved} onChange={setShopdrawingsApproved} />
+
+              <YesNoNAButtons label="All Items Above completed and Signed off" value={allItemsSignedOff} onChange={setAllItemsSignedOff} />
+
+              {/* Procurement Section */}
+              <SectionHeader title="Procurement" />
+
+              <TextInputBox label="Shopdrawing Revision for Glass Order" value={shopdrawingRevision} onChange={setShopdrawingRevision} />
+              <TextInputBox label="Ordered Glass from (Company Name)" value={orderedGlassFrom} onChange={setOrderedGlassFrom} />
+              <TextInputBox label="Glass Specification" value={glassSpecification} onChange={setGlassSpecification} />
+
+              {/* Installation of Glass Section */}
+              <SectionHeader title="Installation of Glass" progress="0/1 (0%)" />
+
+              <YesNoNAButtons label="Glass free from damages and defects on edges" value={glassFreeFromDamage} onChange={setGlassFreeFromDamage} />
+              <TextInputBox label="Specification of Fixings - Grout / Hilti HY270" value={specificationOfFixings} onChange={setSpecificationOfFixings} />
+              <TextInputBox label="Setout completed by - Surveyor or J&M Artsteel - Name/Company" value={setoutCompletedBy} onChange={setSetoutCompletedBy} />
+              <TextInputBox label="Installation method - Plant Required" value={installationMethod} onChange={setInstallationMethod} />
+              <YesNoNAButtons label="Glass Installed with correct RL from builder and 1m from FFL Minimum" value={glassInstalledCorrectRL} onChange={setGlassInstalledCorrectRL} />
+              <YesNoNAButtons label="All Glass Locked off, wedged and Glued for 24 hours minimum" value={glassLockedWedgedGlued} onChange={setGlassLockedWedgedGlued} />
+              <TextInputBox label="Remove Wedges and Caulk gap if required" value={removeWedgesCaulk} onChange={setRemoveWedgesCaulk} />
+
+              {/* Installation of Handrails Section */}
+              <SectionHeader title="Installation of Handrails" progress="0/2 (0%)" />
+
+              <YesNoNAButtons label="Handrail Specification Confirmed and Shopdrawing Approved" value={handrailSpecConfirmed} onChange={setHandrailSpecConfirmed} />
+              <YesNoNAButtons label="Install all spigots and threaded couplings hand tight for alignment" value={spigotsCouplingsTight} onChange={setSpigotsCouplingsTight} />
+              <YesNoNAButtons label="Installation of handrail to compliant height as per shopdrawing and Architectural details" value={handrailCompliantHeight} onChange={setHandrailCompliantHeight} />
+              <YesNoNAButtons label="Thread on all fixings / brackets, tack all tube together" value={threadOnFixings} onChange={setThreadOnFixings} />
+              <YesNoNAButtons label="Full welding of all junctions of spigots, handrail joints and all coupling pieces tensioned" value={fullWeldingJunctions} onChange={setFullWeldingJunctions} />
+
+              {/* Handover and Finalisation Section */}
+              <SectionHeader title="Handover and Finalisation of install" progress="0/1 (0%)" />
+
+              <YesNoNAButtons label="All glass installed to satisfactory finish with no defects or damages" value={allGlassNoDefects} onChange={setAllGlassNoDefects} />
+              <YesNoNAButtons label="All Handrail installed to satisfactory finish with no defects or damages - All joints welded and polished" value={allHandrailNoDefects} onChange={setAllHandrailNoDefects} />
+              <YesNoNAButtons label="Balustrade system is installed as per design intent with correct RL heights" value={balustradeAsPerDesign} onChange={setBalustradeAsPerDesign} />
+
+              <div className="flex justify-between">
+                <button onClick={() => setPage(1)} className="border border-gray-300 text-gray-700 px-6 py-3 rounded-lg font-medium">
+                  ← Back Page 1/3
+                </button>
+                <button onClick={() => setPage(3)} className="bg-indigo-500 text-white px-6 py-3 rounded-lg font-medium">
+                  Next → Page 3/3
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Page 3 - Sign off Page */}
+          {page === 3 && (
+            <div className="space-y-4">
+              <div className="bg-gradient-to-r from-indigo-500 to-indigo-600 rounded-xl p-4 text-white">
+                <p className="font-bold text-lg">Sign off Page</p>
+                <p className="text-indigo-200 text-sm">Page 3/3</p>
+              </div>
+
+              {/* Builder Signoff */}
+              <div className="bg-white rounded-xl p-4 shadow-sm space-y-4">
+                <p className="text-gray-700 font-medium">Builder Signoff - Name / Signature</p>
+                <input type="text" value={builderSignoffName} onChange={(e) => setBuilderSignoffName(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg p-3" placeholder="Full name" />
+                {builderSignoffName && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Signature</label>
+                    {builderSignature ? (
+                      <div className="relative inline-block">
+                        <div className="border-2 border-green-500 rounded-lg p-2 bg-green-50 h-20 w-40">
+                          <img src={builderSignature} alt="builder signature" className="h-full w-full object-contain" />
+                        </div>
+                        <button onClick={() => setBuilderSignature(null)}
+                          className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-sm">✕</button>
+                      </div>
+                    ) : (
+                      <button onClick={() => setSigningPerson(builderSignoffName)}
+                        className="h-20 w-40 border-2 border-dashed border-indigo-300 rounded-lg text-indigo-500 hover:border-indigo-500 flex items-center justify-center">
+                        ✍️ Tap to sign
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Comments and Notes Section */}
+              <SectionHeader title="Comments and Notes" />
+
+              <div className="bg-white rounded-xl p-4 shadow-sm">
+                <p className="text-gray-700 mb-2 font-medium">Items for Future correspondence or arisen issues during constructions</p>
+                <textarea value={futureCorrespondence} onChange={(e) => setFutureCorrespondence(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg p-3 text-sm min-h-[100px]" placeholder="Tap to edit" />
+              </div>
+
+              <div className="flex justify-between">
+                <button onClick={() => setPage(2)} className="border border-gray-300 text-gray-700 px-6 py-3 rounded-lg font-medium">
+                  ← Back Page 2/3
+                </button>
+                <button onClick={handleSubmit}
+                  className="bg-indigo-500 text-white px-6 py-3 rounded-lg font-medium">
+                  Complete
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // Steel Inspection Test Plan View
+    function SteelITPView({ onSubmit, sites = [] }) {
+      const [step, setStep] = useState(1);
+      const [submitted, setSubmitted] = useState(false);
+      const [managerSignature, setManagerSignature] = useState(null);
+      const [builderSignature, setBuilderSignature] = useState(null);
+      const [signingManager, setSigningManager] = useState(false);
+      const [signingBuilder, setSigningBuilder] = useState(false);
+
+      // Form state
+      const [siteConducted, setSiteConducted] = useState('');
+      const [preparedBy, setPreparedBy] = useState('');
+      const [location, setLocation] = useState('');
+      const [jobStructure, setJobStructure] = useState('');
+
+      // Items section
+      const [preConstMeeting, setPreConstMeeting] = useState('');
+      const [highRiskWorkshop, setHighRiskWorkshop] = useState('');
+      const [shopdrawingsApproved, setShopdrawingsApproved] = useState('');
+      const [allItemsSignedOff, setAllItemsSignedOff] = useState('');
+
+      // Fabrication section
+      const [materialsOrdered, setMaterialsOrdered] = useState('');
+      const [materialsCorrect, setMaterialsCorrect] = useState('');
+      const [visualCheck, setVisualCheck] = useState('');
+      const [shopdrawingsCurrent, setShopdrawingsCurrent] = useState('');
+      const [setoutCorrect, setSetoutCorrect] = useState('');
+      const [tackWeld, setTackWeld] = useState('');
+      const [fullyWelded, setFullyWelded] = useState('');
+      const [packLoad, setPackLoad] = useState('');
+
+      // Specialised finishes
+      const [finishConfirmed, setFinishConfirmed] = useState('');
+      const [deliveryBooked, setDeliveryBooked] = useState('');
+      const [sentToPainter, setSentToPainter] = useState('');
+      const [deliveryVehicle, setDeliveryVehicle] = useState('');
+      const [afterDeliveryFinish, setAfterDeliveryFinish] = useState('');
+
+      // Site setout
+      const [drawingsConfirmed, setDrawingsConfirmed] = useState('');
+      const [surveyorMeasurements, setSurveyorMeasurements] = useState('');
+      const [surveyorName, setSurveyorName] = useState('');
+      const [clashesDetected, setClashesDetected] = useState('');
+
+      // Site installation
+      const [chemicalAnchors, setChemicalAnchors] = useState('');
+      const [anchorsInstalled, setAnchorsInstalled] = useState('');
+      const [levelPlumb, setLevelPlumb] = useState('');
+      const [boltsTorqued, setBoltsTorqued] = useState('');
+      const [weldingCompleted, setWeldingCompleted] = useState('');
+
+      // Grouting
+      const [groutingCompleted, setGroutingCompleted] = useState('');
+
+      // Final inspection
+      const [itemsChecked, setItemsChecked] = useState('');
+      const [finishAcceptable, setFinishAcceptable] = useState('');
+      const [fixingsTorqued, setFixingsTorqued] = useState('');
+
+      // NDT
+      const [weldTestingBooked, setWeldTestingBooked] = useState('');
+      const [testingIssues, setTestingIssues] = useState('');
+      const [weldsPassed, setWeldsPassed] = useState('');
+
+      // Handover
+      const [colourConfirmed, setColourConfirmed] = useState('');
+      const [defectsChecked, setDefectsChecked] = useState('');
+      const [handoverAccepted, setHandoverAccepted] = useState('');
+
+      // Manager info
+      const [managerName, setManagerName] = useState('');
+      const [builderName, setBuilderName] = useState('');
+
+      const todayDate = new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+      const defaultSites = ['Site 1 - Sydney CBD', 'Site 2 - Parramatta', 'Site 3 - North Sydney'];
+      const sitesList = sites.length > 0 ? sites : defaultSites;
+
+      const SelectField = ({ label, value, onChange }) => (
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-gray-700">{label}</label>
+          <div className="flex gap-2">
+            {['Yes', 'No', 'N/A'].map(opt => (
+              <button key={opt} onClick={() => onChange(opt)} className={`flex-1 p-2 rounded-lg border text-sm font-medium ${value === opt ? 'bg-orange-500 text-white border-orange-500' : 'bg-white border-gray-300'}`}>
+                {opt}
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+
+      const handleSubmit = () => {
+        const data = {
+          siteConducted, preparedBy, location, jobStructure,
+          preConstMeeting, highRiskWorkshop, shopdrawingsApproved, allItemsSignedOff,
+          materialsOrdered, materialsCorrect, visualCheck, shopdrawingsCurrent,
+          setoutCorrect, tackWeld, fullyWelded, packLoad,
+          finishConfirmed, deliveryBooked, sentToPainter, deliveryVehicle, afterDeliveryFinish,
+          drawingsConfirmed, surveyorMeasurements, surveyorName, clashesDetected,
+          chemicalAnchors, anchorsInstalled, levelPlumb, boltsTorqued, weldingCompleted,
+          groutingCompleted, itemsChecked, finishAcceptable, fixingsTorqued,
+          weldTestingBooked, testingIssues, weldsPassed,
+          colourConfirmed, defectsChecked, handoverAccepted,
+          managerName, managerSignature, builderName, builderSignature,
+          submittedAt: new Date().toISOString()
+        };
+        onSubmit(data);
+        setSubmitted(true);
+      };
+
+      if (submitted) {
+        return (
+          <div className="space-y-4">
+            <div className="bg-green-500 text-white p-6 rounded-xl text-center">
+              <div className="text-6xl mb-4">✅</div>
+              <h2 className="text-2xl font-bold">Steel ITP Submitted!</h2>
+            </div>
+            <button onClick={() => { setSubmitted(false); setStep(1); }} className="w-full bg-orange-600 text-white p-4 rounded-xl font-semibold">
+              Start New Steel ITP
+            </button>
+          </div>
+        );
+      }
+
+      return (
+        <div className="space-y-4">
+          {signingManager && <SignaturePad name={managerName} onSave={(sig) => { setManagerSignature(sig); setSigningManager(false); }} onCancel={() => setSigningManager(false)} />}
+          {signingBuilder && <SignaturePad name={builderName} onSave={(sig) => { setBuilderSignature(sig); setSigningBuilder(false); }} onCancel={() => setSigningBuilder(false)} />}
+
+          <div className="bg-gradient-to-r from-slate-600 to-slate-700 text-white p-4 rounded-xl">
+            <h2 className="text-xl font-bold">🔩 Steel Inspection Test Plan</h2>
+            <p className="text-sm opacity-90 mt-1">J&M ArtSteel</p>
+            <p className="text-xs mt-2">{todayDate}</p>
+          </div>
+
+          {/* Progress */}
+          <div className="flex gap-1">
+            {[1,2,3,4,5,6,7,8].map(s => (
+              <div key={s} className={`flex-1 h-2 rounded ${step >= s ? 'bg-orange-500' : 'bg-gray-200'}`}></div>
+            ))}
+          </div>
+          <p className="text-xs text-gray-500 text-center">Step {step} of 8</p>
+
+          {/* Step 1: Basic Info */}
+          {step === 1 && (
+            <div className="bg-white rounded-xl p-4 space-y-4">
+              <h3 className="font-bold text-gray-800 border-b pb-2">Basic Information</h3>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Site Conducted *</label>
+                <select value={siteConducted} onChange={e => setSiteConducted(e.target.value)} className="w-full p-3 border rounded-lg">
+                  <option value="">Select site</option>
+                  {sitesList.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Prepared By</label>
+                <select value={preparedBy} onChange={e => setPreparedBy(e.target.value)} className="w-full p-3 border rounded-lg bg-white">
+                  <option value="">Select person</option>
+                  <option value="Jeff Fu">Jeff Fu</option>
+                  <option value="Scott Seeho">Scott Seeho</option>
+                  <option value="Davide Casolini">Davide Casolini</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
+                <input type="text" value={location} onChange={e => setLocation(e.target.value)} placeholder="Enter location" className="w-full p-3 border rounded-lg" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Job / Structure ITP carried out on</label>
+                <input type="text" value={jobStructure} onChange={e => setJobStructure(e.target.value)} placeholder="Enter job details" className="w-full p-3 border rounded-lg" />
+              </div>
+            </div>
+          )}
+
+          {/* Step 2: Pre-Construction Items */}
+          {step === 2 && (
+            <div className="bg-white rounded-xl p-4 space-y-4">
+              <h3 className="font-bold text-gray-800 border-b pb-2">Items</h3>
+              <SelectField label="Pre-Construction Meeting Completed with Builder" value={preConstMeeting} onChange={setPreConstMeeting} />
+              <SelectField label="Structural Steel High Risk Workshop Completed" value={highRiskWorkshop} onChange={setHighRiskWorkshop} />
+              <SelectField label="Shopdrawings Submitted and Approved by Engineer" value={shopdrawingsApproved} onChange={setShopdrawingsApproved} />
+              <SelectField label="All Above items completed and Signed off" value={allItemsSignedOff} onChange={setAllItemsSignedOff} />
+            </div>
+          )}
+
+          {/* Step 3: Fabrication */}
+          {step === 3 && (
+            <div className="bg-white rounded-xl p-4 space-y-4">
+              <h3 className="font-bold text-gray-800 border-b pb-2">Fabrication</h3>
+              <SelectField label="Materials Ordered as Per shopdrawings" value={materialsOrdered} onChange={setMaterialsOrdered} />
+              <SelectField label="Materials on delivery are correct" value={materialsCorrect} onChange={setMaterialsCorrect} />
+              <SelectField label="Visual Check Materials in good condition" value={visualCheck} onChange={setVisualCheck} />
+              <SelectField label="Shopdrawings are current revision" value={shopdrawingsCurrent} onChange={setShopdrawingsCurrent} />
+              <SelectField label="Setout cleats, plates, members correct" value={setoutCorrect} onChange={setSetoutCorrect} />
+              <SelectField label="Tack weld, check straight and plumb" value={tackWeld} onChange={setTackWeld} />
+              <SelectField label="Fully weld as per engineer specifications" value={fullyWelded} onChange={setFullyWelded} />
+              <SelectField label="Pack and load materials for transport" value={packLoad} onChange={setPackLoad} />
+            </div>
+          )}
+
+          {/* Step 4: Specialised Finishes */}
+          {step === 4 && (
+            <div className="bg-white rounded-xl p-4 space-y-4">
+              <h3 className="font-bold text-gray-800 border-b pb-2">Specialised Finishes</h3>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Confirm finish of steel and approved</label>
+                <input type="text" value={finishConfirmed} onChange={e => setFinishConfirmed(e.target.value)} placeholder="Enter finish type" className="w-full p-3 border rounded-lg" />
+              </div>
+              <SelectField label="Book delivery to site/workshop" value={deliveryBooked} onChange={setDeliveryBooked} />
+              <SelectField label="Send material to painter/abrasive blaster" value={sentToPainter} onChange={setSentToPainter} />
+              <SelectField label="Correct Delivery vehicle and sizes confirmed" value={deliveryVehicle} onChange={setDeliveryVehicle} />
+              <SelectField label="After delivery finish is acceptable" value={afterDeliveryFinish} onChange={setAfterDeliveryFinish} />
+            </div>
+          )}
+
+          {/* Step 5: Site Setout & Installation */}
+          {step === 5 && (
+            <div className="bg-white rounded-xl p-4 space-y-4">
+              <h3 className="font-bold text-gray-800 border-b pb-2">Site Setout & Installation</h3>
+              <SelectField label="Confirm correct drawings with builder" value={drawingsConfirmed} onChange={setDrawingsConfirmed} />
+              <SelectField label="Surveyor has correct measurements" value={surveyorMeasurements} onChange={setSurveyorMeasurements} />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Surveyor Name</label>
+                <input type="text" value={surveyorName} onChange={e => setSurveyorName(e.target.value)} placeholder="Enter surveyor name" className="w-full p-3 border rounded-lg" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Clashes detected / issues</label>
+                <textarea value={clashesDetected} onChange={e => setClashesDetected(e.target.value)} placeholder="Describe any issues" className="w-full p-3 border rounded-lg" rows={3}></textarea>
+              </div>
+              <SelectField label="Chemical anchors correct as per specs" value={chemicalAnchors} onChange={setChemicalAnchors} />
+              <SelectField label="Anchors installed correctly" value={anchorsInstalled} onChange={setAnchorsInstalled} />
+              <SelectField label="Steel checked for level and plumbness" value={levelPlumb} onChange={setLevelPlumb} />
+              <SelectField label="Bolts and nuts tightened/torqued" value={boltsTorqued} onChange={setBoltsTorqued} />
+              <SelectField label="Welding completed to engineering specs" value={weldingCompleted} onChange={setWeldingCompleted} />
+            </div>
+          )}
+
+          {/* Step 6: Grouting & Final Inspection */}
+          {step === 6 && (
+            <div className="bg-white rounded-xl p-4 space-y-4">
+              <h3 className="font-bold text-gray-800 border-b pb-2">Grouting & Final Inspection</h3>
+              <SelectField label="Grouting completed to all steel members" value={groutingCompleted} onChange={setGroutingCompleted} />
+              <SelectField label="All installed items checked as per drawings" value={itemsChecked} onChange={setItemsChecked} />
+              <SelectField label="Finish in good condition (touch ups done)" value={finishAcceptable} onChange={setFinishAcceptable} />
+              <SelectField label="All fixings torqued at correct lengths" value={fixingsTorqued} onChange={setFixingsTorqued} />
+            </div>
+          )}
+
+          {/* Step 7: NDT & Handover */}
+          {step === 7 && (
+            <div className="bg-white rounded-xl p-4 space-y-4">
+              <h3 className="font-bold text-gray-800 border-b pb-2">NDT & Handover</h3>
+              <SelectField label="Weld Testing booked and confirmed" value={weldTestingBooked} onChange={setWeldTestingBooked} />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Any issues with Testing?</label>
+                <textarea value={testingIssues} onChange={e => setTestingIssues(e.target.value)} placeholder="Describe issues" className="w-full p-3 border rounded-lg" rows={2}></textarea>
+              </div>
+              <SelectField label="All welds tested have passed compliance" value={weldsPassed} onChange={setWeldsPassed} />
+              <SelectField label="Colour/finish confirmed by builder" value={colourConfirmed} onChange={setColourConfirmed} />
+              <SelectField label="Builder checked for defects" value={defectsChecked} onChange={setDefectsChecked} />
+              <SelectField label="Builder accepted handover (defect free)" value={handoverAccepted} onChange={setHandoverAccepted} />
+            </div>
+          )}
+
+          {/* Step 8: Sign-offs */}
+          {step === 8 && (
+            <div className="bg-white rounded-xl p-4 space-y-4">
+              <h3 className="font-bold text-gray-800 border-b pb-2">Sign-offs</h3>
+
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h4 className="font-semibold text-gray-700 mb-3">Manager Completing ITP</h4>
+                <input type="text" value={managerName} onChange={e => setManagerName(e.target.value)} placeholder="Manager name" className="w-full p-3 border rounded-lg mb-3" />
+                {managerSignature ? (
+                  <div className="border rounded-lg p-2 bg-white">
+                    <p className="text-xs text-gray-500 mb-1">Signature:</p>
+                    <img src={managerSignature} alt="Manager signature" className="h-16" />
+                  </div>
+                ) : (
+                  <button onClick={() => setSigningManager(true)} disabled={!managerName} className={`w-full p-3 rounded-lg font-semibold ${managerName ? 'bg-orange-500 text-white' : 'bg-gray-300 text-gray-500'}`}>
+                    ✍️ Sign
+                  </button>
+                )}
+              </div>
+
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h4 className="font-semibold text-gray-700 mb-3">Builder Signoff</h4>
+                <input type="text" value={builderName} onChange={e => setBuilderName(e.target.value)} placeholder="Builder name" className="w-full p-3 border rounded-lg mb-3" />
+                {builderSignature ? (
+                  <div className="border rounded-lg p-2 bg-white">
+                    <p className="text-xs text-gray-500 mb-1">Signature:</p>
+                    <img src={builderSignature} alt="Builder signature" className="h-16" />
+                  </div>
+                ) : (
+                  <button onClick={() => setSigningBuilder(true)} disabled={!builderName} className={`w-full p-3 rounded-lg font-semibold ${builderName ? 'bg-blue-500 text-white' : 'bg-gray-300 text-gray-500'}`}>
+                    ✍️ Sign
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Navigation */}
+          <div className="flex gap-3">
+            {step > 1 && (
+              <button onClick={() => setStep(step - 1)} className="flex-1 bg-gray-200 p-4 rounded-xl font-semibold">
+                ← Previous
+              </button>
+            )}
+            {step < 8 ? (
+              <button onClick={() => setStep(step + 1)} className="flex-1 bg-orange-600 text-white p-4 rounded-xl font-semibold">
+                Next →
+              </button>
+            ) : (
+              <button onClick={handleSubmit} disabled={!managerSignature} className={`flex-1 p-4 rounded-xl font-semibold ${managerSignature ? 'bg-green-600 text-white' : 'bg-gray-300 text-gray-500'}`}>
+                Submit Steel ITP ✓
+              </button>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // Emergency View
+    function EmergencyView() {
+      const contacts = [
+        { name: 'Emergency Services', number: '000', desc: 'Police, Fire, Ambulance' },
+        { name: 'SafeWork NSW', number: '13 10 50', desc: 'Report serious incidents' },
+        { name: 'Poisons Information', number: '13 11 26', desc: '24/7 advice' },
+      ];
+
+      return (
+        <div className="space-y-4">
+          <div className="bg-red-600 rounded-xl p-4 text-white">
+            <h2 className="text-xl font-bold flex items-center gap-2">📞 Emergency Information</h2>
+            <p className="text-red-100 text-sm mt-1">Keep this information accessible</p>
+          </div>
+          <div className="bg-white rounded-xl shadow-sm divide-y">
+            {contacts.map((contact, idx) => (
+              <a key={idx} href={`tel:${contact.number.replace(/\s/g, '')}`} className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="font-semibold text-gray-800">{contact.name}</p>
+                  <p className="text-sm text-gray-500">{contact.desc}</p>
+                </div>
+                <span className="font-bold text-lg text-red-600">{contact.number}</span>
+              </a>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    // Settings View
+    function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSignatures, isAdmin = false }) {
+      const [newSite, setNewSite] = useState('');
+      const [showAddSite, setShowAddSite] = useState(false);
+      const [driveConnected, setDriveConnected] = useState(GoogleDriveSync.isConnected());
+      const [backupStatus, setBackupStatus] = useState('');
+      const [isBackingUp, setIsBackingUp] = useState(false);
+      const [showSignaturePad, setShowSignaturePad] = useState(null); // Name of person to sign
+      const [newMemberName, setNewMemberName] = useState('');
+      const [showAddMember, setShowAddMember] = useState(false);
+      const [devices, setDevices] = useState({ pending: [], approved: [], denied: [] });
+      const [pendingCount, setPendingCount] = useState(0);
+      const defaultSites = ['Site 1 - Sydney CBD', 'Site 2 - Parramatta', 'Site 3 - North Sydney'];
+      const currentSites = sites.length > 0 ? sites : defaultSites;
+
+      // Listen to device changes if admin
+      useEffect(() => {
+        if (isAdmin && isFirebaseConfigured) {
+          const unsubscribe = DeviceAuthManager.listenToDevices((deviceData) => {
+            setDevices(deviceData);
+            setPendingCount(deviceData.pending.length);
+          });
+          return () => unsubscribe();
+        }
+      }, [isAdmin]);
+
+      const handleApproveDevice = async (deviceId) => {
+        const success = await DeviceAuthManager.approveDevice(deviceId);
+        if (!success) {
+          alert('Failed to approve device');
+        }
+      };
+
+      const handleDenyDevice = async (deviceId) => {
+        const success = await DeviceAuthManager.denyDevice(deviceId);
+        if (!success) {
+          alert('Failed to deny device');
+        }
+      };
+
+      const handleRemoveDevice = async (deviceId) => {
+        if (confirm('Are you sure you want to remove this device?')) {
+          const success = await DeviceAuthManager.removeDevice(deviceId);
+          if (!success) {
+            alert('Failed to remove device');
+          }
+        }
+      };
+
+      // Default team members
+      const defaultMembers = ['Jeff Fu', 'Scott Seeho', 'Davide Casolini', 'Zonggang Jiang', 'Leon Yu', 'Wang Jia', 'Gen Bao'];
+      // Get all members (default + any custom added via signatures)
+      const allMembers = [...new Set([...defaultMembers, ...Object.keys(signatures).filter(name => !defaultMembers.includes(name))])];
+
+      const saveSignature = (name, signatureData) => {
+        const newSignatures = { ...signatures, [name]: signatureData };
+        onUpdateSignatures(newSignatures);
+        setShowSignaturePad(null);
+      };
+
+      const deleteSignature = (name) => {
+        const newSignatures = { ...signatures };
+        delete newSignatures[name];
+        onUpdateSignatures(newSignatures);
+      };
+
+      const addNewMember = () => {
+        if (newMemberName.trim() && !allMembers.includes(newMemberName.trim())) {
+          // Add member with empty signature (will show "Add Signature" button)
+          const newSignatures = { ...signatures, [newMemberName.trim()]: null };
+          onUpdateSignatures(newSignatures);
+          setNewMemberName('');
+          setShowAddMember(false);
+        }
+      };
+
+      const deleteMember = (name) => {
+        // Only allow deleting custom members (not in defaultMembers)
+        if (!defaultMembers.includes(name)) {
+          const newSignatures = { ...signatures };
+          delete newSignatures[name];
+          onUpdateSignatures(newSignatures);
+        }
+      };
+
+      const addSite = () => {
+        if (newSite.trim()) {
+          onUpdateSites([...currentSites, newSite.trim()]);
+          setNewSite('');
+          setShowAddSite(false);
+        }
+      };
+
+      const connectDrive = () => {
+        GoogleDriveSync.authorize();
+        // Check connection status after a delay
+        setTimeout(() => setDriveConnected(GoogleDriveSync.isConnected()), 3000);
+      };
+
+      const disconnectDrive = () => {
+        GoogleDriveSync.disconnect();
+        setDriveConnected(false);
+      };
+
+      const backupNow = async () => {
+        setIsBackingUp(true);
+        setBackupStatus('Backing up...');
+        try {
+          const formsJson = localStorage.getItem('jmart-safety-forms');
+          if (!formsJson) {
+            setBackupStatus('No forms to backup');
+            setIsBackingUp(false);
+            return;
+          }
+          const forms = JSON.parse(formsJson);
+          const result = await GoogleDriveSync.uploadDailyForms(forms);
+          if (result.success) {
+            setBackupStatus(`✅ Backed up ${result.uploaded} forms to Google Drive!`);
+          } else {
+            setBackupStatus('❌ Backup failed: ' + result.error);
+          }
+        } catch (error) {
+          setBackupStatus('❌ Backup error: ' + error.message);
+        }
+        setIsBackingUp(false);
+      };
+
+      const lastBackup = localStorage.getItem('last-drive-backup-date');
+
+      return (
+        <div className="space-y-4">
+          <div className="bg-white rounded-xl p-4 shadow-sm">
+            <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">⚙️ Settings</h2>
+          </div>
+
+          {/* Device Management Section - Admin Only */}
+          {isAdmin && isFirebaseConfigured && (
+            <div className="bg-white rounded-xl shadow-sm p-4">
+              <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                <span className="text-2xl">📱</span> Device Management
+                {pendingCount > 0 && (
+                  <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">{pendingCount} pending</span>
+                )}
+              </h3>
+
+              {/* Pending Devices */}
+              {devices.pending.length > 0 && (
+                <div className="mb-4">
+                  <p className="text-sm font-medium text-yellow-700 mb-2">⏳ Pending Approval</p>
+                  <div className="space-y-2">
+                    {devices.pending.map(device => (
+                      <div key={device.id} className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-medium text-gray-800">{device.name || 'Unknown Device'}</p>
+                            <p className="text-xs text-gray-500">
+                              Requested: {new Date(device.registeredAt).toLocaleDateString('en-AU')}
+                            </p>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleApproveDevice(device.id)}
+                              className="bg-green-600 text-white px-3 py-1 rounded-lg text-sm font-medium"
+                            >
+                              ✓ Approve
+                            </button>
+                            <button
+                              onClick={() => handleDenyDevice(device.id)}
+                              className="bg-red-600 text-white px-3 py-1 rounded-lg text-sm font-medium"
+                            >
+                              ✕ Deny
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Approved Devices */}
+              <div>
+                <p className="text-sm font-medium text-green-700 mb-2">✓ Approved Devices ({devices.approved.length})</p>
+                {devices.approved.length === 0 ? (
+                  <p className="text-sm text-gray-500">No approved devices yet</p>
+                ) : (
+                  <div className="space-y-2">
+                    {devices.approved.map(device => (
+                      <div key={device.id} className="bg-green-50 border border-green-200 rounded-lg p-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-medium text-gray-800 flex items-center gap-2">
+                              {device.name || 'Unknown Device'}
+                              {device.isAdmin && <span className="text-xs bg-orange-500 text-white px-2 py-0.5 rounded">Admin</span>}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              Last seen: {device.lastSeen ? new Date(device.lastSeen).toLocaleString('en-AU') : 'Never'}
+                            </p>
+                          </div>
+                          {!device.isAdmin && (
+                            <button
+                              onClick={() => handleRemoveDevice(device.id)}
+                              className="text-red-500 text-sm"
+                            >
+                              🗑️
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Current Device Info */}
+              <div className="mt-4 pt-4 border-t border-gray-200">
+                <p className="text-xs text-gray-500">Your Device ID: <span className="font-mono">{DeviceAuthManager.deviceId}</span></p>
+              </div>
+            </div>
+          )}
+
+          {/* Google Drive Backup Section */}
+          <div className="bg-white rounded-xl shadow-sm p-4">
+            <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+              <span className="text-2xl">📁</span> Google Drive Backup
+            </h3>
+
+            {!isGoogleDriveConfigured ? (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-3">
+                <p className="text-sm text-yellow-800 font-medium">⚠️ Google Drive not configured</p>
+                <p className="text-xs text-yellow-700 mt-1">Contact your admin to set up Google Drive integration</p>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-3 h-3 rounded-full ${driveConnected ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+                    <span className="text-sm text-gray-600">{driveConnected ? 'Connected' : 'Not connected'}</span>
+                  </div>
+                  {driveConnected ? (
+                    <button onClick={disconnectDrive} className="text-red-600 text-sm underline">Disconnect</button>
+                  ) : (
+                    <button onClick={connectDrive} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium">
+                      Connect Google Drive
+                    </button>
+                  )}
+                </div>
+
+                {driveConnected && (
+                  <>
+                    <div className="bg-gray-50 rounded-lg p-3 mb-3">
+                      <p className="text-sm text-gray-600">
+                        <span className="font-medium">Auto-backup:</span> Every day at 7:00 PM
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        <span className="font-medium">Folder:</span> {DRIVE_FOLDER_NAME}
+                      </p>
+                      {lastBackup && (
+                        <p className="text-sm text-gray-600">
+                          <span className="font-medium">Last backup:</span> {lastBackup}
+                        </p>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={backupNow}
+                      disabled={isBackingUp}
+                      className={`w-full py-3 rounded-lg text-white font-medium ${isBackingUp ? 'bg-gray-400' : 'bg-green-600 hover:bg-green-700'}`}
+                    >
+                      {isBackingUp ? '⏳ Backing up...' : '☁️ Backup Now'}
+                    </button>
+
+                    {backupStatus && (
+                      <p className={`text-sm mt-2 text-center ${backupStatus.includes('✅') ? 'text-green-600' : backupStatus.includes('❌') ? 'text-red-600' : 'text-gray-600'}`}>
+                        {backupStatus}
+                      </p>
+                    )}
+                  </>
+                )}
+              </>
+            )}
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-gray-800">🏗️ Sites</h3>
+              <button onClick={() => setShowAddSite(!showAddSite)} className="bg-green-600 text-white px-3 py-1 rounded-lg text-sm">+ Add Site</button>
+            </div>
+            {showAddSite && (
+              <div className="mb-4 flex gap-2">
+                <input type="text" value={newSite} onChange={(e) => setNewSite(e.target.value)} className="flex-1 border rounded-lg p-2 text-sm" placeholder="Enter site name" />
+                <button onClick={addSite} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm">Add</button>
+              </div>
+            )}
+            <div className="space-y-2">
+              {currentSites.map((site, idx) => (
+                <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                  <span className="text-sm text-gray-700">{site}</span>
+                  <button onClick={() => onUpdateSites(currentSites.filter(s => s !== site))} className="text-red-500">🗑️</button>
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* Team Signatures Section */}
+          <div className="bg-white rounded-xl shadow-sm p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-gray-800">✍️ Team Signatures</h3>
+              <button onClick={() => setShowAddMember(!showAddMember)} className="bg-green-600 text-white px-3 py-1 rounded-lg text-sm">+ Add Member</button>
+            </div>
+            <p className="text-xs text-gray-500 mb-3">Save signatures once and use them automatically in all forms</p>
+
+            {showAddMember && (
+              <div className="mb-4 flex gap-2">
+                <input
+                  type="text"
+                  value={newMemberName}
+                  onChange={(e) => setNewMemberName(e.target.value)}
+                  className="flex-1 border rounded-lg p-2 text-sm"
+                  placeholder="Enter team member name"
+                />
+                <button onClick={addNewMember} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm">Add</button>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              {allMembers.map((name, idx) => (
+                <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div className="flex items-center gap-3 flex-1">
+                    <span className="text-sm font-medium text-gray-700">{name}</span>
+                    {signatures[name] ? (
+                      <img src={signatures[name]} alt={`${name}'s signature`} className="h-8 border rounded bg-white px-2" />
+                    ) : (
+                      <span className="text-xs text-gray-400 italic">No signature saved</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowSignaturePad(name)}
+                      className={`px-3 py-1 rounded-lg text-sm ${signatures[name] ? 'bg-orange-100 text-orange-600' : 'bg-green-600 text-white'}`}
+                    >
+                      {signatures[name] ? '✏️ Update' : '➕ Add'}
+                    </button>
+                    {signatures[name] && (
+                      <button onClick={() => deleteSignature(name)} className="text-red-500 text-lg">🗑️</button>
+                    )}
+                    {!defaultMembers.includes(name) && (
+                      <button onClick={() => deleteMember(name)} className="text-red-500 text-xs underline ml-1">Remove</button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Signature Pad Modal */}
+          {showSignaturePad && (
+            <SignaturePad
+              name={showSignaturePad}
+              onSave={(sig) => saveSignature(showSignaturePad, sig)}
+              onCancel={() => setShowSignaturePad(null)}
+            />
+          )}
+          <div className="bg-white rounded-xl shadow-sm p-4">
+            <p className="text-sm text-gray-600">JMart Steel Safety App v1.0</p>
+            <p className="text-sm text-gray-600">NSW WHS Act 2011 Compliant</p>
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<AppWithAuth />);
+  </script>
+
+  <!-- Loading Screen -->
+  <script>
+    // Show loading spinner while React loads
+    document.getElementById('root').innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:#f3f4f6;"><div class="spinner"></div><p style="margin-top:16px;color:#6b7280;font-family:system-ui;">Loading JMart Safety...</p></div>';
+  </script>
+
+  <!-- Service Worker Registration & Caching -->
+  <script>
+    // Register service worker for offline caching (if supported)
+    if ('serviceWorker' in navigator) {
+      // Create inline service worker
+      const swCode = `
+        const CACHE_NAME = 'jmart-safety-v2';
+        const urlsToCache = [
+          './',
+          'https://cdn.tailwindcss.com',
+          'https://unpkg.com/react@18/umd/react.production.min.js',
+          'https://unpkg.com/react-dom@18/umd/react-dom.production.min.js',
+          'https://unpkg.com/@babel/standalone/babel.min.js',
+          'https://unpkg.com/lucide@latest',
+          'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'
+        ];
+
+        self.addEventListener('install', event => {
+          self.skipWaiting(); // Activate new SW immediately
+          event.waitUntil(
+            caches.open(CACHE_NAME).then(cache => cache.addAll(urlsToCache))
+          );
+        });
+
+        self.addEventListener('activate', event => {
+          // Clean up old caches
+          event.waitUntil(
+            caches.keys().then(cacheNames => {
+              return Promise.all(
+                cacheNames.filter(name => name !== CACHE_NAME).map(name => caches.delete(name))
+              );
+            })
+          );
+        });
+
+        self.addEventListener('fetch', event => {
+          event.respondWith(
+            caches.match(event.request).then(response => {
+              if (response) return response;
+              return fetch(event.request).then(fetchResponse => {
+                // Cache successful responses for offline use
+                if (fetchResponse && fetchResponse.status === 200) {
+                  const responseClone = fetchResponse.clone();
+                  caches.open(CACHE_NAME).then(cache => {
+                    cache.put(event.request, responseClone);
+                  });
+                }
+                return fetchResponse;
+              }).catch(() => {
+                // Return offline fallback for navigation requests
+                if (event.request.mode === 'navigate') {
+                  return caches.match('./');
+                }
+                return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
+              });
+            })
+          );
+        });
+      `;
+
+      const blob = new Blob([swCode], { type: 'application/javascript' });
+      const swUrl = URL.createObjectURL(blob);
+
+      navigator.serviceWorker.register(swUrl).catch(err => {
+        console.log('SW registration skipped:', err.message);
+      });
+    }
+
+    // Detect standalone mode (installed PWA)
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      document.body.classList.add('pwa-standalone');
+      console.log('Running as installed PWA');
+    }
+
+    // Prevent pull-to-refresh on mobile (interferes with app UX)
+    document.body.style.overscrollBehavior = 'none';
+
+    // Handle iOS standalone mode
+    if (window.navigator.standalone === true) {
+      document.body.classList.add('ios-standalone');
+    }
+  </script>
+</body>
+</html>
