@@ -90,8 +90,31 @@
     // ========================================
     const GOOGLE_CLIENT_ID = '920798274486-rh1p59hihjkj9k04qmn5e3rbs57g55q8.apps.googleusercontent.com';
     const GOOGLE_API_KEY = ''; // Optional - only needed for public files
-    const DRIVE_FOLDER_NAME = 'JMart Steel Safety Forms';
+    const DRIVE_FOLDER_NAME = 'JMart Steel';  // Main company folder - consolidated structure
     const DRIVE_SCOPES = 'https://www.googleapis.com/auth/drive.file';
+
+    // ========================================
+    // DRIVE FOLDER STRUCTURE CONFIGURATION
+    // Unified folder structure for all JMart Steel files
+    // ========================================
+    const DRIVE_FOLDERS = {
+      // Safety forms go into 01_Safety_Compliance subfolders
+      forms: {
+        'prestart': '01_Safety_Compliance/Pre-Start_Checklists',
+        'inspection': '01_Safety_Compliance/Site_Inspections',
+        'incident': '01_Safety_Compliance/Incident_Reports',
+        'toolbox': '01_Safety_Compliance/Toolbox_Talks',
+        'itp': '03_ITPs/General',
+        'steel-itp': '03_ITPs/Structural_Steel',
+        'training': '05_Training/Certificates'
+      },
+      // Photos go into project folders
+      photos: '02_Projects',  // Will create {ProjectName}/Photos/{Date}/
+      // Finance/receipts for future Steel integration
+      finance: '11_Finance',
+      // AI agent outputs for future Steel integration
+      agents: '12_AI_Agents'
+    };
 
     // Check if Google Drive is configured
     const isGoogleDriveConfigured = GOOGLE_CLIENT_ID !== 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com';
@@ -153,6 +176,55 @@
         return this.accessToken !== null;
       },
 
+      // Wrapper for API calls with automatic token refresh on 401
+      apiCall: async function(url, options = {}) {
+        if (!this.accessToken) {
+          throw new Error('Not connected to Google Drive');
+        }
+
+        // Add auth header
+        options.headers = {
+          ...options.headers,
+          'Authorization': `Bearer ${this.accessToken}`
+        };
+
+        let response = await fetch(url, options);
+
+        // If token expired (401), try to refresh silently
+        if (response.status === 401) {
+          console.log('Google Drive token expired, attempting refresh...');
+          localStorage.removeItem('google-drive-token');
+          this.accessToken = null;
+
+          // Request new token (will trigger callback)
+          return new Promise((resolve, reject) => {
+            const originalCallback = this.tokenClient.callback;
+            this.tokenClient.callback = async (tokenResponse) => {
+              if (tokenResponse.error) {
+                this.tokenClient.callback = originalCallback;
+                reject(new Error('Token refresh failed'));
+                return;
+              }
+              this.accessToken = tokenResponse.access_token;
+              localStorage.setItem('google-drive-token', tokenResponse.access_token);
+              this.tokenClient.callback = originalCallback;
+
+              // Retry the original request
+              options.headers['Authorization'] = `Bearer ${this.accessToken}`;
+              try {
+                const retryResponse = await fetch(url, options);
+                resolve(retryResponse);
+              } catch (e) {
+                reject(e);
+              }
+            };
+            this.tokenClient.requestAccessToken({ prompt: '' }); // Silent refresh
+          });
+        }
+
+        return response;
+      },
+
       // Get or create the JMart Safety folder
       getOrCreateFolder: async function() {
         if (!this.accessToken) return null;
@@ -193,8 +265,58 @@
         }
       },
 
-      // Upload a PDF to Google Drive
-      uploadPDF: async function(pdfBlob, filename) {
+      // Helper: Get or create nested folder path (e.g., "01_Safety_Compliance/Pre-Start_Checklists")
+      getOrCreateNestedFolder: async function(folderPath, parentId = null) {
+        if (!this.accessToken) return null;
+
+        const parent = parentId || this.folderId;
+        if (!parent) {
+          await this.getOrCreateFolder();
+        }
+
+        const parts = folderPath.split('/').filter(p => p.trim());
+        let currentParent = parent || this.folderId;
+
+        for (const folderName of parts) {
+          try {
+            // Search for folder
+            const searchResponse = await fetch(
+              `https://www.googleapis.com/drive/v3/files?q=name='${folderName}' and '${currentParent}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+              { headers: { 'Authorization': `Bearer ${this.accessToken}` } }
+            );
+            const searchData = await searchResponse.json();
+
+            if (searchData.files && searchData.files.length > 0) {
+              currentParent = searchData.files[0].id;
+            } else {
+              // Create folder
+              const createResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${this.accessToken}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  name: folderName,
+                  mimeType: 'application/vnd.google-apps.folder',
+                  parents: [currentParent],
+                }),
+              });
+              const createData = await createResponse.json();
+              currentParent = createData.id;
+              console.log(`Created folder: ${folderName}`, currentParent);
+            }
+          } catch (error) {
+            console.error(`Error creating folder ${folderName}:`, error);
+            return null;
+          }
+        }
+
+        return currentParent;
+      },
+
+      // Upload a PDF to Google Drive (with optional subfolder)
+      uploadPDF: async function(pdfBlob, filename, formType = null) {
         if (!this.accessToken) {
           console.error('Not connected to Google Drive');
           return null;
@@ -205,10 +327,22 @@
         }
 
         try {
+          // Determine target folder based on form type
+          let targetFolderId = this.folderId;
+
+          if (formType && DRIVE_FOLDERS.forms[formType]) {
+            const subfolderPath = DRIVE_FOLDERS.forms[formType];
+            targetFolderId = await this.getOrCreateNestedFolder(subfolderPath);
+            if (!targetFolderId) {
+              console.warn(`Could not create subfolder for ${formType}, using root folder`);
+              targetFolderId = this.folderId;
+            }
+          }
+
           const metadata = {
             name: filename,
             mimeType: 'application/pdf',
-            parents: [this.folderId],
+            parents: [targetFolderId],
           };
 
           const formData = new FormData();
@@ -225,7 +359,7 @@
           );
 
           const data = await response.json();
-          console.log('Uploaded to Drive:', filename, data.id);
+          console.log('Uploaded to Drive:', filename, 'in folder:', formType || 'root', data.id);
           return data;
         } catch (error) {
           console.error('Upload error:', error);
@@ -253,7 +387,7 @@
           try {
             const { doc, filename } = PDFGenerator.generate(form);
             const pdfBlob = doc.output('blob');
-            const result = await this.uploadPDF(pdfBlob, filename);
+            const result = await this.uploadPDF(pdfBlob, filename, form.type);
             if (result) {
               results.push({ form: form.id, filename, driveId: result.id });
             }
@@ -667,6 +801,143 @@
     });
 
     // ========================================
+    // SHARED JOBS MANAGER
+    // Unified job system for Safety App + Steel agents
+    // Jobs stored in Firebase: jmart-safety/jobs/
+    // ========================================
+    const JobsManager = {
+      jobs: [],
+      listeners: [],
+
+      // Initialize and load jobs from Firebase
+      init: async function() {
+        if (!firebaseDb || !isFirebaseConfigured) {
+          console.log('JobsManager: Firebase not configured');
+          return;
+        }
+
+        // Listen for real-time job updates
+        firebaseDb.ref('jmart-safety/jobs').on('value', (snapshot) => {
+          const data = snapshot.val();
+          this.jobs = data ? Object.entries(data).map(([id, job]) => ({ id, ...job })) : [];
+          this.notifyListeners();
+          console.log('JobsManager: Loaded', this.jobs.length, 'jobs');
+        });
+
+        // Migrate old sites to new jobs structure if needed
+        this.migrateFromSites();
+      },
+
+      // Migrate from old 'sites' structure to new 'jobs' structure
+      migrateFromSites: async function() {
+        if (!firebaseDb) return;
+
+        try {
+          const sitesSnap = await firebaseDb.ref('jmart-safety/sites').once('value');
+          const sites = sitesSnap.val();
+
+          if (sites && Array.isArray(sites)) {
+            const jobsSnap = await firebaseDb.ref('jmart-safety/jobs').once('value');
+            if (!jobsSnap.val()) {
+              console.log('JobsManager: Migrating', sites.length, 'sites to jobs...');
+              for (const site of sites) {
+                if (site && site.name) {
+                  await this.addJob({
+                    name: site.name,
+                    client: site.builder || '',
+                    address: site.address || '',
+                    status: 'active',
+                    createdAt: new Date().toISOString(),
+                    source: 'migrated-from-sites'
+                  });
+                }
+              }
+              console.log('JobsManager: Migration complete');
+            }
+          }
+        } catch (error) {
+          console.error('JobsManager: Migration error:', error);
+        }
+      },
+
+      // Add a new job
+      addJob: async function(jobData) {
+        if (!firebaseDb) return null;
+
+        const job = {
+          name: jobData.name,
+          client: jobData.client || '',
+          address: jobData.address || '',
+          status: jobData.status || 'active',
+          createdAt: jobData.createdAt || new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          source: jobData.source || 'safety-app'
+        };
+
+        try {
+          const ref = await firebaseDb.ref('jmart-safety/jobs').push(job);
+          console.log('JobsManager: Added job', job.name, ref.key);
+          return { id: ref.key, ...job };
+        } catch (error) {
+          console.error('JobsManager: Error adding job:', error);
+          return null;
+        }
+      },
+
+      // Update a job
+      updateJob: async function(jobId, updates) {
+        if (!firebaseDb || !jobId) return false;
+
+        try {
+          updates.updatedAt = new Date().toISOString();
+          await firebaseDb.ref(`jmart-safety/jobs/${jobId}`).update(updates);
+          console.log('JobsManager: Updated job', jobId);
+          return true;
+        } catch (error) {
+          console.error('JobsManager: Error updating job:', error);
+          return false;
+        }
+      },
+
+      // Get all active jobs
+      getActiveJobs: function() {
+        return this.jobs.filter(j => j.status === 'active');
+      },
+
+      // Get all jobs
+      getAllJobs: function() {
+        return this.jobs;
+      },
+
+      // Find job by name (case-insensitive)
+      findByName: function(name) {
+        return this.jobs.find(j => j.name.toLowerCase() === name.toLowerCase());
+      },
+
+      // Subscribe to job updates
+      subscribe: function(callback) {
+        this.listeners.push(callback);
+        callback(this.jobs); // Initial call
+        return () => {
+          this.listeners = this.listeners.filter(l => l !== callback);
+        };
+      },
+
+      // Notify all listeners
+      notifyListeners: function() {
+        this.listeners.forEach(callback => callback(this.jobs));
+      },
+
+      // Get jobs as simple name array (for dropdowns)
+      getJobNames: function() {
+        return this.getActiveJobs().map(j => j.name);
+      }
+    };
+
+    // Initialize Jobs Manager
+    JobsManager.init();
+
+    // ========================================
     // DEVICE AUTHENTICATION MANAGER
     // ========================================
     const DeviceAuthManager = {
@@ -912,97 +1183,57 @@
 
     // ========================================
     // PHOTO UPLOAD MANAGER (Google Drive Only)
+    // Uses project-based folder structure:
+    // JMart Steel/02_Projects/{JobName}/Photos/{YYYY-MM-DD}/
     // ========================================
     const PhotoUploadManager = {
       // Initialize - just log that we're using Google Drive
       init: function() {
         console.log('PhotoUploadManager initialized - using Google Drive for photo storage');
+        console.log('Photo structure: JMart Steel/02_Projects/{Job}/Photos/{Date}/');
       },
 
-      // Get or create job folder in Google Drive
+      // Get or create project folder with Photos subfolder
+      // Structure: 02_Projects/{JobName}/Photos/{Date}/
       getOrCreateJobFolder: async function(jobName) {
         if (!GoogleDriveSync.isConnected()) return null;
 
         try {
-          // First ensure main photos folder exists
-          const mainFolderName = 'Site Photos';
-          let mainFolderId = null;
-
-          // Check if main folder exists within the JMart folder
+          // Ensure main folder exists
           if (!GoogleDriveSync.folderId) {
             await GoogleDriveSync.getOrCreateFolder();
           }
 
-          // Search for Site Photos folder
-          const mainSearch = await fetch(
-            `https://www.googleapis.com/drive/v3/files?q=name='${mainFolderName}' and '${GoogleDriveSync.folderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-            { headers: { 'Authorization': `Bearer ${GoogleDriveSync.accessToken}` } }
-          );
-          const mainData = await mainSearch.json();
-
-          if (mainData.files && mainData.files.length > 0) {
-            mainFolderId = mainData.files[0].id;
-          } else {
-            // Create Site Photos folder
-            const createMain = await fetch('https://www.googleapis.com/drive/v3/files', {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${GoogleDriveSync.accessToken}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                name: mainFolderName,
-                mimeType: 'application/vnd.google-apps.folder',
-                parents: [GoogleDriveSync.folderId],
-              }),
-            });
-            const mainResult = await createMain.json();
-            mainFolderId = mainResult.id;
-          }
-
-          // Now search for job folder within Site Photos
           const safeJobName = jobName.replace(/[<>:"/\\|?*]/g, '_');
-          const jobSearch = await fetch(
-            `https://www.googleapis.com/drive/v3/files?q=name='${safeJobName}' and '${mainFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-            { headers: { 'Authorization': `Bearer ${GoogleDriveSync.accessToken}` } }
-          );
-          const jobData = await jobSearch.json();
 
-          if (jobData.files && jobData.files.length > 0) {
-            return jobData.files[0].id;
+          // Create nested path: 02_Projects/{JobName}/Photos
+          const folderPath = `${DRIVE_FOLDERS.photos}/${safeJobName}/Photos`;
+          const photosFolderId = await GoogleDriveSync.getOrCreateNestedFolder(folderPath);
+
+          if (photosFolderId) {
+            console.log(`Photo folder ready: 02_Projects/${safeJobName}/Photos`);
+            return photosFolderId;
           }
 
-          // Create job folder
-          const createJob = await fetch('https://www.googleapis.com/drive/v3/files', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${GoogleDriveSync.accessToken}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              name: safeJobName,
-              mimeType: 'application/vnd.google-apps.folder',
-              parents: [mainFolderId],
-            }),
-          });
-          const jobResult = await createJob.json();
-          return jobResult.id;
+          // Fallback: create in root if nested creation fails
+          console.warn('Could not create project photo folder, using root');
+          return GoogleDriveSync.folderId;
         } catch (error) {
           console.error('Error creating job folder:', error);
           return null;
         }
       },
 
-      // Get or create date subfolder within job folder
-      getOrCreateDateFolder: async function(jobFolderId) {
-        if (!GoogleDriveSync.isConnected() || !jobFolderId) return jobFolderId;
+      // Get or create date subfolder within Photos folder
+      getOrCreateDateFolder: async function(photosFolderId) {
+        if (!GoogleDriveSync.isConnected() || !photosFolderId) return photosFolderId;
 
         const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
         try {
           // Search for today's folder
           const dateSearch = await fetch(
-            `https://www.googleapis.com/drive/v3/files?q=name='${today}' and '${jobFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+            `https://www.googleapis.com/drive/v3/files?q=name='${today}' and '${photosFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
             { headers: { 'Authorization': `Bearer ${GoogleDriveSync.accessToken}` } }
           );
           const dateData = await dateSearch.json();
@@ -1021,14 +1252,15 @@
             body: JSON.stringify({
               name: today,
               mimeType: 'application/vnd.google-apps.folder',
-              parents: [jobFolderId],
+              parents: [photosFolderId],
             }),
           });
           const dateResult = await createDate.json();
+          console.log(`Created date folder: ${today}`);
           return dateResult.id;
         } catch (error) {
           console.error('Error creating date folder:', error);
-          return jobFolderId; // Fallback to job folder
+          return photosFolderId; // Fallback to Photos folder
         }
       },
 
@@ -1077,12 +1309,29 @@
         }
       },
 
-      // Upload photo to Google Drive
+      // Upload photo to Google Drive (with offline queue support)
       uploadPhoto: async function(file, jobName, onProgress) {
         const results = {
           drive: null,
-          success: false
+          success: false,
+          queued: false
         };
+
+        // Check if offline or not connected - queue for later
+        if (!navigator.onLine || !GoogleDriveSync.isConnected()) {
+          if (onProgress) onProgress('Offline - queueing photo...', 50);
+          try {
+            await OfflinePhotoQueue.addToQueue(file, jobName);
+            results.queued = true;
+            results.success = true; // Consider it a success since it's queued
+            if (onProgress) onProgress('Photo queued for upload when online', 100);
+            console.log(`Photo queued for offline upload: ${file.name}`);
+          } catch (e) {
+            console.error('Error queueing photo:', e);
+            if (onProgress) onProgress('Failed to queue photo', 100);
+          }
+          return results;
+        }
 
         // Upload to Google Drive
         if (onProgress) onProgress('Uploading to Google Drive...', 30);
@@ -1116,6 +1365,173 @@
 
     // Initialize Photo Upload Manager
     PhotoUploadManager.init();
+
+    // ========================================
+    // OFFLINE PHOTO QUEUE MANAGER
+    // Queues photos when offline, uploads when back online
+    // ========================================
+    const OfflinePhotoQueue = {
+      queue: [],
+      isProcessing: false,
+      listeners: [],
+
+      // Initialize - load queue from localStorage
+      init: function() {
+        try {
+          const saved = localStorage.getItem('jmart-photo-queue');
+          this.queue = saved ? JSON.parse(saved) : [];
+          if (this.queue.length > 0) {
+            console.log(`OfflinePhotoQueue: ${this.queue.length} photos pending`);
+            if (navigator.onLine && GoogleDriveSync.isConnected()) {
+              this.processQueue();
+            }
+          }
+        } catch (e) {
+          console.error('Error loading photo queue:', e);
+          this.queue = [];
+        }
+
+        // Listen for online events
+        window.addEventListener('online', () => {
+          console.log('Back online - processing photo queue');
+          setTimeout(() => this.processQueue(), 2000); // Wait for Drive reconnection
+        });
+      },
+
+      // Save queue to localStorage
+      saveQueue: function() {
+        try {
+          localStorage.setItem('jmart-photo-queue', JSON.stringify(this.queue));
+        } catch (e) {
+          console.error('Error saving photo queue:', e);
+        }
+      },
+
+      // Add photo to queue (stores as base64)
+      addToQueue: async function(file, jobName) {
+        return new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const item = {
+              id: Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+              jobName,
+              filename: file.name,
+              type: file.type,
+              size: file.size,
+              data: e.target.result, // base64
+              queuedAt: new Date().toISOString()
+            };
+            this.queue.push(item);
+            this.saveQueue();
+            this.notifyListeners();
+            console.log(`Photo queued for offline upload: ${file.name}`);
+            resolve(item.id);
+          };
+          reader.readAsDataURL(file);
+        });
+      },
+
+      // Process the queue
+      processQueue: async function() {
+        if (this.isProcessing || this.queue.length === 0) return;
+        if (!navigator.onLine || !GoogleDriveSync.isConnected()) {
+          console.log('Cannot process photo queue - offline or not connected');
+          return;
+        }
+
+        this.isProcessing = true;
+        this.notifyListeners();
+
+        const itemsToProcess = [...this.queue];
+        let processed = 0;
+
+        for (const item of itemsToProcess) {
+          try {
+            // Convert base64 back to blob
+            const response = await fetch(item.data);
+            const blob = await response.blob();
+            const file = new File([blob], item.filename, { type: item.type });
+
+            // Upload to Drive
+            const result = await PhotoUploadManager.uploadToDrive(file, item.jobName);
+
+            if (result) {
+              // Success - remove from queue
+              this.queue = this.queue.filter(q => q.id !== item.id);
+              this.saveQueue();
+              processed++;
+              console.log(`Uploaded queued photo: ${item.filename}`);
+            }
+          } catch (error) {
+            console.error(`Error uploading queued photo ${item.filename}:`, error);
+          }
+        }
+
+        this.isProcessing = false;
+        this.notifyListeners();
+        console.log(`Processed ${processed}/${itemsToProcess.length} queued photos`);
+      },
+
+      // Get queue count
+      getCount: function() {
+        return this.queue.length;
+      },
+
+      // Subscribe to queue changes
+      subscribe: function(callback) {
+        this.listeners.push(callback);
+        callback(this.queue.length, this.isProcessing);
+        return () => {
+          this.listeners = this.listeners.filter(l => l !== callback);
+        };
+      },
+
+      // Notify listeners
+      notifyListeners: function() {
+        this.listeners.forEach(cb => cb(this.queue.length, this.isProcessing));
+      }
+    };
+
+    // Initialize Offline Photo Queue
+    OfflinePhotoQueue.init();
+
+    // ========================================
+    // NETWORK STATUS MANAGER
+    // Tracks online/offline status for UI
+    // ========================================
+    const NetworkStatus = {
+      isOnline: navigator.onLine,
+      listeners: [],
+
+      init: function() {
+        window.addEventListener('online', () => {
+          this.isOnline = true;
+          this.notifyListeners();
+          console.log('Network: Online');
+        });
+
+        window.addEventListener('offline', () => {
+          this.isOnline = false;
+          this.notifyListeners();
+          console.log('Network: Offline');
+        });
+      },
+
+      subscribe: function(callback) {
+        this.listeners.push(callback);
+        callback(this.isOnline);
+        return () => {
+          this.listeners = this.listeners.filter(l => l !== callback);
+        };
+      },
+
+      notifyListeners: function() {
+        this.listeners.forEach(cb => cb(this.isOnline));
+      }
+    };
+
+    // Initialize Network Status
+    NetworkStatus.init();
 
     // ========================================
     // PDF GENERATOR - Professional Layout
@@ -2672,6 +3088,7 @@
       const [lastSynced, setLastSynced] = useState(null);
       const [syncStatus, setSyncStatus] = useState(FirebaseSync.isConnected() ? 'synced' : 'local'); // 'synced', 'syncing', 'offline', 'local', 'pending', 'error'
       const [pendingSyncCount, setPendingSyncCount] = useState(FirebaseSync.getPendingCount());
+      const [pendingPhotoCount, setPendingPhotoCount] = useState(OfflinePhotoQueue.getCount());
       const [syncError, setSyncError] = useState(null);
       const [showSyncBanner, setShowSyncBanner] = useState(!FirebaseSync.isConnected());
       const [successModal, setSuccessModal] = useState(null); // { form, type } for PDF download modal
@@ -2841,6 +3258,14 @@
             setSyncStatus('error');
             setSyncError(details?.message || details?.error || 'Sync failed');
           }
+        });
+        return unsubscribe;
+      }, []);
+
+      // Photo queue listener - updates UI when offline photos are queued/uploaded
+      useEffect(() => {
+        const unsubscribe = OfflinePhotoQueue.subscribe((count, isProcessing) => {
+          setPendingPhotoCount(count);
         });
         return unsubscribe;
       }, []);
@@ -3016,8 +3441,8 @@
           if (GoogleDriveSync.isConnected()) {
             const { doc } = PDFGenerator.generate(form);
             const pdfBlob = doc.output('blob');
-            await GoogleDriveSync.uploadPDF(pdfBlob, filename);
-            console.log('Uploaded new PDF to Drive');
+            await GoogleDriveSync.uploadPDF(pdfBlob, filename, form.type);
+            console.log('Uploaded new PDF to Drive:', form.type);
           }
 
           // Clear states and show success
@@ -3406,6 +3831,7 @@
                 <p className="text-xs text-orange-200">
                   {!isOnline ? '📴 Offline Mode' :
                    syncStatus === 'error' ? '⚠️ Sync Error' :
+                   pendingPhotoCount > 0 ? `📷 ${pendingPhotoCount} photo${pendingPhotoCount > 1 ? 's' : ''} queued` :
                    syncStatus === 'pending' ? `🔄 ${pendingSyncCount} pending` :
                    syncStatus === 'synced' ? '☁️ Synced' :
                    syncStatus === 'syncing' ? '🔄 Syncing...' :
@@ -3414,7 +3840,8 @@
               </div>
             </div>
             <div className="flex items-center gap-1">
-              {syncStatus === 'synced' && <span className="text-green-300 text-sm">●</span>}
+              {pendingPhotoCount > 0 && <span className="text-blue-300 text-sm animate-pulse">●</span>}
+              {syncStatus === 'synced' && pendingPhotoCount === 0 && <span className="text-green-300 text-sm">●</span>}
               {syncStatus === 'syncing' && <span className="text-yellow-300 text-sm animate-pulse">●</span>}
               {syncStatus === 'pending' && <span className="text-yellow-300 text-sm animate-pulse">●</span>}
               {syncStatus === 'error' && <span className="text-red-400 text-sm">●</span>}
