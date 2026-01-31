@@ -4929,12 +4929,13 @@
           y += standardsBoxHeight + 12;
 
           // === SIGNATURE SECTION ===
-          const sigY = y;
+          // Position signatures with enough space before footer
+          const sigY = Math.min(y, pageHeight - 75); // Ensure enough space for footer
           const sigLeftCol = pageWidth / 4 + 5;
           const sigRightCol = (pageWidth / 4) * 3 - 5;
 
           // Left - Worker Signature
-          doc.setFontSize(8);
+          doc.setFontSize(9);
           doc.setTextColor(...medGray);
           doc.setFont(undefined, 'normal');
           doc.text('WORKER SIGNATURE', sigLeftCol, sigY, { align: 'center' });
@@ -4942,7 +4943,7 @@
           // Signature image
           if (signatureData) {
             try {
-              doc.addImage(signatureData, 'PNG', sigLeftCol - 25, sigY + 3, 50, 18);
+              doc.addImage(signatureData, 'PNG', sigLeftCol - 25, sigY + 4, 50, 16);
             } catch (e) {
               console.log('Could not add worker signature:', e);
             }
@@ -4951,29 +4952,27 @@
           // Signature line
           doc.setDrawColor(...navy);
           doc.setLineWidth(0.5);
-          doc.line(sigLeftCol - 35, sigY + 24, sigLeftCol + 35, sigY + 24);
+          doc.line(sigLeftCol - 35, sigY + 22, sigLeftCol + 35, sigY + 22);
 
           // Name
-          doc.setFontSize(10);
+          doc.setFontSize(11);
           doc.setTextColor(...navy);
           doc.setFont(undefined, 'bold');
-          doc.text(workerName || 'Worker Name', sigLeftCol, sigY + 32, { align: 'center' });
+          doc.text(workerName || 'Worker Name', sigLeftCol, sigY + 30, { align: 'center' });
 
-          // Right - Authorizing Signature
-          doc.setFontSize(8);
+          // Right - Authorizing Signature (Scott Seeho - ALWAYS)
+          doc.setFontSize(9);
           doc.setTextColor(...medGray);
           doc.setFont(undefined, 'normal');
           doc.text('AUTHORIZED BY', sigRightCol, sigY, { align: 'center' });
 
-          // Try to get Scott's signature
-          let scottSigAdded = false;
+          // Try to get Scott's signature image
           try {
             const teamSigs = localStorage.getItem('jmart-team-signatures');
             if (teamSigs) {
               const sigs = JSON.parse(teamSigs);
               if (sigs['Scott Seeho'] && sigs['Scott Seeho'].startsWith('data:image')) {
-                doc.addImage(sigs['Scott Seeho'], 'PNG', sigRightCol - 25, sigY + 3, 50, 18);
-                scottSigAdded = true;
+                doc.addImage(sigs['Scott Seeho'], 'PNG', sigRightCol - 25, sigY + 4, 50, 16);
               }
             }
           } catch (e) {
@@ -4981,31 +4980,32 @@
           }
 
           // Signature line
-          doc.line(sigRightCol - 35, sigY + 24, sigRightCol + 35, sigY + 24);
+          doc.line(sigRightCol - 35, sigY + 22, sigRightCol + 35, sigY + 22);
 
-          // Name and title
-          doc.setFontSize(10);
+          // Scott Seeho name and title - ALWAYS show this
+          doc.setFontSize(11);
           doc.setTextColor(...navy);
           doc.setFont(undefined, 'bold');
-          doc.text('Scott Seeho', sigRightCol, sigY + 32, { align: 'center' });
+          doc.text('Scott Seeho', sigRightCol, sigY + 30, { align: 'center' });
 
-          doc.setFontSize(8);
+          doc.setFontSize(9);
           doc.setTextColor(...medGray);
           doc.setFont(undefined, 'normal');
-          doc.text('General Manager  •  JMart Steel', sigRightCol, sigY + 38, { align: 'center' });
+          doc.text('General Manager', sigRightCol, sigY + 36, { align: 'center' });
+          doc.text('JMART STEEL', sigRightCol, sigY + 42, { align: 'center' });
 
           // === FOOTER ===
           // Gold line above footer
           doc.setDrawColor(...gold);
-          doc.setLineWidth(0.5);
-          doc.line(margin + 20, pageHeight - 28, pageWidth - margin - 20, pageHeight - 28);
+          doc.setLineWidth(0.8);
+          doc.line(margin + 15, pageHeight - 24, pageWidth - margin - 15, pageHeight - 24);
 
-          doc.setFontSize(7);
+          doc.setFontSize(8);
           doc.setTextColor(...medGray);
           doc.setFont(undefined, 'normal');
-          doc.text('Certificate ID: ' + certId, pageWidth / 2, pageHeight - 22, { align: 'center' });
-          doc.text('This certificate confirms completion of safety training in accordance with Work Health & Safety requirements.', pageWidth / 2, pageHeight - 17, { align: 'center' });
-          doc.text('Valid for 12 months from date of issue.  •  JMart Steel Pty Ltd  •  ABN XX XXX XXX XXX', pageWidth / 2, pageHeight - 12, { align: 'center' });
+          doc.text('Certificate ID: ' + certId, pageWidth / 2, pageHeight - 18, { align: 'center' });
+          doc.text('This certificate confirms completion of safety training in accordance with WHS requirements.', pageWidth / 2, pageHeight - 13, { align: 'center' });
+          doc.text('Valid for 12 months from date of issue.', pageWidth / 2, pageHeight - 8, { align: 'center' });
 
           // Save the PDF
           const fileName = 'JMart-Certificate-' + selectedCourse.id + '-' + workerName.replace(/\s+/g, '-') + '.pdf';
