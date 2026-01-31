@@ -5166,27 +5166,27 @@
                   doc.text(cert.date, pageWidth / 2, y + 8, { align: 'center' });
                   y += 22;
 
-                  // Signatures
-                  const sigY = y + 20;
-                  const leftCol = pageWidth / 4 + 5;
-                  const rightCol = (pageWidth / 4) * 3 - 5;
+                  // Signatures - positioned right after content
+                  const sigY = y + 10;
+                  const leftCol = margin + 45;
+                  const rightCol = pageWidth - margin - 45;
 
-                  doc.setFontSize(8);
+                  doc.setFontSize(7);
                   doc.setTextColor(...medGray);
                   doc.setFont(undefined, 'normal');
                   doc.text('WORKER SIGNATURE', leftCol, sigY, { align: 'center' });
                   if (cert.signature) {
-                    try { doc.addImage(cert.signature, 'PNG', leftCol - 22, sigY + 3, 44, 14); } catch(e) {}
+                    try { doc.addImage(cert.signature, 'PNG', leftCol - 20, sigY + 4, 40, 18); } catch(e) {}
                   }
                   doc.setDrawColor(...navy);
                   doc.setLineWidth(0.5);
-                  doc.line(leftCol - 30, sigY + 19, leftCol + 30, sigY + 19);
+                  doc.line(leftCol - 28, sigY + 24, leftCol + 28, sigY + 24);
                   doc.setFontSize(10);
                   doc.setTextColor(...navy);
                   doc.setFont(undefined, 'bold');
-                  doc.text(cert.workerName, leftCol, sigY + 26, { align: 'center' });
+                  doc.text(cert.workerName, leftCol, sigY + 31, { align: 'center' });
 
-                  doc.setFontSize(8);
+                  doc.setFontSize(7);
                   doc.setTextColor(...medGray);
                   doc.setFont(undefined, 'normal');
                   doc.text('AUTHORIZED BY', rightCol, sigY, { align: 'center' });
@@ -5195,30 +5195,31 @@
                     if (teamSigs) {
                       const sigs = JSON.parse(teamSigs);
                       if (sigs['Scott Seeho'] && sigs['Scott Seeho'].startsWith('data:image')) {
-                        doc.addImage(sigs['Scott Seeho'], 'PNG', rightCol - 22, sigY + 3, 44, 14);
+                        doc.addImage(sigs['Scott Seeho'], 'PNG', rightCol - 20, sigY + 4, 40, 18);
                       }
                     }
                   } catch(e) {}
-                  doc.line(rightCol - 30, sigY + 19, rightCol + 30, sigY + 19);
+                  doc.line(rightCol - 28, sigY + 24, rightCol + 28, sigY + 24);
                   doc.setFontSize(10);
                   doc.setTextColor(...navy);
                   doc.setFont(undefined, 'bold');
-                  doc.text('Scott Seeho', rightCol, sigY + 26, { align: 'center' });
-                  doc.setFontSize(8);
-                  doc.setTextColor(...medGray);
-                  doc.setFont(undefined, 'normal');
-                  doc.text('General Manager', rightCol, sigY + 32, { align: 'center' });
-                  doc.text('JMART STEEL', rightCol, sigY + 37, { align: 'center' });
-
-                  // Footer
-                  doc.setDrawColor(...gold);
-                  doc.setLineWidth(0.8);
-                  doc.line(margin + 20, pageHeight - 22, pageWidth - margin - 20, pageHeight - 22);
+                  doc.text('Scott Seeho', rightCol, sigY + 31, { align: 'center' });
                   doc.setFontSize(7);
                   doc.setTextColor(...medGray);
-                  doc.text('Certificate ID: ' + cert.id, pageWidth / 2, pageHeight - 16, { align: 'center' });
-                  doc.text('This certificate confirms completion of safety training in accordance with WHS requirements.', pageWidth / 2, pageHeight - 11, { align: 'center' });
-                  doc.text('Valid for 12 months from date of issue.', pageWidth / 2, pageHeight - 6, { align: 'center' });
+                  doc.setFont(undefined, 'normal');
+                  doc.text('General Manager', rightCol, sigY + 37, { align: 'center' });
+                  doc.text('JMART STEEL', rightCol, sigY + 42, { align: 'center' });
+
+                  // Footer - right after signatures
+                  const footerY = sigY + 55;
+                  doc.setDrawColor(...gold);
+                  doc.setLineWidth(0.8);
+                  doc.line(margin + 25, footerY, pageWidth - margin - 25, footerY);
+                  doc.setFontSize(6);
+                  doc.setTextColor(...medGray);
+                  doc.text('Certificate ID: ' + cert.id, pageWidth / 2, footerY + 5, { align: 'center' });
+                  doc.text('This certificate confirms completion of safety training in accordance with WHS requirements.', pageWidth / 2, footerY + 9, { align: 'center' });
+                  doc.text('Valid for 12 months from date of issue.', pageWidth / 2, footerY + 13, { align: 'center' });
 
                   doc.save('JMart-Certificate-' + cert.courseName.replace(/\s+/g, '-') + '-' + cert.workerName.replace(/\s+/g, '-') + '.pdf');
                 } catch(e) {
