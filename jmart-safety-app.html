@@ -5223,8 +5223,10 @@
                   doc.text('Valid for 12 months from date of issue.', pageWidth / 2, footerY + 13, { align: 'center' });
 
                   doc.save('JMart-Certificate-' + cert.courseName.replace(/\s+/g, '-') + '-' + cert.workerName.replace(/\s+/g, '-') + '.pdf');
+                  console.log('Saving PDF...');
                 } catch(e) {
-                  alert('Error downloading certificate');
+                  console.error('Certificate error:', e);
+                  alert('Error downloading certificate: ' + e.message);
                 }
               };
 
