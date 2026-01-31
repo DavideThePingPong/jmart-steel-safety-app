@@ -5155,20 +5155,97 @@
                   doc.text('COMPLETE ✓', pageWidth / 2, y, { align: 'center' });
                   y += 12;
 
+                  // Date box
                   doc.setFillColor(...lightGray);
-                  doc.roundedRect(margin + 15, y - 3, pageWidth - margin * 2 - 30, 14, 2, 2, 'F');
-                  doc.setFontSize(8);
+                  doc.roundedRect(margin + 20, y - 2, pageWidth - margin * 2 - 40, 12, 2, 2, 'F');
+                  doc.setFontSize(7);
                   doc.setTextColor(...medGray);
                   doc.setFont(undefined, 'normal');
                   doc.text('DATE COMPLETED', pageWidth / 2, y + 1, { align: 'center' });
-                  doc.setFontSize(10);
+                  doc.setFontSize(9);
                   doc.setTextColor(...navy);
                   doc.setFont(undefined, 'bold');
-                  doc.text(cert.date, pageWidth / 2, y + 8, { align: 'center' });
-                  y += 22;
+                  doc.text(cert.date, pageWidth / 2, y + 7, { align: 'center' });
+                  y += 16;
 
-                  // Signatures - positioned right after content
-                  const sigY = y + 10;
+                  // Find the course to get questions and standards
+                  const courses = [
+                    { id: 'manual-handling', title: 'Manual Handling', questions: [{q:'Lift with legs'},{q:'Keep load close'},{q:'Avoid twisting'},{q:'Team lift heavy'},{q:'Report injuries'},{q:'Use equipment'},{q:'Check path'},{q:'Bend knees'}], standards: [{code:'Manual Handling Code of Practice 2021'}] },
+                    { id: 'working-heights', title: 'Working at Heights', questions: [{q:'Use harness'},{q:'Check anchor'},{q:'Inspect equipment'},{q:'3-point contact'},{q:'Secure tools'}], standards: [{code:'AS/NZS 1891.4 Industrial Fall Arrest'},{code:'Safe Work Australia - Working at Heights'}] },
+                    { id: 'ppe', title: 'Personal Protective Equipment', questions: [{q:'Inspect PPE'},{q:'Correct fit'},{q:'Replace damaged'},{q:'Store properly'},{q:'Site requirements'}], standards: [{code:'AS/NZS 1801 Occupational Helmets'},{code:'AS/NZS 1337 Eye Protection'},{code:'AS/NZS 2210 Safety Footwear'}] },
+                    { id: 'forklift', title: 'Forklift Safety', questions: [{q:'Valid license'},{q:'Load capacity'},{q:'Speed limits'},{q:'Pedestrian zones'},{q:'Pre-start check'}], standards: [{code:'AS 2359 Powered Industrial Trucks'}] },
+                    { id: 'hot-works', title: 'Hot Works Safety', questions: [{q:'Hot work permit'},{q:'Fire watch'},{q:'Clear area'},{q:'PPE welding'},{q:'Ventilation'},{q:'Gas cylinder'},{q:'Extinguisher'},{q:'Cool down'}], standards: [{code:'AS 1674.1 Welding Safety'},{code:'AS/NZS 1338.1 Welding Filters'}] },
+                    { id: 'glass-suction', title: 'Glass Suction Cups', questions: [{q:'Check suction'},{q:'Clean surface'},{q:'Weight limit'},{q:'Two person'},{q:'Release valve'},{q:'Inspect cups'},{q:'Gloves required'},{q:'Storage'}], standards: [{code:'AS 1288 Glass in Buildings'},{code:'Safe Work Australia - Manual Handling'}] }
+                  ];
+                  const course = courses.find(c => c.id === cert.courseId) || { questions: [], standards: [] };
+
+                  // === ASSESSMENT SECTION ===
+                  if (course.questions.length > 0) {
+                    const questionCount = course.questions.length;
+                    const rowsNeeded = Math.ceil(questionCount / 2);
+                    const qBoxHeight = rowsNeeded * 5 + 12;
+
+                    doc.setFillColor(...lightGreen);
+                    doc.roundedRect(margin + 20, y, pageWidth - margin * 2 - 40, qBoxHeight, 2, 2, 'F');
+                    doc.setDrawColor(...green);
+                    doc.setLineWidth(0.3);
+                    doc.roundedRect(margin + 20, y, pageWidth - margin * 2 - 40, qBoxHeight, 2, 2, 'S');
+
+                    doc.setFontSize(8);
+                    doc.setTextColor(...green);
+                    doc.setFont(undefined, 'bold');
+                    doc.text('ALL QUESTIONS ANSWERED CORRECTLY', pageWidth / 2, y + 6, { align: 'center' });
+
+                    let qY = y + 11;
+                    const col1X = margin + 26;
+                    const col2X = pageWidth / 2 + 6;
+
+                    doc.setFontSize(6);
+                    course.questions.forEach((q, idx) => {
+                      const qText = q.q;
+                      const xPos = idx % 2 === 0 ? col1X : col2X;
+                      const yPos = qY + Math.floor(idx / 2) * 5;
+
+                      doc.setTextColor(...green);
+                      doc.setFont(undefined, 'bold');
+                      doc.text('✓', xPos, yPos);
+
+                      doc.setTextColor(...darkGray);
+                      doc.setFont(undefined, 'normal');
+                      doc.text('Q' + (idx + 1) + ': ' + qText, xPos + 3, yPos);
+                    });
+
+                    y += qBoxHeight + 5;
+                  }
+
+                  // === STANDARDS SECTION ===
+                  const stds = course.standards || [];
+                  const stdBoxHeight = Math.max(stds.length, 1) * 4 + 12;
+
+                  doc.setFillColor(...orange);
+                  doc.roundedRect(margin + 20, y, pageWidth - margin * 2 - 40, stdBoxHeight, 2, 2, 'F');
+
+                  doc.setFontSize(8);
+                  doc.setTextColor(...white);
+                  doc.setFont(undefined, 'bold');
+                  doc.text('AUSTRALIAN STANDARDS REFERENCED', pageWidth / 2, y + 6, { align: 'center' });
+
+                  doc.setFontSize(6);
+                  doc.setFont(undefined, 'normal');
+                  let sY = y + 11;
+                  if (stds.length > 0) {
+                    stds.forEach(s => {
+                      doc.text('• ' + s.code, pageWidth / 2, sY, { align: 'center' });
+                      sY += 4;
+                    });
+                  } else {
+                    doc.text('• Safe Work Australia - WHS Guidelines', pageWidth / 2, sY, { align: 'center' });
+                  }
+
+                  y += stdBoxHeight + 8;
+
+                  // Signatures - positioned right after standards
+                  const sigY = y;
                   const leftCol = margin + 45;
                   const rightCol = pageWidth - margin - 45;
 
