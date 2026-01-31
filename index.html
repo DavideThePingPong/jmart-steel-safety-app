@@ -4710,112 +4710,214 @@
 
       const isCompleted = (courseId) => completedCourses.some(c => c.courseId === courseId);
 
-      // Generate PDF Certificate
+      // Generate PDF Certificate using jsPDF
       const generateCertificate = () => {
-        const now = new Date();
-        const dateStr = now.toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' });
-        const timeStr = now.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
-        const certId = 'JMS-' + now.getFullYear() + '-' + Math.random().toString(36).substr(2, 8).toUpperCase();
+        try {
+          const { jsPDF } = window.jspdf;
+          const doc = new jsPDF({
+            orientation: 'landscape',
+            unit: 'mm',
+            format: 'a4'
+          });
 
-        const standardsList = selectedCourse.standards ? selectedCourse.standards.map(s => s.code).join('\\n• ') : '';
+          const pageWidth = doc.internal.pageSize.getWidth();
+          const pageHeight = doc.internal.pageSize.getHeight();
 
-        const htmlContent = `
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <title>Training Certificate - ${selectedCourse.title}</title>
-            <style>
-              @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
-              body { font-family: Arial, sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; }
-              .header { text-align: center; border-bottom: 3px solid #f97316; padding-bottom: 20px; }
-              .logo { font-size: 32px; font-weight: bold; color: #f97316; }
-              .cert-title { font-size: 28px; color: #1f2937; margin: 30px 0; text-align: center; }
-              .content { padding: 30px 0; }
-              .field { margin: 15px 0; }
-              .label { font-weight: bold; color: #6b7280; font-size: 12px; text-transform: uppercase; }
-              .value { font-size: 18px; color: #1f2937; margin-top: 5px; }
-              .standards { background: #f3f4f6; padding: 15px; border-radius: 8px; margin: 20px 0; }
-              .standards h4 { margin: 0 0 10px 0; color: #374151; }
-              .standards ul { margin: 0; padding-left: 20px; }
-              .standards li { margin: 5px 0; font-size: 14px; }
-              .signature-box { margin-top: 40px; display: flex; gap: 40px; }
-              .sig-area { flex: 1; }
-              .sig-line { border-top: 2px solid #1f2937; margin-top: 60px; padding-top: 5px; }
-              .sig-image { height: 60px; }
-              .footer { margin-top: 40px; text-align: center; font-size: 12px; color: #9ca3af; }
-              .pass-badge { background: #22c55e; color: white; padding: 10px 20px; border-radius: 50px; display: inline-block; font-weight: bold; }
-              .cert-id { font-size: 11px; color: #9ca3af; }
-            </style>
-          </head>
-          <body>
-            <div class="header">
-              <div class="logo">🏗️ JMart Steel</div>
-              <p style="margin:5px 0;color:#6b7280;">Safety Training Certificate</p>
-            </div>
+          const now = new Date();
+          const dateStr = now.toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' });
+          const timeStr = now.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
+          const certId = 'JMS-' + now.getFullYear() + '-' + Math.random().toString(36).substr(2, 8).toUpperCase();
+          const score = calculateScore();
 
-            <h1 class="cert-title">${selectedCourse.title}</h1>
+          // Colors
+          const orange = [249, 115, 22];
+          const green = [34, 197, 94];
+          const darkGray = [31, 41, 55];
+          const gray = [107, 114, 128];
+          const lightGray = [243, 244, 246];
 
-            <div style="text-align:center;margin:20px 0;">
-              <span class="pass-badge">✓ PASSED - ${calculateScore()}%</span>
-            </div>
+          // Decorative border
+          doc.setDrawColor(...orange);
+          doc.setLineWidth(3);
+          doc.rect(10, 10, pageWidth - 20, pageHeight - 20);
 
-            <div class="content">
-              <div class="field">
-                <div class="label">Certificate Awarded To</div>
-                <div class="value">${workerName || 'Worker Name'}</div>
-              </div>
+          // Inner border
+          doc.setDrawColor(...lightGray);
+          doc.setLineWidth(1);
+          doc.rect(15, 15, pageWidth - 30, pageHeight - 30);
 
-              <div class="field">
-                <div class="label">Course Completed</div>
-                <div class="value">${selectedCourse.title}</div>
-              </div>
+          // Corner decorations
+          doc.setFillColor(...orange);
+          doc.circle(10, 10, 3, 'F');
+          doc.circle(pageWidth - 10, 10, 3, 'F');
+          doc.circle(10, pageHeight - 10, 3, 'F');
+          doc.circle(pageWidth - 10, pageHeight - 10, 3, 'F');
 
-              <div class="field">
-                <div class="label">Date & Time</div>
-                <div class="value">${dateStr} at ${timeStr}</div>
-              </div>
+          let y = 30;
 
-              <div class="field">
-                <div class="label">Duration</div>
-                <div class="value">${selectedCourse.duration} • ${selectedCourse.questions.length} questions</div>
-              </div>
+          // Header - Company Name
+          doc.setFontSize(28);
+          doc.setTextColor(...orange);
+          doc.setFont(undefined, 'bold');
+          doc.text('JMART STEEL', pageWidth / 2, y, { align: 'center' });
+          y += 8;
 
-              <div class="standards">
-                <h4>📋 Australian Standards Referenced:</h4>
-                <ul>
-                  ${selectedCourse.standards ? selectedCourse.standards.map(s => '<li>' + s.code + '</li>').join('') : '<li>General WHS Guidelines</li>'}
-                </ul>
-              </div>
+          // Subtitle
+          doc.setFontSize(12);
+          doc.setTextColor(...gray);
+          doc.setFont(undefined, 'normal');
+          doc.text('Safety Training Certificate', pageWidth / 2, y, { align: 'center' });
+          y += 5;
 
-              <div class="signature-box">
-                <div class="sig-area">
-                  <div class="label">Worker Signature</div>
-                  ${signatureData ? '<img src="' + signatureData + '" class="sig-image" />' : ''}
-                  <div class="sig-line">${workerName || 'Worker Name'}</div>
-                </div>
-                <div class="sig-area">
-                  <div class="label">Supervisor</div>
-                  <div class="sig-line">JMart Steel Safety</div>
-                </div>
-              </div>
-            </div>
+          // Decorative line
+          doc.setDrawColor(...orange);
+          doc.setLineWidth(1);
+          doc.line(pageWidth / 2 - 50, y, pageWidth / 2 + 50, y);
+          y += 15;
 
-            <div class="footer">
-              <p class="cert-id">Certificate ID: ${certId}</p>
-              <p>This certificate confirms completion of safety training in accordance with WHS requirements.</p>
-              <p>Keep this record for compliance purposes. Valid for 12 months from date of issue.</p>
-            </div>
-          </body>
-          </html>
-        `;
+          // Certificate Title
+          doc.setFontSize(10);
+          doc.setTextColor(...gray);
+          doc.text('THIS IS TO CERTIFY THAT', pageWidth / 2, y, { align: 'center' });
+          y += 12;
 
-        const blob = new Blob([htmlContent], { type: 'text/html' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'JMart-Training-Certificate-' + selectedCourse.id + '-' + dateStr.replace(/ /g, '-') + '.html';
-        a.click();
-        URL.revokeObjectURL(url);
+          // Worker Name
+          doc.setFontSize(26);
+          doc.setTextColor(...darkGray);
+          doc.setFont(undefined, 'bold');
+          doc.text(workerName || 'Worker Name', pageWidth / 2, y, { align: 'center' });
+          y += 12;
+
+          // Has successfully completed
+          doc.setFontSize(10);
+          doc.setTextColor(...gray);
+          doc.setFont(undefined, 'normal');
+          doc.text('has successfully completed the training course', pageWidth / 2, y, { align: 'center' });
+          y += 12;
+
+          // Course Title
+          doc.setFontSize(18);
+          doc.setTextColor(...orange);
+          doc.setFont(undefined, 'bold');
+          // Handle bilingual title - just use English part if too long
+          const courseTitle = selectedCourse.title.split(' / ')[0];
+          doc.text(courseTitle, pageWidth / 2, y, { align: 'center' });
+          y += 15;
+
+          // Score Badge
+          doc.setFillColor(...green);
+          const badgeWidth = 50;
+          const badgeHeight = 12;
+          const badgeX = pageWidth / 2 - badgeWidth / 2;
+          doc.roundedRect(badgeX, y - 8, badgeWidth, badgeHeight, 6, 6, 'F');
+          doc.setFontSize(12);
+          doc.setTextColor(255, 255, 255);
+          doc.setFont(undefined, 'bold');
+          doc.text('PASSED - ' + score + '%', pageWidth / 2, y, { align: 'center' });
+          y += 15;
+
+          // Details section
+          doc.setFontSize(9);
+          doc.setTextColor(...gray);
+          doc.setFont(undefined, 'normal');
+
+          const detailsY = y;
+          const leftCol = pageWidth / 4;
+          const rightCol = (pageWidth / 4) * 3;
+
+          // Left column - Date
+          doc.text('Date Completed', leftCol, detailsY, { align: 'center' });
+          doc.setFontSize(11);
+          doc.setTextColor(...darkGray);
+          doc.setFont(undefined, 'bold');
+          doc.text(dateStr, leftCol, detailsY + 6, { align: 'center' });
+
+          // Right column - Duration
+          doc.setFontSize(9);
+          doc.setTextColor(...gray);
+          doc.setFont(undefined, 'normal');
+          doc.text('Course Duration', rightCol, detailsY, { align: 'center' });
+          doc.setFontSize(11);
+          doc.setTextColor(...darkGray);
+          doc.setFont(undefined, 'bold');
+          doc.text(selectedCourse.duration + ' - ' + selectedCourse.questions.length + ' questions', rightCol, detailsY + 6, { align: 'center' });
+
+          y += 20;
+
+          // Standards Referenced
+          doc.setFillColor(...lightGray);
+          const standardsWidth = 160;
+          const standardsX = pageWidth / 2 - standardsWidth / 2;
+          doc.roundedRect(standardsX, y - 3, standardsWidth, 22, 3, 3, 'F');
+
+          doc.setFontSize(8);
+          doc.setTextColor(...gray);
+          doc.setFont(undefined, 'bold');
+          doc.text('Australian Standards Referenced:', pageWidth / 2, y + 3, { align: 'center' });
+
+          doc.setFont(undefined, 'normal');
+          doc.setFontSize(7);
+          const standardsText = selectedCourse.standards
+            ? selectedCourse.standards.map(s => s.code).join('  |  ')
+            : 'General WHS Guidelines';
+          const standardsLines = doc.splitTextToSize(standardsText, standardsWidth - 10);
+          doc.text(standardsLines, pageWidth / 2, y + 10, { align: 'center' });
+
+          y += 30;
+
+          // Signature section
+          const sigY = y;
+          const sigWidth = 60;
+
+          // Worker signature
+          doc.setFontSize(8);
+          doc.setTextColor(...gray);
+          doc.text('Worker Signature', leftCol, sigY, { align: 'center' });
+
+          // Add signature image if available
+          if (signatureData) {
+            try {
+              doc.addImage(signatureData, 'PNG', leftCol - 25, sigY + 2, 50, 15);
+            } catch (e) {
+              console.log('Could not add signature image:', e);
+            }
+          }
+
+          doc.setDrawColor(...darkGray);
+          doc.setLineWidth(0.5);
+          doc.line(leftCol - sigWidth/2, sigY + 20, leftCol + sigWidth/2, sigY + 20);
+          doc.setFontSize(9);
+          doc.setTextColor(...darkGray);
+          doc.setFont(undefined, 'bold');
+          doc.text(workerName || 'Worker Name', leftCol, sigY + 26, { align: 'center' });
+
+          // Supervisor signature
+          doc.setFontSize(8);
+          doc.setTextColor(...gray);
+          doc.setFont(undefined, 'normal');
+          doc.text('Authorized By', rightCol, sigY, { align: 'center' });
+          doc.line(rightCol - sigWidth/2, sigY + 20, rightCol + sigWidth/2, sigY + 20);
+          doc.setFontSize(9);
+          doc.setTextColor(...darkGray);
+          doc.setFont(undefined, 'bold');
+          doc.text('JMart Steel Safety', rightCol, sigY + 26, { align: 'center' });
+
+          // Footer
+          doc.setFontSize(7);
+          doc.setTextColor(...gray);
+          doc.setFont(undefined, 'normal');
+          doc.text('Certificate ID: ' + certId, pageWidth / 2, pageHeight - 20, { align: 'center' });
+          doc.text('This certificate confirms completion of safety training in accordance with WHS requirements. Valid for 12 months.',
+            pageWidth / 2, pageHeight - 15, { align: 'center' });
+
+          // Save the PDF
+          const fileName = 'JMart-Certificate-' + selectedCourse.id + '-' + workerName.replace(/\s+/g, '-') + '.pdf';
+          doc.save(fileName);
+
+        } catch (error) {
+          console.error('Error generating certificate PDF:', error);
+          alert('Error generating certificate. Please try again.');
+        }
       };
 
       // Get QR Code URL for sharing - always use the GitHub Pages URL
