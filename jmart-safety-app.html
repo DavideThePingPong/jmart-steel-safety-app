@@ -5076,6 +5076,7 @@
               if (savedCerts.length === 0) return null;
 
               const redownloadCert = (cert) => {
+                console.log('redownloadCert called', cert);
                 try {
                   const { jsPDF } = window.jspdf;
                   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
