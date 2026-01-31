@@ -4887,12 +4887,12 @@
             doc.text('• Safe Work Australia - WHS Guidelines', pageWidth / 2, sY, { align: 'center' });
           }
 
-          y += stdBoxHeight + 15;
+          y += stdBoxHeight + 12;
 
-          // === SIGNATURES - Fixed at bottom with proper spacing ===
-          const sigY = 220; // Fixed position for consistent layout
-          const leftCol = margin + 45;  // Worker on left
-          const rightCol = pageWidth - margin - 45;  // Scott on right
+          // === SIGNATURES - positioned right after standards ===
+          const sigY = y;
+          const leftCol = margin + 45;
+          const rightCol = pageWidth - margin - 45;
 
           // Worker signature (LEFT)
           doc.setFontSize(7);
@@ -4902,18 +4902,18 @@
 
           if (signatureData) {
             try {
-              doc.addImage(signatureData, 'PNG', leftCol - 20, sigY + 4, 40, 16);
+              doc.addImage(signatureData, 'PNG', leftCol - 20, sigY + 4, 40, 18);
             } catch (e) {}
           }
 
           doc.setDrawColor(...navy);
           doc.setLineWidth(0.5);
-          doc.line(leftCol - 28, sigY + 22, leftCol + 28, sigY + 22);
+          doc.line(leftCol - 28, sigY + 24, leftCol + 28, sigY + 24);
 
           doc.setFontSize(10);
           doc.setTextColor(...navy);
           doc.setFont(undefined, 'bold');
-          doc.text(workerName || 'Worker', leftCol, sigY + 29, { align: 'center' });
+          doc.text(workerName || 'Worker', leftCol, sigY + 31, { align: 'center' });
 
           // Scott Seeho signature (RIGHT)
           doc.setFontSize(7);
@@ -4926,26 +4926,26 @@
             if (teamSigs) {
               const sigs = JSON.parse(teamSigs);
               if (sigs['Scott Seeho'] && sigs['Scott Seeho'].startsWith('data:image')) {
-                doc.addImage(sigs['Scott Seeho'], 'PNG', rightCol - 20, sigY + 4, 40, 16);
+                doc.addImage(sigs['Scott Seeho'], 'PNG', rightCol - 20, sigY + 4, 40, 18);
               }
             }
           } catch (e) {}
 
-          doc.line(rightCol - 28, sigY + 22, rightCol + 28, sigY + 22);
+          doc.line(rightCol - 28, sigY + 24, rightCol + 28, sigY + 24);
 
           doc.setFontSize(10);
           doc.setTextColor(...navy);
           doc.setFont(undefined, 'bold');
-          doc.text('Scott Seeho', rightCol, sigY + 29, { align: 'center' });
+          doc.text('Scott Seeho', rightCol, sigY + 31, { align: 'center' });
 
           doc.setFontSize(7);
           doc.setTextColor(...medGray);
           doc.setFont(undefined, 'normal');
-          doc.text('General Manager', rightCol, sigY + 35, { align: 'center' });
-          doc.text('JMART STEEL', rightCol, sigY + 40, { align: 'center' });
+          doc.text('General Manager', rightCol, sigY + 37, { align: 'center' });
+          doc.text('JMART STEEL', rightCol, sigY + 42, { align: 'center' });
 
-          // === FOOTER - Fixed at bottom ===
-          const footerY = pageHeight - 25;
+          // === FOOTER - right after signatures ===
+          const footerY = sigY + 70;
           doc.setDrawColor(...gold);
           doc.setLineWidth(0.8);
           doc.line(margin + 25, footerY, pageWidth - margin - 25, footerY);
