@@ -4720,15 +4720,15 @@
             format: 'a4'
           });
 
-          const pageWidth = doc.internal.pageSize.getWidth();  // 210mm
-          const pageHeight = doc.internal.pageSize.getHeight(); // 297mm
+          const pageWidth = 210;
+          const pageHeight = 297;
           const margin = 15;
 
           const now = new Date();
           const dateStr = now.toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' });
           const certId = 'JMS-' + now.getFullYear() + '-' + Math.random().toString(36).substr(2, 8).toUpperCase();
 
-          // Professional Color Palette
+          // Colors
           const navy = [15, 23, 42];
           const gold = [212, 175, 55];
           const orange = [234, 88, 12];
@@ -4739,120 +4739,118 @@
           const green = [22, 163, 74];
           const lightGreen = [240, 253, 244];
 
-          // === ELEGANT BORDER ===
+          // === BORDER ===
           doc.setDrawColor(...gold);
-          doc.setLineWidth(2);
-          doc.rect(margin - 2, margin - 2, pageWidth - margin * 2 + 4, pageHeight - margin * 2 + 4);
+          doc.setLineWidth(2.5);
+          doc.rect(margin - 3, margin - 3, pageWidth - margin * 2 + 6, pageHeight - margin * 2 + 6);
 
           doc.setDrawColor(...navy);
           doc.setLineWidth(0.5);
           doc.rect(margin + 2, margin + 2, pageWidth - margin * 2 - 4, pageHeight - margin * 2 - 4);
 
           // === HEADER ===
-          let y = margin + 10;
-
           doc.setFillColor(...navy);
-          doc.rect(margin + 2, margin + 2, pageWidth - margin * 2 - 4, 32, 'F');
+          doc.rect(margin + 2, margin + 2, pageWidth - margin * 2 - 4, 30, 'F');
 
-          doc.setFontSize(28);
+          doc.setFontSize(26);
           doc.setTextColor(...white);
           doc.setFont(undefined, 'bold');
-          doc.text('JMART STEEL', pageWidth / 2, y + 8, { align: 'center' });
+          doc.text('JMART STEEL', pageWidth / 2, margin + 18, { align: 'center' });
 
           doc.setDrawColor(...gold);
           doc.setLineWidth(1);
-          doc.line(pageWidth / 2 - 40, y + 13, pageWidth / 2 + 40, y + 13);
+          doc.line(pageWidth / 2 - 35, margin + 22, pageWidth / 2 + 35, margin + 22);
 
-          doc.setFontSize(10);
+          doc.setFontSize(9);
           doc.setTextColor(...gold);
-          doc.text('CERTIFICATE OF COMPLETION', pageWidth / 2, y + 21, { align: 'center' });
+          doc.text('CERTIFICATE OF COMPLETION', pageWidth / 2, margin + 28, { align: 'center' });
 
-          y = margin + 42;
+          let y = margin + 42;
 
           // === WORKER INFO ===
           doc.setFontSize(10);
           doc.setTextColor(...medGray);
           doc.setFont(undefined, 'normal');
           doc.text('This is to certify that', pageWidth / 2, y, { align: 'center' });
-          y += 10;
+          y += 9;
 
-          doc.setFontSize(24);
+          doc.setFontSize(22);
           doc.setTextColor(...navy);
           doc.setFont(undefined, 'bold');
           doc.text(workerName || 'Worker Name', pageWidth / 2, y, { align: 'center' });
-          y += 6;
+          y += 5;
 
           doc.setDrawColor(...gold);
           doc.setLineWidth(0.5);
-          doc.line(pageWidth / 2 - 45, y, pageWidth / 2 + 45, y);
-          y += 8;
+          doc.line(pageWidth / 2 - 40, y, pageWidth / 2 + 40, y);
+          y += 7;
 
           doc.setFontSize(10);
           doc.setTextColor(...medGray);
           doc.setFont(undefined, 'normal');
           doc.text('has successfully completed the safety training course', pageWidth / 2, y, { align: 'center' });
-          y += 10;
+          y += 9;
 
           // Course Title
           const courseTitle = selectedCourse.title.split(' / ')[0];
-          doc.setFontSize(18);
+          doc.setFontSize(16);
           doc.setTextColor(...orange);
           doc.setFont(undefined, 'bold');
           doc.text(courseTitle, pageWidth / 2, y, { align: 'center' });
-          y += 10;
+          y += 9;
 
-          // PASSED Badge
+          // COMPLETE Badge
           doc.setFillColor(...green);
-          doc.roundedRect(pageWidth / 2 - 25, y - 6, 50, 9, 4, 4, 'F');
-          doc.setFontSize(10);
+          doc.roundedRect(pageWidth / 2 - 22, y - 5, 44, 8, 3, 3, 'F');
+          doc.setFontSize(9);
           doc.setTextColor(...white);
           doc.setFont(undefined, 'bold');
           doc.text('COMPLETE ✓', pageWidth / 2, y, { align: 'center' });
-          y += 12;
+          y += 10;
 
           // Date & Duration Row
           doc.setFillColor(...lightGray);
-          doc.roundedRect(margin + 15, y - 3, pageWidth - margin * 2 - 30, 14, 2, 2, 'F');
+          doc.roundedRect(margin + 20, y - 2, pageWidth - margin * 2 - 40, 12, 2, 2, 'F');
 
-          doc.setFontSize(8);
+          doc.setFontSize(7);
           doc.setTextColor(...medGray);
           doc.setFont(undefined, 'normal');
           doc.text('DATE', pageWidth / 3, y + 1, { align: 'center' });
           doc.text('DURATION', (pageWidth / 3) * 2, y + 1, { align: 'center' });
 
-          doc.setFontSize(10);
+          doc.setFontSize(9);
           doc.setTextColor(...navy);
           doc.setFont(undefined, 'bold');
-          doc.text(dateStr, pageWidth / 3, y + 8, { align: 'center' });
-          doc.text(selectedCourse.duration, (pageWidth / 3) * 2, y + 8, { align: 'center' });
-          y += 18;
+          doc.text(dateStr, pageWidth / 3, y + 7, { align: 'center' });
+          doc.text(selectedCourse.duration, (pageWidth / 3) * 2, y + 7, { align: 'center' });
+          y += 16;
 
           // === ASSESSMENT SECTION ===
           const questionCount = selectedCourse.questions.length;
           const rowsNeeded = Math.ceil(questionCount / 2);
-          const qBoxHeight = rowsNeeded * 6 + 14;
+          const qBoxHeight = rowsNeeded * 5 + 12;
 
           doc.setFillColor(...lightGreen);
-          doc.roundedRect(margin + 15, y, pageWidth - margin * 2 - 30, qBoxHeight, 2, 2, 'F');
+          doc.roundedRect(margin + 20, y, pageWidth - margin * 2 - 40, qBoxHeight, 2, 2, 'F');
           doc.setDrawColor(...green);
           doc.setLineWidth(0.3);
-          doc.roundedRect(margin + 15, y, pageWidth - margin * 2 - 30, qBoxHeight, 2, 2, 'S');
+          doc.roundedRect(margin + 20, y, pageWidth - margin * 2 - 40, qBoxHeight, 2, 2, 'S');
 
-          doc.setFontSize(9);
+          doc.setFontSize(8);
           doc.setTextColor(...green);
           doc.setFont(undefined, 'bold');
-          doc.text('ALL QUESTIONS ANSWERED CORRECTLY', pageWidth / 2, y + 7, { align: 'center' });
+          doc.text('ALL QUESTIONS ANSWERED CORRECTLY', pageWidth / 2, y + 6, { align: 'center' });
 
-          let qY = y + 13;
-          const col1X = margin + 22;
-          const col2X = pageWidth / 2 + 8;
+          let qY = y + 11;
+          const col1X = margin + 26;
+          const col2X = pageWidth / 2 + 6;
 
-          doc.setFontSize(7);
+          doc.setFontSize(6);
           selectedCourse.questions.forEach((q, idx) => {
             const qText = q.question.split(' / ')[0];
-            const shortQ = qText.length > 42 ? qText.substring(0, 39) + '...' : qText;
+            const shortQ = qText.length > 40 ? qText.substring(0, 37) + '...' : qText;
             const xPos = idx % 2 === 0 ? col1X : col2X;
-            const yPos = qY + Math.floor(idx / 2) * 6;
+            const yPos = qY + Math.floor(idx / 2) * 5;
 
             doc.setTextColor(...green);
             doc.setFont(undefined, 'bold');
@@ -4860,65 +4858,65 @@
 
             doc.setTextColor(...darkGray);
             doc.setFont(undefined, 'normal');
-            doc.text('Q' + (idx + 1) + ': ' + shortQ, xPos + 4, yPos);
+            doc.text('Q' + (idx + 1) + ': ' + shortQ, xPos + 3, yPos);
           });
 
-          y += qBoxHeight + 6;
+          y += qBoxHeight + 5;
 
           // === STANDARDS SECTION ===
           const stds = selectedCourse.standards || [];
-          const stdBoxHeight = Math.max(stds.length, 1) * 5 + 14;
+          const stdBoxHeight = Math.max(stds.length, 1) * 4 + 12;
 
           doc.setFillColor(...orange);
-          doc.roundedRect(margin + 15, y, pageWidth - margin * 2 - 30, stdBoxHeight, 2, 2, 'F');
+          doc.roundedRect(margin + 20, y, pageWidth - margin * 2 - 40, stdBoxHeight, 2, 2, 'F');
 
-          doc.setFontSize(9);
+          doc.setFontSize(8);
           doc.setTextColor(...white);
           doc.setFont(undefined, 'bold');
-          doc.text('AUSTRALIAN STANDARDS REFERENCED', pageWidth / 2, y + 7, { align: 'center' });
+          doc.text('AUSTRALIAN STANDARDS REFERENCED', pageWidth / 2, y + 6, { align: 'center' });
 
-          doc.setFontSize(7);
+          doc.setFontSize(6);
           doc.setFont(undefined, 'normal');
-          let sY = y + 13;
+          let sY = y + 11;
           if (stds.length > 0) {
             stds.forEach(s => {
               doc.text('• ' + s.code, pageWidth / 2, sY, { align: 'center' });
-              sY += 5;
+              sY += 4;
             });
           } else {
             doc.text('• Safe Work Australia - WHS Guidelines', pageWidth / 2, sY, { align: 'center' });
           }
 
-          y += stdBoxHeight + 12;
+          y += stdBoxHeight + 15;
 
-          // === SIGNATURES ===
-          const sigY = Math.min(y, pageHeight - 70);
-          const leftCol = pageWidth / 4 + 5;
-          const rightCol = (pageWidth / 4) * 3 - 5;
+          // === SIGNATURES - Fixed at bottom with proper spacing ===
+          const sigY = 220; // Fixed position for consistent layout
+          const leftCol = margin + 45;  // Worker on left
+          const rightCol = pageWidth - margin - 45;  // Scott on right
 
-          // Worker signature
-          doc.setFontSize(8);
+          // Worker signature (LEFT)
+          doc.setFontSize(7);
           doc.setTextColor(...medGray);
           doc.setFont(undefined, 'normal');
           doc.text('WORKER SIGNATURE', leftCol, sigY, { align: 'center' });
 
           if (signatureData) {
             try {
-              doc.addImage(signatureData, 'PNG', leftCol - 22, sigY + 3, 44, 14);
+              doc.addImage(signatureData, 'PNG', leftCol - 20, sigY + 4, 40, 16);
             } catch (e) {}
           }
 
           doc.setDrawColor(...navy);
           doc.setLineWidth(0.5);
-          doc.line(leftCol - 30, sigY + 19, leftCol + 30, sigY + 19);
+          doc.line(leftCol - 28, sigY + 22, leftCol + 28, sigY + 22);
 
           doc.setFontSize(10);
           doc.setTextColor(...navy);
           doc.setFont(undefined, 'bold');
-          doc.text(workerName || 'Worker', leftCol, sigY + 26, { align: 'center' });
+          doc.text(workerName || 'Worker', leftCol, sigY + 29, { align: 'center' });
 
-          // Scott Seeho signature
-          doc.setFontSize(8);
+          // Scott Seeho signature (RIGHT)
+          doc.setFontSize(7);
           doc.setTextColor(...medGray);
           doc.setFont(undefined, 'normal');
           doc.text('AUTHORIZED BY', rightCol, sigY, { align: 'center' });
@@ -4928,34 +4926,35 @@
             if (teamSigs) {
               const sigs = JSON.parse(teamSigs);
               if (sigs['Scott Seeho'] && sigs['Scott Seeho'].startsWith('data:image')) {
-                doc.addImage(sigs['Scott Seeho'], 'PNG', rightCol - 22, sigY + 3, 44, 14);
+                doc.addImage(sigs['Scott Seeho'], 'PNG', rightCol - 20, sigY + 4, 40, 16);
               }
             }
           } catch (e) {}
 
-          doc.line(rightCol - 30, sigY + 19, rightCol + 30, sigY + 19);
+          doc.line(rightCol - 28, sigY + 22, rightCol + 28, sigY + 22);
 
           doc.setFontSize(10);
           doc.setTextColor(...navy);
           doc.setFont(undefined, 'bold');
-          doc.text('Scott Seeho', rightCol, sigY + 26, { align: 'center' });
-
-          doc.setFontSize(8);
-          doc.setTextColor(...medGray);
-          doc.setFont(undefined, 'normal');
-          doc.text('General Manager', rightCol, sigY + 32, { align: 'center' });
-          doc.text('JMART STEEL', rightCol, sigY + 37, { align: 'center' });
-
-          // === FOOTER ===
-          doc.setDrawColor(...gold);
-          doc.setLineWidth(0.8);
-          doc.line(margin + 20, pageHeight - 22, pageWidth - margin - 20, pageHeight - 22);
+          doc.text('Scott Seeho', rightCol, sigY + 29, { align: 'center' });
 
           doc.setFontSize(7);
           doc.setTextColor(...medGray);
-          doc.text('Certificate ID: ' + certId, pageWidth / 2, pageHeight - 16, { align: 'center' });
-          doc.text('This certificate confirms completion of safety training in accordance with WHS requirements.', pageWidth / 2, pageHeight - 11, { align: 'center' });
-          doc.text('Valid for 12 months from date of issue.', pageWidth / 2, pageHeight - 6, { align: 'center' });
+          doc.setFont(undefined, 'normal');
+          doc.text('General Manager', rightCol, sigY + 35, { align: 'center' });
+          doc.text('JMART STEEL', rightCol, sigY + 40, { align: 'center' });
+
+          // === FOOTER - Fixed at bottom ===
+          const footerY = pageHeight - 25;
+          doc.setDrawColor(...gold);
+          doc.setLineWidth(0.8);
+          doc.line(margin + 25, footerY, pageWidth - margin - 25, footerY);
+
+          doc.setFontSize(6);
+          doc.setTextColor(...medGray);
+          doc.text('Certificate ID: ' + certId, pageWidth / 2, footerY + 5, { align: 'center' });
+          doc.text('This certificate confirms completion of safety training in accordance with WHS requirements.', pageWidth / 2, footerY + 9, { align: 'center' });
+          doc.text('Valid for 12 months from date of issue.', pageWidth / 2, footerY + 13, { align: 'center' });
 
           // Save certificate data to localStorage for re-download
           const certData = {
