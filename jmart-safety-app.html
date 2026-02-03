@@ -565,6 +565,201 @@
     // Start the scheduler
     DailyBackupScheduler.start();
 
+    // ========================================
+    // STORAGE QUOTA MANAGER
+    // ========================================
+    // Monitors localStorage usage and warns users before quota is exceeded
+    const StorageQuotaManager = {
+      MAX_STORAGE_MB: 5, // localStorage limit is typically 5-10MB
+      WARNING_THRESHOLD: 0.8, // Warn at 80% usage
+      listeners: [],
+
+      // Calculate current storage usage
+      getUsage: function() {
+        let totalBytes = 0;
+        for (let key in localStorage) {
+          if (localStorage.hasOwnProperty(key)) {
+            totalBytes += localStorage[key].length * 2; // UTF-16 = 2 bytes per char
+          }
+        }
+        const totalMB = totalBytes / (1024 * 1024);
+        const percentUsed = (totalMB / this.MAX_STORAGE_MB) * 100;
+        return {
+          bytes: totalBytes,
+          megabytes: totalMB.toFixed(2),
+          percentUsed: percentUsed.toFixed(1),
+          isWarning: percentUsed >= (this.WARNING_THRESHOLD * 100),
+          isCritical: percentUsed >= 95
+        };
+      },
+
+      // Check if we can safely store data of given size
+      canStore: function(dataString) {
+        const dataBytes = dataString.length * 2;
+        const usage = this.getUsage();
+        const projectedMB = (usage.bytes + dataBytes) / (1024 * 1024);
+        return projectedMB < this.MAX_STORAGE_MB;
+      },
+
+      // Notify listeners of storage changes
+      notifyListeners: function(usage) {
+        this.listeners.forEach(cb => cb(usage));
+      },
+
+      // Add listener for storage updates
+      onStorageChange: function(callback) {
+        this.listeners.push(callback);
+        // Immediately call with current usage
+        callback(this.getUsage());
+        return () => {
+          this.listeners = this.listeners.filter(cb => cb !== callback);
+        };
+      },
+
+      // Clean up old/unnecessary data to free space
+      cleanup: function() {
+        const keysToRemove = [];
+        const now = Date.now();
+        const thirtyDaysAgo = now - (30 * 24 * 60 * 60 * 1000);
+
+        // Find old backup and temp keys
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && (key.includes('backup') || key.includes('temp') || key.includes('cache'))) {
+            keysToRemove.push(key);
+          }
+        }
+
+        // Remove old backed-up form records
+        try {
+          const backedUp = JSON.parse(localStorage.getItem('jmart-backed-up-forms') || '{}');
+          const recentBackups = {};
+          Object.entries(backedUp).forEach(([id, timestamp]) => {
+            if (new Date(timestamp).getTime() > thirtyDaysAgo) {
+              recentBackups[id] = timestamp;
+            }
+          });
+          localStorage.setItem('jmart-backed-up-forms', JSON.stringify(recentBackups));
+        } catch (e) {
+          console.error('Error cleaning backup records:', e);
+        }
+
+        // Remove identified keys
+        keysToRemove.forEach(key => {
+          try {
+            localStorage.removeItem(key);
+            console.log('Cleaned up storage key:', key);
+          } catch (e) {
+            console.error('Error removing key:', key, e);
+          }
+        });
+
+        const freed = keysToRemove.length;
+        console.log(`Storage cleanup complete: removed ${freed} items`);
+        this.notifyListeners(this.getUsage());
+        return { cleaned: freed, usage: this.getUsage() };
+      },
+
+      // Safe save with quota handling
+      safeSave: function(key, data) {
+        const dataString = typeof data === 'string' ? data : JSON.stringify(data);
+
+        if (!this.canStore(dataString)) {
+          // Try cleanup first
+          this.cleanup();
+
+          if (!this.canStore(dataString)) {
+            // Still can't fit - notify user
+            const usage = this.getUsage();
+            console.error('Storage quota exceeded! Usage:', usage.megabytes, 'MB');
+            this.notifyListeners({ ...usage, error: 'quota_exceeded' });
+            throw new Error('Storage quota exceeded. Please delete old forms or backup to Google Drive.');
+          }
+        }
+
+        try {
+          localStorage.setItem(key, dataString);
+          const usage = this.getUsage();
+          if (usage.isWarning) {
+            this.notifyListeners(usage);
+          }
+          return true;
+        } catch (e) {
+          if (e.name === 'QuotaExceededError') {
+            this.cleanup();
+            // One more try after cleanup
+            localStorage.setItem(key, dataString);
+            return true;
+          }
+          throw e;
+        }
+      }
+    };
+
+    // ========================================
+    // AUDIT LOG MANAGER
+    // ========================================
+    // Tracks all form operations for compliance
+    const AuditLogManager = {
+      // Log an action
+      log: async function(action, details) {
+        const logEntry = {
+          id: Date.now().toString(36) + '-' + Math.random().toString(36).substr(2, 9),
+          action: action, // 'create', 'update', 'delete', 'view', 'export'
+          deviceId: DeviceAuthManager.deviceId || 'unknown',
+          userName: localStorage.getItem('jmart-user-name') || 'Unknown User',
+          timestamp: new Date().toISOString(),
+          details: details
+        };
+
+        // Save to local audit log
+        try {
+          const localLog = JSON.parse(localStorage.getItem('jmart-audit-log') || '[]');
+          localLog.push(logEntry);
+          // Keep last 1000 entries locally
+          if (localLog.length > 1000) {
+            localLog.splice(0, localLog.length - 1000);
+          }
+          localStorage.setItem('jmart-audit-log', JSON.stringify(localLog));
+        } catch (e) {
+          console.error('Error saving audit log locally:', e);
+        }
+
+        // Sync to Firebase if connected
+        if (firebaseDb && isFirebaseConfigured) {
+          try {
+            await firebaseDb.ref('jmart-safety/auditLog/' + logEntry.id).set(logEntry);
+          } catch (e) {
+            console.error('Error syncing audit log to Firebase:', e);
+          }
+        }
+
+        return logEntry;
+      },
+
+      // Get recent audit log entries
+      getRecent: function(limit = 50) {
+        try {
+          const localLog = JSON.parse(localStorage.getItem('jmart-audit-log') || '[]');
+          return localLog.slice(-limit).reverse();
+        } catch (e) {
+          console.error('Error reading audit log:', e);
+          return [];
+        }
+      },
+
+      // Get audit history for a specific form
+      getFormHistory: function(formId) {
+        try {
+          const localLog = JSON.parse(localStorage.getItem('jmart-audit-log') || '[]');
+          return localLog.filter(entry => entry.details && entry.details.formId === formId);
+        } catch (e) {
+          console.error('Error reading form history:', e);
+          return [];
+        }
+      }
+    };
+
     // Firebase sync helper functions with retry queue
     const FirebaseSync = {
       // Retry queue stored in localStorage
@@ -2559,22 +2754,63 @@
       };
       const saveSignature = () => onSave(canvasRef.current.toDataURL('image/png'));
 
-      // Use saved signature
+      // SIGNATURE SECURITY: Require verification before using saved signatures
+      const [verificationCode, setVerificationCode] = useState('');
+      const [showVerification, setShowVerification] = useState(false);
+      const [selectedMember, setSelectedMember] = useState(null);
+      const [verificationError, setVerificationError] = useState('');
+
+      // Generate a simple verification code based on name (last 4 chars of name hash)
+      const getVerificationCode = (memberName) => {
+        let hash = 0;
+        const str = memberName.toLowerCase().replace(/\s/g, '');
+        for (let i = 0; i < str.length; i++) {
+          hash = ((hash << 5) - hash) + str.charCodeAt(i);
+          hash = hash & hash;
+        }
+        return Math.abs(hash % 10000).toString().padStart(4, '0');
+      };
+
+      // Use saved signature - requires verification
       const useSavedSignature = () => {
         if (hasSavedSignature) {
-          onSave(savedSignatures[name]);
+          setSelectedMember(name);
+          setShowVerification(true);
+          setVerificationError('');
         }
       };
 
-      // Use another team member's saved signature
+      // Use another team member's saved signature - DISABLED for security
+      // Each person must sign their own signature
       const useOtherSignature = (memberName) => {
-        if (savedSignatures[memberName]) {
-          onSave(savedSignatures[memberName]);
-        }
+        // SECURITY FIX: Do not allow using other people's signatures
+        // Instead, show a message that each person must sign their own
+        alert(`Security Notice: ${memberName} must sign their own signature. Please have them sign directly on this device.`);
         setShowSavedOptions(false);
       };
 
-      // Get list of team members with saved signatures
+      // Verify and apply signature
+      const verifyAndApplySignature = () => {
+        if (!selectedMember) return;
+
+        const expectedCode = getVerificationCode(selectedMember);
+        if (verificationCode === expectedCode) {
+          // Verification passed - apply signature with audit log
+          AuditLogManager.log('signature_used', {
+            signerName: selectedMember,
+            usedBy: DeviceAuthManager.deviceId,
+            method: 'saved_signature',
+            timestamp: new Date().toISOString()
+          });
+          onSave(savedSignatures[selectedMember]);
+          setShowVerification(false);
+          setVerificationCode('');
+        } else {
+          setVerificationError('Incorrect code. Please enter your personal verification code.');
+        }
+      };
+
+      // Get list of team members with saved signatures (for display only)
       const membersWithSignatures = Object.entries(savedSignatures)
         .filter(([_, sig]) => sig && sig.startsWith('data:image'))
         .map(([memberName]) => memberName);
@@ -2587,42 +2823,65 @@
               <p className="text-sm text-gray-500">Draw your signature below or use a saved one</p>
             </div>
 
-            {/* Saved Signature Option */}
-            {hasSavedSignature && (
+            {/* Verification Modal */}
+            {showVerification && (
+              <div className="p-4 bg-amber-50 border-b border-amber-200">
+                <p className="text-sm text-amber-800 mb-2 font-medium">🔐 Signature Verification Required</p>
+                <p className="text-xs text-amber-700 mb-3">
+                  To use {selectedMember}'s saved signature, please enter your personal verification code.
+                  <br/>
+                  <span className="text-amber-600">(Hint: Your code is based on your name)</span>
+                </p>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={4}
+                  value={verificationCode}
+                  onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, ''))}
+                  placeholder="Enter 4-digit code"
+                  className="w-full border border-amber-300 rounded-lg px-3 py-2 mb-2 text-center text-lg tracking-widest"
+                />
+                {verificationError && (
+                  <p className="text-red-600 text-sm mb-2">{verificationError}</p>
+                )}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { setShowVerification(false); setVerificationCode(''); setVerificationError(''); }}
+                    className="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={verifyAndApplySignature}
+                    className="flex-1 bg-amber-600 text-white py-2 rounded-lg font-medium"
+                  >
+                    Verify & Sign
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Saved Signature Option - only show if not in verification mode */}
+            {hasSavedSignature && !showVerification && (
               <div className="p-4 bg-green-50 border-b border-green-100">
                 <p className="text-sm text-green-700 mb-2">✓ {name} has a saved signature</p>
                 <button
                   onClick={useSavedSignature}
                   className="w-full bg-green-600 text-white py-2 rounded-lg font-medium flex items-center justify-center gap-2"
                 >
-                  <span>✍️</span> Use Saved Signature
+                  <span>✍️</span> Use Saved Signature (requires verification)
                 </button>
               </div>
             )}
 
-            {/* Other Saved Signatures */}
-            {membersWithSignatures.length > 0 && (
+            {/* Info about signature security */}
+            {membersWithSignatures.length > 1 && !showVerification && (
               <div className="px-4 pt-3">
-                <button
-                  onClick={() => setShowSavedOptions(!showSavedOptions)}
-                  className="text-sm text-blue-600 underline"
-                >
-                  {showSavedOptions ? '▼ Hide' : '▶ Select from team'} ({membersWithSignatures.length} saved)
-                </button>
-                {showSavedOptions && (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {membersWithSignatures.map(memberName => (
-                      <button
-                        key={memberName}
-                        onClick={() => useOtherSignature(memberName)}
-                        className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm hover:bg-blue-200 flex items-center gap-1"
-                      >
-                        <img src={savedSignatures[memberName]} alt="" className="h-4 inline" />
-                        {memberName}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                <p className="text-xs text-gray-500 italic">
+                  🔒 Security: Each team member must sign their own signature.
+                  Saved signatures require verification before use.
+                </p>
               </div>
             )}
 
@@ -3206,20 +3465,52 @@
               return;
             }
 
-            // Merge: use Firebase data if it has more forms, otherwise keep local
-            // This prevents data loss when Firebase is empty but local has data
+            // CONFLICT RESOLUTION: Merge with timestamp-based conflict handling
+            // This prevents data loss and resolves concurrent edits properly
             if (formsArray.length > 0) {
-              // Merge by ID - combine local and Firebase, preferring newer timestamps
-              const mergedForms = [...formsArray];
+              const mergedForms = [];
+              const formMap = new Map();
+
+              // First, add all Firebase forms to the map
+              formsArray.forEach(form => {
+                formMap.set(form.id, { ...form, source: 'firebase' });
+              });
+
+              // Then, merge local forms with conflict resolution
               localForms.forEach(localForm => {
-                if (!mergedForms.find(f => f.id === localForm.id)) {
-                  mergedForms.push(localForm);
+                const existingForm = formMap.get(localForm.id);
+                if (!existingForm) {
+                  // New local form not in Firebase - add it
+                  formMap.set(localForm.id, { ...localForm, source: 'local' });
+                } else {
+                  // CONFLICT: Same form exists in both - resolve by timestamp
+                  const localTime = new Date(localForm.updatedAt || localForm.createdAt).getTime();
+                  const remoteTime = new Date(existingForm.updatedAt || existingForm.createdAt).getTime();
+
+                  if (localTime > remoteTime) {
+                    // Local is newer - use local version
+                    console.log(`Conflict resolved for ${localForm.id}: local wins (${new Date(localTime).toISOString()} > ${new Date(remoteTime).toISOString()})`);
+                    formMap.set(localForm.id, { ...localForm, source: 'local-wins' });
+                  } else if (localTime < remoteTime) {
+                    // Firebase is newer - keep Firebase version
+                    console.log(`Conflict resolved for ${localForm.id}: firebase wins (${new Date(remoteTime).toISOString()} > ${new Date(localTime).toISOString()})`);
+                  } else {
+                    // Same timestamp - prefer version with higher version number
+                    const localVersion = localForm.version || 1;
+                    const remoteVersion = existingForm.version || 1;
+                    if (localVersion > remoteVersion) {
+                      formMap.set(localForm.id, { ...localForm, source: 'local-version' });
+                    }
+                  }
                 }
               });
+
+              // Convert map back to array and sort
+              formMap.forEach(form => mergedForms.push(form));
               mergedForms.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
               setForms(mergedForms);
               localStorage.setItem('jmart-safety-forms', JSON.stringify(mergedForms));
-              console.log('Merged forms:', mergedForms.length, 'total');
+              console.log('Merged forms with conflict resolution:', mergedForms.length, 'total');
             } else if (localForms.length > 0) {
               // Firebase is empty but we have local data - push to Firebase
               console.log('Firebase empty, pushing local forms to Firebase');
@@ -3357,7 +3648,19 @@
 
       const addForm = (formType, formData) => {
         try {
-          const newForm = { id: Date.now(), type: formType, data: formData, createdAt: new Date().toISOString(), status: 'completed' };
+          // Generate unique ID with collision prevention (timestamp + random)
+          const uniqueId = Date.now().toString(36) + '-' + Math.random().toString(36).substr(2, 9);
+          const newForm = {
+            id: uniqueId,
+            type: formType,
+            data: formData,
+            createdAt: new Date().toISOString(),
+            // AUDIT TRAIL: Track who created this form
+            createdBy: DeviceAuthManager.deviceId || 'unknown',
+            createdByName: localStorage.getItem('jmart-user-name') || 'Unknown User',
+            version: 1,
+            status: 'completed'
+          };
           console.log('addForm called, current forms:', forms.length, 'isInitialLoad:', isInitialLoad.current);
 
           // Use functional update to ensure we get latest forms state
@@ -3416,6 +3719,14 @@
             }
           }, 500);
 
+          // AUDIT LOG: Record form creation
+          AuditLogManager.log('create', {
+            formId: newForm.id,
+            formType: formType,
+            site: formData.siteConducted || formData.site || 'Unknown',
+            action: 'Form created'
+          });
+
           // Show success modal
           setSuccessModal({ form: newForm, type: formType });
         } catch (err) {
@@ -3432,7 +3743,19 @@
           type: formType,
           data: formData,
           createdAt: editingForm?.createdAt,
+          createdBy: editingForm?.createdBy,
+          createdByName: editingForm?.createdByName,
           updatedAt: new Date().toISOString(),
+          // AUDIT TRAIL: Track who modified this form
+          modifiedBy: DeviceAuthManager.deviceId || 'unknown',
+          modifiedByName: localStorage.getItem('jmart-user-name') || 'Unknown User',
+          version: (editingForm?.version || 1) + 1,
+          // Keep history of previous versions for audit
+          previousVersion: editingForm ? {
+            data: editingForm.data,
+            modifiedAt: editingForm.updatedAt || editingForm.createdAt,
+            modifiedBy: editingForm.modifiedBy || editingForm.createdBy
+          } : null,
           status: 'completed'
         };
         setUpdateConfirmModal({ form: updatedForm, formType, formData, originalForm: editingForm });
@@ -3561,10 +3884,23 @@
 
       // Delete form (with backup check)
       const deleteForm = (formId) => {
+        // Find the form being deleted for audit log
+        const deletedForm = forms.find(f => f.id === formId);
+
         const updatedForms = forms.filter(f => f.id !== formId);
         setForms(updatedForms);
         setDeleteConfirmModal(null);
         setViewFormModal(null);
+
+        // AUDIT LOG: Record form deletion
+        AuditLogManager.log('delete', {
+          formId: formId,
+          formType: deletedForm?.type || 'unknown',
+          site: deletedForm?.data?.siteConducted || deletedForm?.data?.site || 'Unknown',
+          originalCreatedBy: deletedForm?.createdBy,
+          originalCreatedAt: deletedForm?.createdAt,
+          action: 'Form deleted'
+        });
 
         // Immediately save to localStorage
         localStorage.setItem('jmart-safety-forms', JSON.stringify(updatedForms));
@@ -4710,7 +5046,7 @@
 
       const isCompleted = (courseId) => completedCourses.some(c => c.courseId === courseId);
 
-      // Generate PDF Certificate using jsPDF - CLEAN PROFESSIONAL DESIGN
+      // Generate PDF Certificate using jsPDF - PROFESSIONAL DESIGN
       const generateCertificate = () => {
         try {
           const { jsPDF } = window.jspdf;
@@ -4720,18 +5056,20 @@
             format: 'a4'
           });
 
-          const pageWidth = 210;
-          const pageHeight = 297;
+          const pageWidth = doc.internal.pageSize.getWidth();  // 210mm
+          const pageHeight = doc.internal.pageSize.getHeight(); // 297mm
           const margin = 15;
 
           const now = new Date();
           const dateStr = now.toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' });
           const certId = 'JMS-' + now.getFullYear() + '-' + Math.random().toString(36).substr(2, 8).toUpperCase();
 
-          // Colors
+          // Professional Color Palette
           const navy = [15, 23, 42];
           const gold = [212, 175, 55];
+          const darkGold = [180, 140, 40];
           const orange = [234, 88, 12];
+          const darkOrange = [194, 65, 12];
           const white = [255, 255, 255];
           const lightGray = [248, 250, 252];
           const medGray = [100, 116, 139];
@@ -4739,242 +5077,274 @@
           const green = [22, 163, 74];
           const lightGreen = [240, 253, 244];
 
-          // === BORDER ===
+          // === ELEGANT BORDER DESIGN ===
+          // Outer gold border
           doc.setDrawColor(...gold);
-          doc.setLineWidth(2.5);
+          doc.setLineWidth(1.5);
           doc.rect(margin - 3, margin - 3, pageWidth - margin * 2 + 6, pageHeight - margin * 2 + 6);
 
+          // Inner navy border
           doc.setDrawColor(...navy);
           doc.setLineWidth(0.5);
-          doc.rect(margin + 2, margin + 2, pageWidth - margin * 2 - 4, pageHeight - margin * 2 - 4);
+          doc.rect(margin, margin, pageWidth - margin * 2, pageHeight - margin * 2);
 
-          // === HEADER ===
+          // Corner decorations (small gold squares)
+          doc.setFillColor(...gold);
+          const cornerSize = 4;
+          doc.rect(margin - 3, margin - 3, cornerSize, cornerSize, 'F');
+          doc.rect(pageWidth - margin - 1, margin - 3, cornerSize, cornerSize, 'F');
+          doc.rect(margin - 3, pageHeight - margin - 1, cornerSize, cornerSize, 'F');
+          doc.rect(pageWidth - margin - 1, pageHeight - margin - 1, cornerSize, cornerSize, 'F');
+
+          // === HEADER BANNER ===
+          let y = margin + 5;
+
+          // Navy header background
           doc.setFillColor(...navy);
-          doc.rect(margin + 2, margin + 2, pageWidth - margin * 2 - 4, 30, 'F');
+          doc.rect(margin, margin, pageWidth - margin * 2, 35, 'F');
 
-          doc.setFontSize(26);
+          // Company name
+          doc.setFontSize(32);
           doc.setTextColor(...white);
           doc.setFont(undefined, 'bold');
-          doc.text('JMART STEEL', pageWidth / 2, margin + 18, { align: 'center' });
+          doc.text('JMART STEEL', pageWidth / 2, y + 12, { align: 'center' });
 
+          // Gold underline
           doc.setDrawColor(...gold);
           doc.setLineWidth(1);
-          doc.line(pageWidth / 2 - 35, margin + 22, pageWidth / 2 + 35, margin + 22);
+          doc.line(pageWidth / 2 - 45, y + 17, pageWidth / 2 + 45, y + 17);
 
-          doc.setFontSize(9);
+          // Subtitle
+          doc.setFontSize(11);
           doc.setTextColor(...gold);
-          doc.text('CERTIFICATE OF COMPLETION', pageWidth / 2, margin + 28, { align: 'center' });
+          doc.setFont(undefined, 'normal');
+          doc.text('CERTIFICATE OF COMPLETION', pageWidth / 2, y + 25, { align: 'center' });
 
-          let y = margin + 42;
+          y = margin + 45;
 
-          // === WORKER INFO ===
-          doc.setFontSize(10);
+          // === CERTIFICATE BODY ===
+          doc.setFontSize(11);
           doc.setTextColor(...medGray);
           doc.setFont(undefined, 'normal');
           doc.text('This is to certify that', pageWidth / 2, y, { align: 'center' });
-          y += 9;
+          y += 12;
 
-          doc.setFontSize(22);
+          // Worker Name - prominent
+          doc.setFontSize(28);
           doc.setTextColor(...navy);
           doc.setFont(undefined, 'bold');
           doc.text(workerName || 'Worker Name', pageWidth / 2, y, { align: 'center' });
-          y += 5;
+          y += 10;
 
+          // Gold line under name
           doc.setDrawColor(...gold);
-          doc.setLineWidth(0.5);
-          doc.line(pageWidth / 2 - 40, y, pageWidth / 2 + 40, y);
-          y += 7;
+          doc.setLineWidth(0.8);
+          doc.line(pageWidth / 2 - 50, y, pageWidth / 2 + 50, y);
+          y += 8;
 
-          doc.setFontSize(10);
+          doc.setFontSize(11);
           doc.setTextColor(...medGray);
           doc.setFont(undefined, 'normal');
           doc.text('has successfully completed the safety training course', pageWidth / 2, y, { align: 'center' });
-          y += 9;
+          y += 12;
 
-          // Course Title
+          // Course Title - prominent orange
           const courseTitle = selectedCourse.title.split(' / ')[0];
-          doc.setFontSize(16);
+          doc.setFontSize(20);
           doc.setTextColor(...orange);
           doc.setFont(undefined, 'bold');
           doc.text(courseTitle, pageWidth / 2, y, { align: 'center' });
-          y += 9;
+          y += 12;
 
-          // COMPLETE Badge
+          // Score badge - green pill
           doc.setFillColor(...green);
-          doc.roundedRect(pageWidth / 2 - 22, y - 5, 44, 8, 3, 3, 'F');
-          doc.setFontSize(9);
+          const badgeWidth = 55;
+          const badgeHeight = 10;
+          doc.roundedRect(pageWidth / 2 - badgeWidth / 2, y - 7, badgeWidth, badgeHeight, 5, 5, 'F');
+          doc.setFontSize(11);
           doc.setTextColor(...white);
           doc.setFont(undefined, 'bold');
-          doc.text('COMPLETE ✓', pageWidth / 2, y, { align: 'center' });
-          y += 10;
+          doc.text('PASSED  •  100%', pageWidth / 2, y, { align: 'center' });
+          y += 14;
 
-          // Date & Duration Row
+          // === INFO ROW ===
+          const leftCol = pageWidth / 3;
+          const rightCol = (pageWidth / 3) * 2;
+
           doc.setFillColor(...lightGray);
-          doc.roundedRect(margin + 20, y - 2, pageWidth - margin * 2 - 40, 12, 2, 2, 'F');
-
-          doc.setFontSize(7);
-          doc.setTextColor(...medGray);
-          doc.setFont(undefined, 'normal');
-          doc.text('DATE', pageWidth / 3, y + 1, { align: 'center' });
-          doc.text('DURATION', (pageWidth / 3) * 2, y + 1, { align: 'center' });
-
-          doc.setFontSize(9);
-          doc.setTextColor(...navy);
-          doc.setFont(undefined, 'bold');
-          doc.text(dateStr, pageWidth / 3, y + 7, { align: 'center' });
-          doc.text(selectedCourse.duration, (pageWidth / 3) * 2, y + 7, { align: 'center' });
-          y += 16;
-
-          // === ASSESSMENT SECTION ===
-          const questionCount = selectedCourse.questions.length;
-          const rowsNeeded = Math.ceil(questionCount / 2);
-          const qBoxHeight = rowsNeeded * 5 + 12;
-
-          doc.setFillColor(...lightGreen);
-          doc.roundedRect(margin + 20, y, pageWidth - margin * 2 - 40, qBoxHeight, 2, 2, 'F');
-          doc.setDrawColor(...green);
-          doc.setLineWidth(0.3);
-          doc.roundedRect(margin + 20, y, pageWidth - margin * 2 - 40, qBoxHeight, 2, 2, 'S');
+          doc.roundedRect(margin + 10, y - 4, pageWidth - margin * 2 - 20, 18, 2, 2, 'F');
 
           doc.setFontSize(8);
+          doc.setTextColor(...medGray);
+          doc.setFont(undefined, 'normal');
+          doc.text('DATE COMPLETED', leftCol, y + 2, { align: 'center' });
+          doc.text('COURSE DURATION', rightCol, y + 2, { align: 'center' });
+
+          doc.setFontSize(11);
+          doc.setTextColor(...navy);
+          doc.setFont(undefined, 'bold');
+          doc.text(dateStr, leftCol, y + 10, { align: 'center' });
+          doc.text(selectedCourse.duration + '  •  ' + selectedCourse.questions.length + ' Questions', rightCol, y + 10, { align: 'center' });
+          y += 22;
+
+          // === ASSESSMENT RESULTS SECTION ===
+          const questionCount = selectedCourse.questions.length;
+          const rowsNeeded = Math.ceil(questionCount / 2);
+          const questionsBoxHeight = rowsNeeded * 7 + 18;
+
+          // Light green background with border
+          doc.setFillColor(...lightGreen);
+          doc.roundedRect(margin + 10, y, pageWidth - margin * 2 - 20, questionsBoxHeight, 3, 3, 'F');
+          doc.setDrawColor(...green);
+          doc.setLineWidth(0.3);
+          doc.roundedRect(margin + 10, y, pageWidth - margin * 2 - 20, questionsBoxHeight, 3, 3, 'S');
+
+          // Header
+          doc.setFontSize(10);
           doc.setTextColor(...green);
           doc.setFont(undefined, 'bold');
-          doc.text('ALL QUESTIONS ANSWERED CORRECTLY', pageWidth / 2, y + 6, { align: 'center' });
+          doc.text('ASSESSMENT COMPLETED  —  ALL QUESTIONS CORRECT', pageWidth / 2, y + 8, { align: 'center' });
 
-          let qY = y + 11;
-          const col1X = margin + 26;
-          const col2X = pageWidth / 2 + 6;
+          // Questions in two columns
+          const col1X = margin + 18;
+          const col2X = pageWidth / 2 + 5;
+          let qY = y + 16;
 
-          doc.setFontSize(6);
+          doc.setFontSize(7.5);
           selectedCourse.questions.forEach((q, idx) => {
-            const qText = q.question.split(' / ')[0];
-            const shortQ = qText.length > 40 ? qText.substring(0, 37) + '...' : qText;
+            const questionText = q.question.split(' / ')[0];
+            const truncatedQ = questionText.length > 48 ? questionText.substring(0, 45) + '...' : questionText;
             const xPos = idx % 2 === 0 ? col1X : col2X;
-            const yPos = qY + Math.floor(idx / 2) * 5;
+            const yPos = qY + Math.floor(idx / 2) * 7;
 
+            // Green checkmark
             doc.setTextColor(...green);
             doc.setFont(undefined, 'bold');
             doc.text('✓', xPos, yPos);
 
+            // Question text
             doc.setTextColor(...darkGray);
             doc.setFont(undefined, 'normal');
-            doc.text('Q' + (idx + 1) + ': ' + shortQ, xPos + 3, yPos);
+            doc.text('Q' + (idx + 1) + ': ' + truncatedQ, xPos + 5, yPos);
           });
 
-          y += qBoxHeight + 5;
+          y += questionsBoxHeight + 6;
 
-          // === STANDARDS SECTION ===
-          const stds = selectedCourse.standards || [];
-          const stdBoxHeight = Math.max(stds.length, 1) * 4 + 12;
+          // === AUSTRALIAN STANDARDS SECTION ===
+          const standardsCount = selectedCourse.standards ? selectedCourse.standards.length : 1;
+          const standardsBoxHeight = standardsCount * 6 + 18;
 
-          doc.setFillColor(...orange);
-          doc.roundedRect(margin + 20, y, pageWidth - margin * 2 - 40, stdBoxHeight, 2, 2, 'F');
+          // Dark orange/burnt orange background
+          doc.setFillColor(...darkOrange);
+          doc.roundedRect(margin + 10, y, pageWidth - margin * 2 - 20, standardsBoxHeight, 3, 3, 'F');
 
-          doc.setFontSize(8);
+          // Gold accent line at top
+          doc.setDrawColor(...gold);
+          doc.setLineWidth(1.5);
+          doc.line(margin + 10, y, pageWidth - margin - 10, y);
+
+          // Header
+          doc.setFontSize(11);
           doc.setTextColor(...white);
           doc.setFont(undefined, 'bold');
-          doc.text('AUSTRALIAN STANDARDS REFERENCED', pageWidth / 2, y + 6, { align: 'center' });
+          doc.text('AUSTRALIAN STANDARDS REFERENCED', pageWidth / 2, y + 9, { align: 'center' });
 
-          doc.setFontSize(6);
+          // Standards list
+          doc.setFontSize(8.5);
           doc.setFont(undefined, 'normal');
-          let sY = y + 11;
-          if (stds.length > 0) {
-            stds.forEach(s => {
-              doc.text('• ' + s.code, pageWidth / 2, sY, { align: 'center' });
-              sY += 4;
+          let stdY = y + 17;
+          if (selectedCourse.standards && selectedCourse.standards.length > 0) {
+            selectedCourse.standards.forEach((s) => {
+              doc.text('•  ' + s.code, pageWidth / 2, stdY, { align: 'center' });
+              stdY += 6;
             });
           } else {
-            doc.text('• Safe Work Australia - WHS Guidelines', pageWidth / 2, sY, { align: 'center' });
+            doc.text('•  Safe Work Australia - General WHS Guidelines', pageWidth / 2, stdY, { align: 'center' });
           }
 
-          y += stdBoxHeight + 12;
+          y += standardsBoxHeight + 12;
 
-          // === SIGNATURES - positioned right after standards ===
+          // === SIGNATURE SECTION ===
           const sigY = y;
-          const leftCol = margin + 45;
-          const rightCol = pageWidth - margin - 45;
+          const sigLeftCol = pageWidth / 4 + 5;
+          const sigRightCol = (pageWidth / 4) * 3 - 5;
 
-          // Worker signature (LEFT)
-          doc.setFontSize(7);
+          // Left - Worker Signature
+          doc.setFontSize(8);
           doc.setTextColor(...medGray);
           doc.setFont(undefined, 'normal');
-          doc.text('WORKER SIGNATURE', leftCol, sigY, { align: 'center' });
+          doc.text('WORKER SIGNATURE', sigLeftCol, sigY, { align: 'center' });
 
+          // Signature image
           if (signatureData) {
             try {
-              doc.addImage(signatureData, 'PNG', leftCol - 20, sigY + 4, 40, 18);
-            } catch (e) {}
+              doc.addImage(signatureData, 'PNG', sigLeftCol - 25, sigY + 3, 50, 18);
+            } catch (e) {
+              console.log('Could not add worker signature:', e);
+            }
           }
 
+          // Signature line
           doc.setDrawColor(...navy);
           doc.setLineWidth(0.5);
-          doc.line(leftCol - 28, sigY + 24, leftCol + 28, sigY + 24);
+          doc.line(sigLeftCol - 35, sigY + 24, sigLeftCol + 35, sigY + 24);
 
+          // Name
           doc.setFontSize(10);
           doc.setTextColor(...navy);
           doc.setFont(undefined, 'bold');
-          doc.text(workerName || 'Worker', leftCol, sigY + 31, { align: 'center' });
+          doc.text(workerName || 'Worker Name', sigLeftCol, sigY + 32, { align: 'center' });
 
-          // Scott Seeho signature (RIGHT)
-          doc.setFontSize(7);
+          // Right - Authorizing Signature
+          doc.setFontSize(8);
           doc.setTextColor(...medGray);
           doc.setFont(undefined, 'normal');
-          doc.text('AUTHORIZED BY', rightCol, sigY, { align: 'center' });
+          doc.text('AUTHORIZED BY', sigRightCol, sigY, { align: 'center' });
 
+          // Try to get Scott's signature
+          let scottSigAdded = false;
           try {
             const teamSigs = localStorage.getItem('jmart-team-signatures');
             if (teamSigs) {
               const sigs = JSON.parse(teamSigs);
               if (sigs['Scott Seeho'] && sigs['Scott Seeho'].startsWith('data:image')) {
-                doc.addImage(sigs['Scott Seeho'], 'PNG', rightCol - 20, sigY + 4, 40, 18);
+                doc.addImage(sigs['Scott Seeho'], 'PNG', sigRightCol - 25, sigY + 3, 50, 18);
+                scottSigAdded = true;
               }
             }
-          } catch (e) {}
+          } catch (e) {
+            console.log('Could not add Scott signature:', e);
+          }
 
-          doc.line(rightCol - 28, sigY + 24, rightCol + 28, sigY + 24);
+          // Signature line
+          doc.line(sigRightCol - 35, sigY + 24, sigRightCol + 35, sigY + 24);
 
+          // Name and title
           doc.setFontSize(10);
           doc.setTextColor(...navy);
           doc.setFont(undefined, 'bold');
-          doc.text('Scott Seeho', rightCol, sigY + 31, { align: 'center' });
+          doc.text('Scott Seeho', sigRightCol, sigY + 32, { align: 'center' });
+
+          doc.setFontSize(8);
+          doc.setTextColor(...medGray);
+          doc.setFont(undefined, 'normal');
+          doc.text('General Manager  •  JMart Steel', sigRightCol, sigY + 38, { align: 'center' });
+
+          // === FOOTER ===
+          // Gold line above footer
+          doc.setDrawColor(...gold);
+          doc.setLineWidth(0.5);
+          doc.line(margin + 20, pageHeight - 28, pageWidth - margin - 20, pageHeight - 28);
 
           doc.setFontSize(7);
           doc.setTextColor(...medGray);
           doc.setFont(undefined, 'normal');
-          doc.text('General Manager', rightCol, sigY + 37, { align: 'center' });
-          doc.text('JMART STEEL', rightCol, sigY + 42, { align: 'center' });
-
-          // === FOOTER - right after signatures ===
-          const footerY = sigY + 70;
-          doc.setDrawColor(...gold);
-          doc.setLineWidth(0.8);
-          doc.line(margin + 25, footerY, pageWidth - margin - 25, footerY);
-
-          doc.setFontSize(6);
-          doc.setTextColor(...medGray);
-          doc.text('Certificate ID: ' + certId, pageWidth / 2, footerY + 5, { align: 'center' });
-          doc.text('This certificate confirms completion of safety training in accordance with WHS requirements.', pageWidth / 2, footerY + 9, { align: 'center' });
-          doc.text('Valid for 12 months from date of issue.', pageWidth / 2, footerY + 13, { align: 'center' });
-
-          // Save certificate data to localStorage for re-download
-          const certData = {
-            id: certId,
-            courseId: selectedCourse.id,
-            courseName: courseTitle,
-            workerName: workerName,
-            date: dateStr,
-            timestamp: now.toISOString(),
-            signature: signatureData
-          };
-
-          const savedCerts = JSON.parse(localStorage.getItem('jmart-certificates') || '[]');
-          savedCerts.unshift(certData);
-          // Keep only last 50 certificates
-          if (savedCerts.length > 50) savedCerts.pop();
-          localStorage.setItem('jmart-certificates', JSON.stringify(savedCerts));
+          doc.text('Certificate ID: ' + certId, pageWidth / 2, pageHeight - 22, { align: 'center' });
+          doc.text('This certificate confirms completion of safety training in accordance with Work Health & Safety requirements.', pageWidth / 2, pageHeight - 17, { align: 'center' });
+          doc.text('Valid for 12 months from date of issue.  •  JMart Steel Pty Ltd  •  ABN XX XXX XXX XXX', pageWidth / 2, pageHeight - 12, { align: 'center' });
 
           // Save the PDF
-          const fileName = 'JMart-Certificate-' + courseTitle.replace(/\s+/g, '-') + '-' + workerName.replace(/\s+/g, '-') + '.pdf';
+          const fileName = 'JMart-Certificate-' + selectedCourse.id + '-' + workerName.replace(/\s+/g, '-') + '.pdf';
           doc.save(fileName);
 
         } catch (error) {
@@ -5069,266 +5439,6 @@
                 <p className="text-sm text-green-600">{completedCourses.length} of {courses.length} courses completed</p>
               </div>
             )}
-
-            {/* Saved Certificates Section */}
-            {(() => {
-              const savedCerts = JSON.parse(localStorage.getItem('jmart-certificates') || '[]');
-              if (savedCerts.length === 0) return null;
-
-              const redownloadCert = (cert) => {
-                console.log('redownloadCert called', cert);
-                try {
-                  const { jsPDF } = window.jspdf;
-                  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-
-                  const pageWidth = doc.internal.pageSize.getWidth();
-                  const pageHeight = doc.internal.pageSize.getHeight();
-                  const margin = 15;
-
-                  const navy = [15, 23, 42];
-                  const gold = [212, 175, 55];
-                  const orange = [234, 88, 12];
-                  const white = [255, 255, 255];
-                  const lightGray = [248, 250, 252];
-                  const medGray = [100, 116, 139];
-                  const green = [22, 163, 74];
-                  const lightGreen = [240, 253, 244];
-                  const darkGray = [51, 65, 85];
-
-                  // Border
-                  doc.setDrawColor(...gold);
-                  doc.setLineWidth(2);
-                  doc.rect(margin - 2, margin - 2, pageWidth - margin * 2 + 4, pageHeight - margin * 2 + 4);
-                  doc.setDrawColor(...navy);
-                  doc.setLineWidth(0.5);
-                  doc.rect(margin + 2, margin + 2, pageWidth - margin * 2 - 4, pageHeight - margin * 2 - 4);
-
-                  // Header
-                  let y = margin + 10;
-                  doc.setFillColor(...navy);
-                  doc.rect(margin + 2, margin + 2, pageWidth - margin * 2 - 4, 32, 'F');
-                  doc.setFontSize(28);
-                  doc.setTextColor(...white);
-                  doc.setFont(undefined, 'bold');
-                  doc.text('JMART STEEL', pageWidth / 2, y + 8, { align: 'center' });
-                  doc.setDrawColor(...gold);
-                  doc.setLineWidth(1);
-                  doc.line(pageWidth / 2 - 40, y + 13, pageWidth / 2 + 40, y + 13);
-                  doc.setFontSize(10);
-                  doc.setTextColor(...gold);
-                  doc.text('CERTIFICATE OF COMPLETION', pageWidth / 2, y + 21, { align: 'center' });
-
-                  y = margin + 42;
-                  doc.setFontSize(10);
-                  doc.setTextColor(...medGray);
-                  doc.setFont(undefined, 'normal');
-                  doc.text('This is to certify that', pageWidth / 2, y, { align: 'center' });
-                  y += 10;
-
-                  doc.setFontSize(24);
-                  doc.setTextColor(...navy);
-                  doc.setFont(undefined, 'bold');
-                  doc.text(cert.workerName, pageWidth / 2, y, { align: 'center' });
-                  y += 6;
-
-                  doc.setDrawColor(...gold);
-                  doc.setLineWidth(0.5);
-                  doc.line(pageWidth / 2 - 45, y, pageWidth / 2 + 45, y);
-                  y += 8;
-
-                  doc.setFontSize(10);
-                  doc.setTextColor(...medGray);
-                  doc.setFont(undefined, 'normal');
-                  doc.text('has successfully completed the safety training course', pageWidth / 2, y, { align: 'center' });
-                  y += 10;
-
-                  doc.setFontSize(18);
-                  doc.setTextColor(...orange);
-                  doc.setFont(undefined, 'bold');
-                  doc.text(cert.courseName, pageWidth / 2, y, { align: 'center' });
-                  y += 10;
-
-                  doc.setFillColor(...green);
-                  doc.roundedRect(pageWidth / 2 - 25, y - 6, 50, 9, 4, 4, 'F');
-                  doc.setFontSize(10);
-                  doc.setTextColor(...white);
-                  doc.text('COMPLETE ✓', pageWidth / 2, y, { align: 'center' });
-                  y += 12;
-
-                  // Date box
-                  doc.setFillColor(...lightGray);
-                  doc.roundedRect(margin + 20, y - 2, pageWidth - margin * 2 - 40, 12, 2, 2, 'F');
-                  doc.setFontSize(7);
-                  doc.setTextColor(...medGray);
-                  doc.setFont(undefined, 'normal');
-                  doc.text('DATE COMPLETED', pageWidth / 2, y + 1, { align: 'center' });
-                  doc.setFontSize(9);
-                  doc.setTextColor(...navy);
-                  doc.setFont(undefined, 'bold');
-                  doc.text(cert.date, pageWidth / 2, y + 7, { align: 'center' });
-                  y += 16;
-
-                  // Find the course to get questions and standards
-                  const courses = [
-                    { id: 'manual-handling', title: 'Manual Handling', questions: [{q:'Lift with legs'},{q:'Keep load close'},{q:'Avoid twisting'},{q:'Team lift heavy'},{q:'Report injuries'},{q:'Use equipment'},{q:'Check path'},{q:'Bend knees'}], standards: [{code:'Manual Handling Code of Practice 2021'}] },
-                    { id: 'working-heights', title: 'Working at Heights', questions: [{q:'Use harness'},{q:'Check anchor'},{q:'Inspect equipment'},{q:'3-point contact'},{q:'Secure tools'}], standards: [{code:'AS/NZS 1891.4 Industrial Fall Arrest'},{code:'Safe Work Australia - Working at Heights'}] },
-                    { id: 'ppe', title: 'Personal Protective Equipment', questions: [{q:'Inspect PPE'},{q:'Correct fit'},{q:'Replace damaged'},{q:'Store properly'},{q:'Site requirements'}], standards: [{code:'AS/NZS 1801 Occupational Helmets'},{code:'AS/NZS 1337 Eye Protection'},{code:'AS/NZS 2210 Safety Footwear'}] },
-                    { id: 'forklift', title: 'Forklift Safety', questions: [{q:'Valid license'},{q:'Load capacity'},{q:'Speed limits'},{q:'Pedestrian zones'},{q:'Pre-start check'}], standards: [{code:'AS 2359 Powered Industrial Trucks'}] },
-                    { id: 'hot-works', title: 'Hot Works Safety', questions: [{q:'Hot work permit'},{q:'Fire watch'},{q:'Clear area'},{q:'PPE welding'},{q:'Ventilation'},{q:'Gas cylinder'},{q:'Extinguisher'},{q:'Cool down'}], standards: [{code:'AS 1674.1 Welding Safety'},{code:'AS/NZS 1338.1 Welding Filters'}] },
-                    { id: 'glass-suction', title: 'Glass Suction Cups', questions: [{q:'Check suction'},{q:'Clean surface'},{q:'Weight limit'},{q:'Two person'},{q:'Release valve'},{q:'Inspect cups'},{q:'Gloves required'},{q:'Storage'}], standards: [{code:'AS 1288 Glass in Buildings'},{code:'Safe Work Australia - Manual Handling'}] }
-                  ];
-                  const course = courses.find(c => c.id === cert.courseId) || { questions: [], standards: [] };
-
-                  // === ASSESSMENT SECTION ===
-                  if (course.questions.length > 0) {
-                    const questionCount = course.questions.length;
-                    const rowsNeeded = Math.ceil(questionCount / 2);
-                    const qBoxHeight = rowsNeeded * 5 + 12;
-
-                    doc.setFillColor(...lightGreen);
-                    doc.roundedRect(margin + 20, y, pageWidth - margin * 2 - 40, qBoxHeight, 2, 2, 'F');
-                    doc.setDrawColor(...green);
-                    doc.setLineWidth(0.3);
-                    doc.roundedRect(margin + 20, y, pageWidth - margin * 2 - 40, qBoxHeight, 2, 2, 'S');
-
-                    doc.setFontSize(8);
-                    doc.setTextColor(...green);
-                    doc.setFont(undefined, 'bold');
-                    doc.text('ALL QUESTIONS ANSWERED CORRECTLY', pageWidth / 2, y + 6, { align: 'center' });
-
-                    let qY = y + 11;
-                    const col1X = margin + 26;
-                    const col2X = pageWidth / 2 + 6;
-
-                    doc.setFontSize(6);
-                    course.questions.forEach((q, idx) => {
-                      const qText = q.q;
-                      const xPos = idx % 2 === 0 ? col1X : col2X;
-                      const yPos = qY + Math.floor(idx / 2) * 5;
-
-                      doc.setTextColor(...green);
-                      doc.setFont(undefined, 'bold');
-                      doc.text('✓', xPos, yPos);
-
-                      doc.setTextColor(...darkGray);
-                      doc.setFont(undefined, 'normal');
-                      doc.text('Q' + (idx + 1) + ': ' + qText, xPos + 3, yPos);
-                    });
-
-                    y += qBoxHeight + 5;
-                  }
-
-                  // === STANDARDS SECTION ===
-                  const stds = course.standards || [];
-                  const stdBoxHeight = Math.max(stds.length, 1) * 4 + 12;
-
-                  doc.setFillColor(...orange);
-                  doc.roundedRect(margin + 20, y, pageWidth - margin * 2 - 40, stdBoxHeight, 2, 2, 'F');
-
-                  doc.setFontSize(8);
-                  doc.setTextColor(...white);
-                  doc.setFont(undefined, 'bold');
-                  doc.text('AUSTRALIAN STANDARDS REFERENCED', pageWidth / 2, y + 6, { align: 'center' });
-
-                  doc.setFontSize(6);
-                  doc.setFont(undefined, 'normal');
-                  let sY = y + 11;
-                  if (stds.length > 0) {
-                    stds.forEach(s => {
-                      doc.text('• ' + s.code, pageWidth / 2, sY, { align: 'center' });
-                      sY += 4;
-                    });
-                  } else {
-                    doc.text('• Safe Work Australia - WHS Guidelines', pageWidth / 2, sY, { align: 'center' });
-                  }
-
-                  y += stdBoxHeight + 8;
-
-                  // Signatures - positioned right after standards
-                  const sigY = y;
-                  const leftCol = margin + 45;
-                  const rightCol = pageWidth - margin - 45;
-
-                  doc.setFontSize(7);
-                  doc.setTextColor(...medGray);
-                  doc.setFont(undefined, 'normal');
-                  doc.text('WORKER SIGNATURE', leftCol, sigY, { align: 'center' });
-                  if (cert.signature) {
-                    try { doc.addImage(cert.signature, 'PNG', leftCol - 20, sigY + 4, 40, 18); } catch(e) {}
-                  }
-                  doc.setDrawColor(...navy);
-                  doc.setLineWidth(0.5);
-                  doc.line(leftCol - 28, sigY + 24, leftCol + 28, sigY + 24);
-                  doc.setFontSize(10);
-                  doc.setTextColor(...navy);
-                  doc.setFont(undefined, 'bold');
-                  doc.text(cert.workerName, leftCol, sigY + 31, { align: 'center' });
-
-                  doc.setFontSize(7);
-                  doc.setTextColor(...medGray);
-                  doc.setFont(undefined, 'normal');
-                  doc.text('AUTHORIZED BY', rightCol, sigY, { align: 'center' });
-                  try {
-                    const teamSigs = localStorage.getItem('jmart-team-signatures');
-                    if (teamSigs) {
-                      const sigs = JSON.parse(teamSigs);
-                      if (sigs['Scott Seeho'] && sigs['Scott Seeho'].startsWith('data:image')) {
-                        doc.addImage(sigs['Scott Seeho'], 'PNG', rightCol - 20, sigY + 4, 40, 18);
-                      }
-                    }
-                  } catch(e) {}
-                  doc.line(rightCol - 28, sigY + 24, rightCol + 28, sigY + 24);
-                  doc.setFontSize(10);
-                  doc.setTextColor(...navy);
-                  doc.setFont(undefined, 'bold');
-                  doc.text('Scott Seeho', rightCol, sigY + 31, { align: 'center' });
-                  doc.setFontSize(7);
-                  doc.setTextColor(...medGray);
-                  doc.setFont(undefined, 'normal');
-                  doc.text('General Manager', rightCol, sigY + 37, { align: 'center' });
-                  doc.text('JMART STEEL', rightCol, sigY + 42, { align: 'center' });
-
-                  // Footer - right after signatures
-                  const footerY = sigY + 55;
-                  doc.setDrawColor(...gold);
-                  doc.setLineWidth(0.8);
-                  doc.line(margin + 25, footerY, pageWidth - margin - 25, footerY);
-                  doc.setFontSize(6);
-                  doc.setTextColor(...medGray);
-                  doc.text('Certificate ID: ' + cert.id, pageWidth / 2, footerY + 5, { align: 'center' });
-                  doc.text('This certificate confirms completion of safety training in accordance with WHS requirements.', pageWidth / 2, footerY + 9, { align: 'center' });
-                  doc.text('Valid for 12 months from date of issue.', pageWidth / 2, footerY + 13, { align: 'center' });
-
-                  doc.save('JMart-Certificate-' + cert.courseName.replace(/\s+/g, '-') + '-' + cert.workerName.replace(/\s+/g, '-') + '.pdf');
-                  console.log('Saving PDF...');
-                } catch(e) {
-                  console.error('Certificate error:', e);
-                  alert('Error downloading certificate: ' + e.message);
-                }
-              };
-
-              return (
-                <div className="bg-white rounded-xl p-4 mt-4 shadow-sm">
-                  <h3 className="font-semibold text-gray-800 mb-3">📜 Saved Certificates</h3>
-                  <p className="text-xs text-gray-500 mb-3">Tap to re-download any certificate</p>
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {savedCerts.slice(0, 10).map((cert, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => redownloadCert(cert)}
-                        className="w-full flex items-center justify-between p-3 bg-gray-50 hover:bg-green-50 rounded-lg text-left transition-colors"
-                      >
-                        <div>
-                          <p className="font-medium text-sm text-gray-800">{cert.courseName}</p>
-                          <p className="text-xs text-gray-500">{cert.workerName} • {cert.date}</p>
-                        </div>
-                        <span className="text-green-600 text-lg">⬇️</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
           </div>
         );
       }
