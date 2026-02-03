@@ -1,3 +1,25 @@
+# Dependencies
 node_modules/
+
+# Build outputs
 dist/
+build/
+
+# Test coverage
+coverage/
+
+# OS files
 .DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Environment
+.env
+.env.local
+
+# Logs
+npm-debug.log*
