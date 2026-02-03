@@ -78,6 +78,418 @@
     }
 
     // ========================================
+    // DEVICE AUTHORIZATION SYSTEM
+    // ========================================
+    // Controls which devices can access the app
+    // First device to register becomes admin
+    // New devices require admin approval
+    // ========================================
+    const DeviceAuth = {
+      deviceId: null,
+      deviceInfo: null,
+      isApproved: false,
+      isAdmin: false,
+      pendingDevices: [],
+      approvedDevices: [],
+      statusListeners: [],
+      notificationListeners: [],
+
+      // Generate unique device fingerprint
+      generateDeviceId: function() {
+        const stored = localStorage.getItem('jmart-device-id');
+        if (stored) {
+          this.deviceId = stored;
+          return stored;
+        }
+
+        // Create fingerprint from browser characteristics
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        ctx.textBaseline = 'top';
+        ctx.font = '14px Arial';
+        ctx.fillText('JMart Device Fingerprint', 2, 2);
+        const canvasData = canvas.toDataURL();
+
+        const fingerprint = [
+          navigator.userAgent,
+          navigator.language,
+          screen.width + 'x' + screen.height,
+          screen.colorDepth,
+          new Date().getTimezoneOffset(),
+          canvasData.slice(-50),
+          navigator.hardwareConcurrency || 'unknown',
+          navigator.platform
+        ].join('|');
+
+        // Simple hash function
+        let hash = 0;
+        for (let i = 0; i < fingerprint.length; i++) {
+          const char = fingerprint.charCodeAt(i);
+          hash = ((hash << 5) - hash) + char;
+          hash = hash & hash;
+        }
+
+        this.deviceId = 'DEV-' + Math.abs(hash).toString(36).toUpperCase() + '-' + Date.now().toString(36).toUpperCase();
+        localStorage.setItem('jmart-device-id', this.deviceId);
+        return this.deviceId;
+      },
+
+      // Get device info for display
+      getDeviceInfo: function() {
+        const ua = navigator.userAgent;
+        let deviceType = 'Unknown Device';
+        let browser = 'Unknown Browser';
+
+        // Detect device type
+        if (/iPhone/i.test(ua)) deviceType = 'iPhone';
+        else if (/iPad/i.test(ua)) deviceType = 'iPad';
+        else if (/Android/i.test(ua) && /Mobile/i.test(ua)) deviceType = 'Android Phone';
+        else if (/Android/i.test(ua)) deviceType = 'Android Tablet';
+        else if (/Windows/i.test(ua)) deviceType = 'Windows PC';
+        else if (/Mac/i.test(ua)) deviceType = 'Mac';
+        else if (/Linux/i.test(ua)) deviceType = 'Linux PC';
+
+        // Detect browser
+        if (/Chrome/i.test(ua) && !/Edg/i.test(ua)) browser = 'Chrome';
+        else if (/Safari/i.test(ua) && !/Chrome/i.test(ua)) browser = 'Safari';
+        else if (/Firefox/i.test(ua)) browser = 'Firefox';
+        else if (/Edg/i.test(ua)) browser = 'Edge';
+
+        this.deviceInfo = {
+          id: this.deviceId,
+          type: deviceType,
+          browser: browser,
+          screen: screen.width + 'x' + screen.height,
+          registeredAt: new Date().toISOString(),
+          lastSeen: new Date().toISOString()
+        };
+
+        return this.deviceInfo;
+      },
+
+      // Initialize device auth
+      init: async function() {
+        this.generateDeviceId();
+        this.getDeviceInfo();
+        console.log('Device ID:', this.deviceId);
+
+        if (!firebaseDb || !isFirebaseConfigured) {
+          // No Firebase - approve locally (offline mode)
+          this.isApproved = true;
+          this.isAdmin = true;
+          this.notifyStatusListeners();
+          return { approved: true, admin: true, offline: true };
+        }
+
+        // Check if this device is approved
+        const result = await this.checkDeviceStatus();
+        return result;
+      },
+
+      // Check device status in Firebase
+      checkDeviceStatus: async function() {
+        if (!firebaseDb) return { approved: false };
+
+        try {
+          // Check approved devices
+          const approvedSnap = await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId).once('value');
+          if (approvedSnap.exists()) {
+            const data = approvedSnap.val();
+            this.isApproved = true;
+            this.isAdmin = data.isAdmin || false;
+
+            // Update last seen
+            await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId + '/lastSeen').set(new Date().toISOString());
+
+            this.notifyStatusListeners();
+            console.log('Device approved, admin:', this.isAdmin);
+            return { approved: true, admin: this.isAdmin };
+          }
+
+          // Check if any devices exist (first device becomes admin)
+          const allApprovedSnap = await firebaseDb.ref('jmart-safety/devices/approved').once('value');
+          if (!allApprovedSnap.exists() || allApprovedSnap.numChildren() === 0) {
+            // First device - auto approve as admin
+            console.log('First device - auto-approving as admin');
+            await this.registerAsApproved(true);
+            return { approved: true, admin: true, firstDevice: true };
+          }
+
+          // Check if already pending
+          const pendingSnap = await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).once('value');
+          if (!pendingSnap.exists()) {
+            // Register as pending
+            await this.registerAsPending();
+          }
+
+          this.isApproved = false;
+          this.notifyStatusListeners();
+          return { approved: false, pending: true };
+
+        } catch (error) {
+          console.error('Error checking device status:', error);
+          return { approved: false, error: error.message };
+        }
+      },
+
+      // Register device as pending approval
+      registerAsPending: async function() {
+        if (!firebaseDb) return;
+
+        const deviceData = {
+          ...this.deviceInfo,
+          requestedAt: new Date().toISOString(),
+          status: 'pending'
+        };
+
+        await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).set(deviceData);
+        console.log('Device registered as pending approval');
+
+        // Notify all admins of new device request
+        this.notifyAdminsOfNewDevice(deviceData);
+      },
+
+      // Register device as approved
+      registerAsApproved: async function(isAdmin = false) {
+        if (!firebaseDb) return;
+
+        const deviceData = {
+          ...this.deviceInfo,
+          isAdmin: isAdmin,
+          approvedAt: new Date().toISOString(),
+          approvedBy: isAdmin ? 'SYSTEM (First Device)' : 'Admin',
+          lastSeen: new Date().toISOString()
+        };
+
+        await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId).set(deviceData);
+
+        // Remove from pending if exists
+        await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).remove();
+
+        this.isApproved = true;
+        this.isAdmin = isAdmin;
+        this.notifyStatusListeners();
+        console.log('Device registered as approved, admin:', isAdmin);
+      },
+
+      // Approve a pending device (admin only)
+      approveDevice: async function(deviceId, makeAdmin = false) {
+        if (!this.isAdmin || !firebaseDb) {
+          console.error('Only admins can approve devices');
+          return false;
+        }
+
+        try {
+          // Get pending device data
+          const pendingSnap = await firebaseDb.ref('jmart-safety/devices/pending/' + deviceId).once('value');
+          if (!pendingSnap.exists()) {
+            console.error('Device not found in pending list');
+            return false;
+          }
+
+          const deviceData = pendingSnap.val();
+          const approvedData = {
+            ...deviceData,
+            isAdmin: makeAdmin,
+            approvedAt: new Date().toISOString(),
+            approvedBy: this.deviceId,
+            status: 'approved'
+          };
+
+          // Move to approved
+          await firebaseDb.ref('jmart-safety/devices/approved/' + deviceId).set(approvedData);
+          await firebaseDb.ref('jmart-safety/devices/pending/' + deviceId).remove();
+
+          console.log('Device approved:', deviceId);
+          return true;
+        } catch (error) {
+          console.error('Error approving device:', error);
+          return false;
+        }
+      },
+
+      // Deny/reject a pending device (admin only)
+      denyDevice: async function(deviceId) {
+        if (!this.isAdmin || !firebaseDb) {
+          console.error('Only admins can deny devices');
+          return false;
+        }
+
+        try {
+          // Remove from pending and add to denied
+          const pendingSnap = await firebaseDb.ref('jmart-safety/devices/pending/' + deviceId).once('value');
+          if (pendingSnap.exists()) {
+            const deviceData = pendingSnap.val();
+            await firebaseDb.ref('jmart-safety/devices/denied/' + deviceId).set({
+              ...deviceData,
+              deniedAt: new Date().toISOString(),
+              deniedBy: this.deviceId
+            });
+            await firebaseDb.ref('jmart-safety/devices/pending/' + deviceId).remove();
+          }
+
+          console.log('Device denied:', deviceId);
+          return true;
+        } catch (error) {
+          console.error('Error denying device:', error);
+          return false;
+        }
+      },
+
+      // Revoke an approved device (admin only)
+      revokeDevice: async function(deviceId) {
+        if (!this.isAdmin || !firebaseDb) {
+          console.error('Only admins can revoke devices');
+          return false;
+        }
+
+        // Cannot revoke self
+        if (deviceId === this.deviceId) {
+          console.error('Cannot revoke own device');
+          return false;
+        }
+
+        try {
+          await firebaseDb.ref('jmart-safety/devices/approved/' + deviceId).remove();
+          console.log('Device revoked:', deviceId);
+          return true;
+        } catch (error) {
+          console.error('Error revoking device:', error);
+          return false;
+        }
+      },
+
+      // Listen for pending device changes (for admin notifications)
+      listenForPendingDevices: function(callback) {
+        if (!firebaseDb || !this.isAdmin) return () => {};
+
+        const ref = firebaseDb.ref('jmart-safety/devices/pending');
+
+        ref.on('value', (snapshot) => {
+          const data = snapshot.val();
+          this.pendingDevices = data ? Object.entries(data).map(([id, info]) => ({ id, ...info })) : [];
+          callback(this.pendingDevices);
+        });
+
+        // Also listen for child_added for new device notifications
+        ref.on('child_added', (snapshot) => {
+          const newDevice = { id: snapshot.key, ...snapshot.val() };
+          this.notifyNotificationListeners('new_device', newDevice);
+        });
+
+        return () => {
+          ref.off('value');
+          ref.off('child_added');
+        };
+      },
+
+      // Listen for approved devices
+      listenForApprovedDevices: function(callback) {
+        if (!firebaseDb) return () => {};
+
+        const ref = firebaseDb.ref('jmart-safety/devices/approved');
+        ref.on('value', (snapshot) => {
+          const data = snapshot.val();
+          this.approvedDevices = data ? Object.entries(data).map(([id, info]) => ({ id, ...info })) : [];
+          callback(this.approvedDevices);
+        });
+
+        return () => ref.off('value');
+      },
+
+      // Listen for own device status changes (in case revoked)
+      listenForOwnDeviceStatus: function(callback) {
+        if (!firebaseDb) return () => {};
+
+        const ref = firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId);
+        ref.on('value', (snapshot) => {
+          if (!snapshot.exists() && this.isApproved) {
+            // Device was revoked
+            this.isApproved = false;
+            this.isAdmin = false;
+            callback({ revoked: true });
+          }
+        });
+
+        return () => ref.off('value');
+      },
+
+      // Notify admins of new device request
+      notifyAdminsOfNewDevice: async function(deviceData) {
+        if (!firebaseDb) return;
+
+        // Store notification in Firebase for all admins
+        const notification = {
+          type: 'new_device_request',
+          device: deviceData,
+          timestamp: new Date().toISOString(),
+          read: false
+        };
+
+        await firebaseDb.ref('jmart-safety/notifications').push(notification);
+      },
+
+      // Add status listener
+      onStatusChange: function(callback) {
+        this.statusListeners.push(callback);
+        // Immediately call with current status
+        callback({ approved: this.isApproved, admin: this.isAdmin });
+        return () => {
+          this.statusListeners = this.statusListeners.filter(cb => cb !== callback);
+        };
+      },
+
+      // Notify status listeners
+      notifyStatusListeners: function() {
+        this.statusListeners.forEach(cb => cb({ approved: this.isApproved, admin: this.isAdmin }));
+      },
+
+      // Add notification listener
+      onNotification: function(callback) {
+        this.notificationListeners.push(callback);
+        return () => {
+          this.notificationListeners = this.notificationListeners.filter(cb => cb !== callback);
+        };
+      },
+
+      // Notify notification listeners
+      notifyNotificationListeners: function(type, data) {
+        this.notificationListeners.forEach(cb => cb(type, data));
+      },
+
+      // Request browser notification permission
+      requestNotificationPermission: async function() {
+        if (!('Notification' in window)) {
+          console.log('Browser does not support notifications');
+          return false;
+        }
+
+        if (Notification.permission === 'granted') {
+          return true;
+        }
+
+        if (Notification.permission !== 'denied') {
+          const permission = await Notification.requestPermission();
+          return permission === 'granted';
+        }
+
+        return false;
+      },
+
+      // Show browser notification for new device
+      showBrowserNotification: function(title, body) {
+        if (Notification.permission === 'granted') {
+          new Notification(title, {
+            body: body,
+            icon: '🛡️',
+            tag: 'jmart-device-auth',
+            requireInteraction: true
+          });
+        }
+      }
+    };
+
+    // ========================================
     // GOOGLE DRIVE CONFIGURATION
     // ========================================
     // Get your Client ID from Google Cloud Console:
@@ -469,6 +881,186 @@
         this.folderId = null;
         localStorage.removeItem('google-drive-token');
         console.log('Disconnected from Google Drive');
+      },
+
+      // Get or create a subfolder for job recordings
+      getOrCreateRecordingsFolder: async function(siteName, date) {
+        if (!this.accessToken) return null;
+
+        try {
+          // First ensure main folder exists
+          if (!this.folderId) {
+            await this.getOrCreateFolder();
+          }
+
+          // Create/get "Job Recordings" subfolder
+          const recordingsFolderName = 'Job Recordings';
+          let recordingsFolderId = null;
+
+          // Search for Job Recordings folder
+          const recordingsSearch = await fetch(
+            `https://www.googleapis.com/drive/v3/files?q=name='${recordingsFolderName}' and '${this.folderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+            { headers: { 'Authorization': `Bearer ${this.accessToken}` } }
+          );
+          const recordingsData = await recordingsSearch.json();
+
+          if (recordingsData.files && recordingsData.files.length > 0) {
+            recordingsFolderId = recordingsData.files[0].id;
+          } else {
+            // Create Job Recordings folder
+            const createRecordings = await fetch('https://www.googleapis.com/drive/v3/files', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${this.accessToken}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                name: recordingsFolderName,
+                mimeType: 'application/vnd.google-apps.folder',
+                parents: [this.folderId],
+              }),
+            });
+            const newRecordingsFolder = await createRecordings.json();
+            recordingsFolderId = newRecordingsFolder.id;
+          }
+
+          // Create/get site subfolder
+          const safeSiteName = siteName.replace(/[<>:"/\\|?*]/g, '-');
+          let siteFolderId = null;
+
+          const siteSearch = await fetch(
+            `https://www.googleapis.com/drive/v3/files?q=name='${safeSiteName}' and '${recordingsFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+            { headers: { 'Authorization': `Bearer ${this.accessToken}` } }
+          );
+          const siteData = await siteSearch.json();
+
+          if (siteData.files && siteData.files.length > 0) {
+            siteFolderId = siteData.files[0].id;
+          } else {
+            const createSite = await fetch('https://www.googleapis.com/drive/v3/files', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${this.accessToken}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                name: safeSiteName,
+                mimeType: 'application/vnd.google-apps.folder',
+                parents: [recordingsFolderId],
+              }),
+            });
+            const newSiteFolder = await createSite.json();
+            siteFolderId = newSiteFolder.id;
+          }
+
+          // Create/get date subfolder
+          const dateStr = new Date(date).toLocaleDateString('en-AU').replace(/\//g, '-');
+          let dateFolderId = null;
+
+          const dateSearch = await fetch(
+            `https://www.googleapis.com/drive/v3/files?q=name='${dateStr}' and '${siteFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+            { headers: { 'Authorization': `Bearer ${this.accessToken}` } }
+          );
+          const dateData = await dateSearch.json();
+
+          if (dateData.files && dateData.files.length > 0) {
+            dateFolderId = dateData.files[0].id;
+          } else {
+            const createDate = await fetch('https://www.googleapis.com/drive/v3/files', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${this.accessToken}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                name: dateStr,
+                mimeType: 'application/vnd.google-apps.folder',
+                parents: [siteFolderId],
+              }),
+            });
+            const newDateFolder = await createDate.json();
+            dateFolderId = newDateFolder.id;
+          }
+
+          console.log('Created/found recordings folder structure:', siteName, dateStr, dateFolderId);
+          return dateFolderId;
+        } catch (error) {
+          console.error('Error creating recordings folder structure:', error);
+          return null;
+        }
+      },
+
+      // Upload a photo to job recordings folder
+      uploadJobPhoto: async function(photoData, filename, siteName, date) {
+        if (!this.accessToken) {
+          console.error('Not connected to Google Drive');
+          return null;
+        }
+
+        try {
+          const folderId = await this.getOrCreateRecordingsFolder(siteName, date);
+          if (!folderId) {
+            console.error('Could not create recordings folder');
+            return null;
+          }
+
+          // Convert base64 to blob
+          const base64Data = photoData.split(',')[1];
+          const byteCharacters = atob(base64Data);
+          const byteNumbers = new Array(byteCharacters.length);
+          for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+          }
+          const byteArray = new Uint8Array(byteNumbers);
+          const blob = new Blob([byteArray], { type: 'image/jpeg' });
+
+          const metadata = {
+            name: filename,
+            mimeType: 'image/jpeg',
+            parents: [folderId],
+          };
+
+          const formData = new FormData();
+          formData.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+          formData.append('file', blob);
+
+          const response = await fetch(
+            'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+            {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${this.accessToken}` },
+              body: formData,
+            }
+          );
+
+          const data = await response.json();
+          console.log('Uploaded photo to Drive:', filename, data.id);
+          return data;
+        } catch (error) {
+          console.error('Upload photo error:', error);
+          return null;
+        }
+      },
+
+      // Upload multiple photos for a job
+      uploadJobPhotos: async function(photos, siteName, date) {
+        if (!this.accessToken) {
+          return { success: false, error: 'Not connected to Google Drive' };
+        }
+
+        const results = [];
+        for (let i = 0; i < photos.length; i++) {
+          const photo = photos[i];
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+          const filename = `photo-${i + 1}-${timestamp}.jpg`;
+          const result = await this.uploadJobPhoto(photo.data, filename, siteName, date);
+          if (result) {
+            results.push({ filename, driveId: result.id });
+          }
+        }
+
+        console.log(`Uploaded ${results.length}/${photos.length} photos to Drive`);
+        return { success: true, uploaded: results.length, total: photos.length, results };
       }
     };
 
@@ -3421,6 +4013,78 @@
       const isInitialLoad = useRef(true);
       const deletingFormRef = useRef(false); // Track when we're deleting to prevent Firebase restore
 
+      // Device Authorization State
+      const [deviceAuthStatus, setDeviceAuthStatus] = useState('checking'); // 'checking', 'approved', 'pending', 'denied'
+      const [isDeviceAdmin, setIsDeviceAdmin] = useState(false);
+      const [pendingDevices, setPendingDevices] = useState([]);
+      const [approvedDevices, setApprovedDevices] = useState([]);
+      const [newDeviceNotification, setNewDeviceNotification] = useState(null);
+
+      // Initialize Device Authorization
+      useEffect(() => {
+        const initDeviceAuth = async () => {
+          const result = await DeviceAuth.init();
+
+          if (result.approved) {
+            setDeviceAuthStatus('approved');
+            setIsDeviceAdmin(result.admin);
+
+            // If admin, listen for pending devices and show notifications
+            if (result.admin) {
+              DeviceAuth.requestNotificationPermission();
+
+              // Listen for pending device requests
+              DeviceAuth.listenForPendingDevices((devices) => {
+                setPendingDevices(devices);
+              });
+
+              // Listen for new device notifications
+              DeviceAuth.onNotification((type, data) => {
+                if (type === 'new_device') {
+                  setNewDeviceNotification(data);
+                  DeviceAuth.showBrowserNotification(
+                    'New Device Request',
+                    `${data.type} (${data.browser}) wants to access JMart Safety`
+                  );
+                  // Auto-dismiss after 10 seconds
+                  setTimeout(() => setNewDeviceNotification(null), 10000);
+                }
+              });
+            }
+
+            // Listen for approved devices (for settings display)
+            DeviceAuth.listenForApprovedDevices((devices) => {
+              setApprovedDevices(devices);
+            });
+
+            // Listen for own device being revoked
+            DeviceAuth.listenForOwnDeviceStatus((status) => {
+              if (status.revoked) {
+                setDeviceAuthStatus('denied');
+                alert('Your device access has been revoked by an administrator.');
+              }
+            });
+          } else {
+            setDeviceAuthStatus('pending');
+
+            // Poll for approval every 5 seconds
+            const pollInterval = setInterval(async () => {
+              const checkResult = await DeviceAuth.checkDeviceStatus();
+              if (checkResult.approved) {
+                setDeviceAuthStatus('approved');
+                setIsDeviceAdmin(checkResult.admin);
+                clearInterval(pollInterval);
+                window.location.reload(); // Reload to fully initialize
+              }
+            }, 5000);
+
+            return () => clearInterval(pollInterval);
+          }
+        };
+
+        initDeviceAuth();
+      }, []);
+
       // Load saved data from localStorage first, then listen to Firebase
       useEffect(() => {
         // Load local data first (for offline support)
@@ -3930,6 +4594,7 @@
       const navItems = [
         { id: 'dashboard', label: 'Dashboard', emoji: '🏠' },
         { id: 'training', label: 'Training', emoji: '🎓' },
+        { id: 'recordings', label: 'Recordings', emoji: '📸' },
         { id: 'prestart', label: 'Pre-Start Checks', emoji: '📋' },
         { id: 'steel-itp', label: 'Steel ITP', emoji: '🔩' },
         { id: 'inspection', label: 'Site Inspection', emoji: '🔍' },
@@ -3940,8 +4605,136 @@
         { id: 'settings', label: 'Settings', emoji: '⚙️' },
       ];
 
+      // Show loading while checking device authorization
+      if (deviceAuthStatus === 'checking') {
+        return (
+          <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+            <div className="text-center">
+              <div className="text-6xl mb-4">🛡️</div>
+              <h2 className="text-xl font-bold text-gray-800">JMart Steel Safety</h2>
+              <p className="text-gray-600 mt-2">Verifying device authorization...</p>
+              <div className="mt-4">
+                <div className="animate-spin inline-block w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full"></div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      // Show pending approval screen if device is not approved
+      if (deviceAuthStatus === 'pending' || deviceAuthStatus === 'denied') {
+        return (
+          <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden">
+              <div className={`p-6 text-center ${deviceAuthStatus === 'denied' ? 'bg-red-500' : 'bg-orange-500'} text-white`}>
+                <div className="text-6xl mb-4">{deviceAuthStatus === 'denied' ? '🚫' : '🔐'}</div>
+                <h2 className="text-2xl font-bold">
+                  {deviceAuthStatus === 'denied' ? 'Access Denied' : 'Authorization Required'}
+                </h2>
+              </div>
+              <div className="p-6 space-y-4">
+                {deviceAuthStatus === 'pending' ? (
+                  <>
+                    <p className="text-gray-600 text-center">
+                      This device is not yet authorized to access JMart Steel Safety.
+                    </p>
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                      <p className="text-yellow-800 font-medium text-center">Waiting for Admin Approval</p>
+                      <p className="text-yellow-700 text-sm text-center mt-1">
+                        Your request has been sent. An administrator will review it shortly.
+                      </p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                      <p className="text-sm text-gray-500">Your Device:</p>
+                      <p className="font-medium text-gray-800">{DeviceAuth.deviceInfo?.type} ({DeviceAuth.deviceInfo?.browser})</p>
+                      <p className="text-xs text-gray-400">ID: {DeviceAuth.deviceId}</p>
+                    </div>
+                    <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
+                      <div className="animate-pulse w-2 h-2 bg-orange-500 rounded-full"></div>
+                      <span>Checking for approval...</span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-gray-600 text-center">
+                      Your device access has been denied or revoked by an administrator.
+                    </p>
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                      <p className="text-red-800 text-center">
+                        Please contact your administrator if you believe this is an error.
+                      </p>
+                    </div>
+                  </>
+                )}
+                <button
+                  onClick={() => window.location.reload()}
+                  className="w-full bg-gray-200 text-gray-700 py-3 rounded-xl font-medium hover:bg-gray-300 transition"
+                >
+                  Refresh
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
       return (
         <div className="min-h-screen bg-gray-100 flex flex-col safe-top">
+          {/* New Device Request Notification for Admins */}
+          {newDeviceNotification && isDeviceAdmin && (
+            <div className="fixed top-4 left-4 right-4 bg-blue-600 text-white p-4 rounded-xl shadow-lg z-[200] animate-pulse">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">📱</span>
+                  <div>
+                    <p className="font-semibold">New Device Request!</p>
+                    <p className="text-sm text-blue-100">
+                      {newDeviceNotification.type} ({newDeviceNotification.browser}) wants access
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={async () => {
+                      await DeviceAuth.approveDevice(newDeviceNotification.id);
+                      setNewDeviceNotification(null);
+                    }}
+                    className="bg-green-500 text-white px-3 py-1 rounded-lg text-sm font-medium hover:bg-green-600"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    onClick={async () => {
+                      await DeviceAuth.denyDevice(newDeviceNotification.id);
+                      setNewDeviceNotification(null);
+                    }}
+                    className="bg-red-500 text-white px-3 py-1 rounded-lg text-sm font-medium hover:bg-red-600"
+                  >
+                    Deny
+                  </button>
+                  <button
+                    onClick={() => setNewDeviceNotification(null)}
+                    className="text-white opacity-70 px-2"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Pending Devices Banner for Admins */}
+          {pendingDevices.length > 0 && isDeviceAdmin && !newDeviceNotification && (
+            <div
+              onClick={() => setCurrentView('settings')}
+              className="bg-blue-500 text-white p-2 text-center cursor-pointer hover:bg-blue-600 transition"
+            >
+              <span className="text-sm font-medium">
+                📱 {pendingDevices.length} device(s) waiting for approval - Tap to review
+              </span>
+            </div>
+          )}
+
           {/* Offline Banner */}
           {!isOnline && (
             <div className="offline-banner">
@@ -4270,7 +5063,8 @@
             {currentView === 'incidents' && <IncidentView onSubmit={(data) => addForm('incident', data)} onUpdate={updateForm} editingForm={editingForm?.type === 'incident' ? editingForm : null} />}
             {currentView === 'toolbox' && <ToolboxView onSubmit={(data) => addForm('toolbox', data)} onUpdate={updateForm} editingForm={editingForm?.type === 'toolbox' ? editingForm : null} sites={sites} />}
             {currentView === 'emergency' && <EmergencyView />}
-            {currentView === 'settings' && <SettingsView sites={sites} onUpdateSites={setSites} signatures={savedSignatures} onUpdateSignatures={updateSignatures} isAdmin={isAdmin} />}
+            {currentView === 'settings' && <SettingsView sites={sites} onUpdateSites={setSites} signatures={savedSignatures} onUpdateSignatures={updateSignatures} isAdmin={isAdmin} isDeviceAdmin={isDeviceAdmin} pendingDevices={pendingDevices} approvedDevices={approvedDevices} />}
+            {currentView === 'recordings' && <RecordingsView forms={forms} sites={sites} />}
           </main>
 
           <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around py-2 px-1 z-30">
@@ -4549,6 +5343,10 @@
                 <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center text-lg">📋</div>
                 <span className="text-xs font-medium text-gray-700 text-center">Pre-Start</span>
               </button>
+              <button onClick={() => setCurrentView('recordings')} className="bg-white rounded-xl p-2 shadow-sm flex flex-col items-center gap-1 hover:shadow-md border-2 border-teal-200">
+                <div className="w-10 h-10 bg-teal-500 rounded-full flex items-center justify-center text-lg">📸</div>
+                <span className="text-xs font-medium text-gray-700 text-center">Recordings</span>
+              </button>
               <button onClick={() => setCurrentView('steel-itp')} className="bg-white rounded-xl p-2 shadow-sm flex flex-col items-center gap-1 hover:shadow-md">
                 <div className="w-10 h-10 bg-slate-600 rounded-full flex items-center justify-center text-lg">🔩</div>
                 <span className="text-xs font-medium text-gray-700 text-center">Steel ITP</span>
@@ -4564,10 +5362,6 @@
               <button onClick={() => setCurrentView('incidents')} className="bg-white rounded-xl p-2 shadow-sm flex flex-col items-center gap-1 hover:shadow-md">
                 <div className="w-10 h-10 bg-red-500 rounded-full flex items-center justify-center text-lg">⚠️</div>
                 <span className="text-xs font-medium text-gray-700 text-center">Incident</span>
-              </button>
-              <button onClick={() => setCurrentView('toolbox')} className="bg-white rounded-xl p-2 shadow-sm flex flex-col items-center gap-1 hover:shadow-md">
-                <div className="w-10 h-10 bg-purple-500 rounded-full flex items-center justify-center text-lg">👥</div>
-                <span className="text-xs font-medium text-gray-700 text-center">Toolbox</span>
               </button>
             </div>
           </div>
@@ -7649,7 +8443,7 @@
     }
 
     // Settings View
-    function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSignatures, isAdmin = false }) {
+    function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSignatures, isAdmin = false, isDeviceAdmin = false, pendingDevices = [], approvedDevices = [] }) {
       const [newSite, setNewSite] = useState('');
       const [showAddSite, setShowAddSite] = useState(false);
       const [driveConnected, setDriveConnected] = useState(GoogleDriveSync.isConnected());
@@ -7660,6 +8454,7 @@
       const [showAddMember, setShowAddMember] = useState(false);
       const [devices, setDevices] = useState({ pending: [], approved: [], denied: [] });
       const [pendingCount, setPendingCount] = useState(0);
+      const [deviceActionLoading, setDeviceActionLoading] = useState(null);
       const defaultSites = ['Site 1 - Sydney CBD', 'Site 2 - Parramatta', 'Site 3 - North Sydney'];
       const currentSites = sites.length > 0 ? sites : defaultSites;
 
@@ -7675,14 +8470,18 @@
       }, [isAdmin]);
 
       const handleApproveDevice = async (deviceId) => {
+        setDeviceActionLoading(deviceId);
         const success = await DeviceAuthManager.approveDevice(deviceId);
+        setDeviceActionLoading(null);
         if (!success) {
           alert('Failed to approve device');
         }
       };
 
       const handleDenyDevice = async (deviceId) => {
+        setDeviceActionLoading(deviceId);
         const success = await DeviceAuthManager.denyDevice(deviceId);
+        setDeviceActionLoading(null);
         if (!success) {
           alert('Failed to deny device');
         }
@@ -7690,7 +8489,9 @@
 
       const handleRemoveDevice = async (deviceId) => {
         if (confirm('Are you sure you want to remove this device?')) {
+          setDeviceActionLoading(deviceId);
           const success = await DeviceAuthManager.removeDevice(deviceId);
+          setDeviceActionLoading(null);
           if (!success) {
             alert('Failed to remove device');
           }
@@ -7781,6 +8582,110 @@
         <div className="space-y-4">
           <div className="bg-white rounded-xl p-4 shadow-sm">
             <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">⚙️ Settings</h2>
+            {isDeviceAdmin && (
+              <p className="text-xs text-green-600 mt-1">🛡️ Admin Mode - You can manage device access</p>
+            )}
+          </div>
+
+          {/* Device Management Section (Admin Only) */}
+          {isDeviceAdmin && (
+            <div className="bg-white rounded-xl shadow-sm p-4">
+              <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                <span className="text-2xl">📱</span> Device Management
+              </h3>
+
+              {/* Pending Device Requests */}
+              {pendingDevices.length > 0 && (
+                <div className="mb-4">
+                  <p className="text-sm font-medium text-orange-600 mb-2">
+                    ⏳ Pending Requests ({pendingDevices.length})
+                  </p>
+                  <div className="space-y-2">
+                    {pendingDevices.map((device) => (
+                      <div key={device.id} className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-medium text-gray-800">{device.type}</p>
+                            <p className="text-xs text-gray-500">{device.browser} - {device.screen}</p>
+                            <p className="text-xs text-gray-400">
+                              Requested: {new Date(device.requestedAt).toLocaleString('en-AU')}
+                            </p>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleApproveDevice(device.id)}
+                              disabled={deviceActionLoading === device.id}
+                              className="bg-green-500 text-white px-3 py-1 rounded-lg text-sm font-medium disabled:opacity-50"
+                            >
+                              {deviceActionLoading === device.id ? '...' : '✓'}
+                            </button>
+                            <button
+                              onClick={() => handleDenyDevice(device.id)}
+                              disabled={deviceActionLoading === device.id}
+                              className="bg-red-500 text-white px-3 py-1 rounded-lg text-sm font-medium disabled:opacity-50"
+                            >
+                              {deviceActionLoading === device.id ? '...' : '✕'}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Approved Devices */}
+              <div>
+                <p className="text-sm font-medium text-green-600 mb-2">
+                  ✓ Approved Devices ({approvedDevices.length})
+                </p>
+                <div className="space-y-2">
+                  {approvedDevices.map((device) => (
+                    <div key={device.id} className={`bg-gray-50 border rounded-lg p-3 ${device.id === DeviceAuth.deviceId ? 'border-blue-300 bg-blue-50' : 'border-gray-200'}`}>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium text-gray-800">
+                            {device.type}
+                            {device.id === DeviceAuth.deviceId && <span className="text-blue-600 text-xs ml-2">(This device)</span>}
+                            {device.isAdmin && <span className="text-orange-600 text-xs ml-2">Admin</span>}
+                          </p>
+                          <p className="text-xs text-gray-500">{device.browser} - {device.screen}</p>
+                          <p className="text-xs text-gray-400">
+                            Last seen: {new Date(device.lastSeen).toLocaleString('en-AU')}
+                          </p>
+                        </div>
+                        {device.id !== DeviceAuth.deviceId && (
+                          <button
+                            onClick={() => handleRevokeDevice(device.id)}
+                            disabled={deviceActionLoading === device.id}
+                            className="bg-red-100 text-red-600 px-3 py-1 rounded-lg text-sm font-medium disabled:opacity-50"
+                          >
+                            Revoke
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {pendingDevices.length === 0 && approvedDevices.length === 0 && (
+                <p className="text-gray-500 text-sm text-center py-4">No devices registered yet</p>
+              )}
+            </div>
+          )}
+
+          {/* Current Device Info (for all users) */}
+          <div className="bg-white rounded-xl shadow-sm p-4">
+            <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+              <span className="text-2xl">🔐</span> This Device
+            </h3>
+            <div className="bg-gray-50 rounded-lg p-3 space-y-1">
+              <p className="text-sm"><span className="text-gray-500">Type:</span> <span className="font-medium">{DeviceAuth.deviceInfo?.type}</span></p>
+              <p className="text-sm"><span className="text-gray-500">Browser:</span> <span className="font-medium">{DeviceAuth.deviceInfo?.browser}</span></p>
+              <p className="text-sm"><span className="text-gray-500">Screen:</span> <span className="font-medium">{DeviceAuth.deviceInfo?.screen}</span></p>
+              <p className="text-xs text-gray-400 mt-2">Device ID: {DeviceAuth.deviceId}</p>
+            </div>
           </div>
 
           {/* Device Management Section - Admin Only */}
@@ -8013,6 +8918,1018 @@
           <div className="bg-white rounded-xl shadow-sm p-4">
             <p className="text-sm text-gray-600">JMart Steel Safety App v1.0</p>
             <p className="text-sm text-gray-600">NSW WHS Act 2011 Compliant</p>
+          </div>
+        </div>
+      );
+    }
+
+    // Job Photo Recordings View
+    function RecordingsView({ forms, sites }) {
+      const [selectedJob, setSelectedJob] = useState(null);
+      const [showJobSelector, setShowJobSelector] = useState(false);
+      const [photos, setPhotos] = useState([]);
+      const [isUploading, setIsUploading] = useState(false);
+      const [uploadStatus, setUploadStatus] = useState('');
+      const [savedRecordings, setSavedRecordings] = useState(() => {
+        const saved = localStorage.getItem('jmart-job-recordings');
+        return saved ? JSON.parse(saved) : [];
+      });
+      const [viewingRecording, setViewingRecording] = useState(null);
+      const cameraInputRef = useRef(null);
+      const galleryInputRef = useRef(null);
+
+      // Smart job detection - find today's prestart
+      useEffect(() => {
+        if (!selectedJob) {
+          const today = new Date().toDateString();
+          const todaysPrestarts = forms.filter(f =>
+            f.type === 'prestart' &&
+            new Date(f.createdAt).toDateString() === today
+          );
+
+          if (todaysPrestarts.length > 0) {
+            // Get the most recent prestart from today
+            const latestPrestart = todaysPrestarts.sort((a, b) =>
+              new Date(b.createdAt) - new Date(a.createdAt)
+            )[0];
+            setSelectedJob({
+              id: latestPrestart.id,
+              name: latestPrestart.data?.siteConducted || 'Unknown Site',
+              date: latestPrestart.createdAt,
+              type: 'prestart'
+            });
+          }
+        }
+      }, [forms, selectedJob]);
+
+      // Get available jobs from prestarts and sites
+      const getAvailableJobs = () => {
+        const jobs = [];
+
+        // Add jobs from recent prestarts (last 7 days)
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+        forms.filter(f =>
+          f.type === 'prestart' &&
+          new Date(f.createdAt) > sevenDaysAgo
+        ).forEach(prestart => {
+          const siteName = prestart.data?.siteConducted || 'Unknown Site';
+          const dateStr = new Date(prestart.createdAt).toLocaleDateString('en-AU');
+          jobs.push({
+            id: prestart.id,
+            name: siteName,
+            date: prestart.createdAt,
+            label: `${siteName} (${dateStr})`,
+            type: 'prestart'
+          });
+        });
+
+        // Add available sites (for manual selection)
+        const defaultSites = sites.length > 0 ? sites : ['Site 1 - Sydney CBD', 'Site 2 - Parramatta', 'Site 3 - North Sydney'];
+        defaultSites.forEach(site => {
+          // Only add if not already in the list from prestarts
+          if (!jobs.find(j => j.name === site)) {
+            jobs.push({
+              id: `site-${site}`,
+              name: site,
+              date: new Date().toISOString(),
+              label: `${site} (No prestart today)`,
+              type: 'site'
+            });
+          }
+        });
+
+        return jobs;
+      };
+
+      // Compress image
+      const compressImage = (file, maxWidth = 1200, quality = 0.7) => {
+        return new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            const img = new Image();
+            img.onload = () => {
+              const canvas = document.createElement('canvas');
+              let width = img.width;
+              let height = img.height;
+
+              if (width > maxWidth) {
+                height = (height * maxWidth) / width;
+                width = maxWidth;
+              }
+
+              canvas.width = width;
+              canvas.height = height;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(img, 0, 0, width, height);
+              const compressedData = canvas.toDataURL('image/jpeg', quality);
+              resolve(compressedData);
+            };
+            img.onerror = () => resolve(event.target.result);
+            img.src = event.target.result;
+          };
+          reader.onerror = () => resolve(null);
+          reader.readAsDataURL(file);
+        });
+      };
+
+      // Handle photo capture
+      const handlePhotoCapture = async (e) => {
+        const files = e.target.files;
+        if (files && files.length > 0) {
+          for (const file of Array.from(files)) {
+            const compressedData = await compressImage(file);
+            if (compressedData) {
+              const newPhoto = {
+                id: Date.now() + Math.random(),
+                name: file.name,
+                data: compressedData,
+                timestamp: new Date().toISOString()
+              };
+              setPhotos(prev => [...prev, newPhoto]);
+            }
+          }
+        }
+        e.target.value = '';
+      };
+
+      // Remove photo
+      const removePhoto = (photoId) => {
+        setPhotos(prev => prev.filter(p => p.id !== photoId));
+      };
+
+      // Save recording locally
+      const saveRecordingLocally = () => {
+        if (!selectedJob || photos.length === 0) return;
+
+        const recording = {
+          id: Date.now(),
+          jobId: selectedJob.id,
+          jobName: selectedJob.name,
+          date: new Date().toISOString(),
+          photos: photos,
+          driveUploaded: false
+        };
+
+        const updatedRecordings = [recording, ...savedRecordings];
+        setSavedRecordings(updatedRecordings);
+        localStorage.setItem('jmart-job-recordings', JSON.stringify(updatedRecordings));
+        setPhotos([]);
+        setUploadStatus('Saved locally!');
+        setTimeout(() => setUploadStatus(''), 3000);
+      };
+
+      // Upload to Google Drive
+      const uploadToDrive = async () => {
+        if (!selectedJob || photos.length === 0) return;
+        if (!GoogleDriveSync.isConnected()) {
+          setUploadStatus('Please connect Google Drive in Settings first');
+          return;
+        }
+
+        setIsUploading(true);
+        setUploadStatus('Uploading to Google Drive...');
+
+        try {
+          const result = await GoogleDriveSync.uploadJobPhotos(photos, selectedJob.name, new Date());
+
+          if (result.success) {
+            // Save recording with drive upload status
+            const recording = {
+              id: Date.now(),
+              jobId: selectedJob.id,
+              jobName: selectedJob.name,
+              date: new Date().toISOString(),
+              photos: photos,
+              driveUploaded: true,
+              driveResults: result.results
+            };
+
+            const updatedRecordings = [recording, ...savedRecordings];
+            setSavedRecordings(updatedRecordings);
+            localStorage.setItem('jmart-job-recordings', JSON.stringify(updatedRecordings));
+
+            setPhotos([]);
+            setUploadStatus(`Uploaded ${result.uploaded} photos to Google Drive!`);
+          } else {
+            setUploadStatus('Upload failed: ' + result.error);
+          }
+        } catch (error) {
+          setUploadStatus('Upload error: ' + error.message);
+        }
+
+        setIsUploading(false);
+        setTimeout(() => setUploadStatus(''), 5000);
+      };
+
+      // Download photos as ZIP (using individual downloads since we can't create ZIP in browser easily)
+      const downloadPhotos = () => {
+        photos.forEach((photo, idx) => {
+          const link = document.createElement('a');
+          link.href = photo.data;
+          link.download = `${selectedJob?.name || 'job'}-photo-${idx + 1}.jpg`;
+          link.click();
+        });
+        setUploadStatus(`Downloaded ${photos.length} photos!`);
+        setTimeout(() => setUploadStatus(''), 3000);
+      };
+
+      // Delete saved recording
+      const deleteRecording = (recordingId) => {
+        const updatedRecordings = savedRecordings.filter(r => r.id !== recordingId);
+        setSavedRecordings(updatedRecordings);
+        localStorage.setItem('jmart-job-recordings', JSON.stringify(updatedRecordings));
+        setViewingRecording(null);
+      };
+
+      const todayDate = new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+      return (
+        <div className="space-y-4">
+          {/* Header */}
+          <div className="bg-gradient-to-r from-teal-500 to-teal-600 rounded-xl p-4 text-white">
+            <h2 className="text-xl font-bold flex items-center gap-2">
+              <span>📸</span> Job Recordings
+            </h2>
+            <p className="text-teal-100 text-sm mt-1">Capture and save photos for your job</p>
+            <div className="mt-2 flex items-center gap-2 text-sm">
+              <span>📅</span>
+              <span>{todayDate}</span>
+            </div>
+          </div>
+
+          {/* Job Selector */}
+          <div className="bg-white rounded-xl p-4 shadow-sm">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="font-semibold text-gray-800">Current Job</h3>
+              <button
+                onClick={() => setShowJobSelector(!showJobSelector)}
+                className="text-teal-600 text-sm underline"
+              >
+                Change
+              </button>
+            </div>
+
+            {selectedJob ? (
+              <div className="bg-teal-50 border border-teal-200 rounded-lg p-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">{selectedJob.type === 'prestart' ? '📋' : '🏗️'}</span>
+                  <div>
+                    <p className="font-medium text-teal-800">{selectedJob.name}</p>
+                    <p className="text-xs text-teal-600">
+                      {selectedJob.type === 'prestart' ? 'Prestart completed' : 'Manual selection'} - {new Date(selectedJob.date).toLocaleDateString('en-AU')}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                <p className="text-yellow-800 text-sm">No job detected for today. Please select a job.</p>
+              </div>
+            )}
+
+            {showJobSelector && (
+              <div className="mt-3 space-y-2 max-h-48 overflow-y-auto">
+                {getAvailableJobs().map((job, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => {
+                      setSelectedJob(job);
+                      setShowJobSelector(false);
+                    }}
+                    className={`w-full text-left p-3 rounded-lg border transition ${
+                      selectedJob?.id === job.id
+                        ? 'bg-teal-100 border-teal-300'
+                        : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span>{job.type === 'prestart' ? '📋' : '🏗️'}</span>
+                      <span className="text-sm font-medium">{job.label}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Photo Capture */}
+          <div className="bg-white rounded-xl p-4 shadow-sm">
+            <h3 className="font-semibold text-gray-800 mb-3">Take Photos</h3>
+
+            <div className="flex gap-2 mb-4">
+              <button
+                onClick={() => cameraInputRef.current?.click()}
+                className="flex-1 bg-teal-600 text-white py-3 rounded-lg font-medium flex items-center justify-center gap-2"
+              >
+                <span>📷</span> Camera
+              </button>
+              <button
+                onClick={() => galleryInputRef.current?.click()}
+                className="flex-1 bg-purple-600 text-white py-3 rounded-lg font-medium flex items-center justify-center gap-2"
+              >
+                <span>🖼️</span> Gallery
+              </button>
+              <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={handlePhotoCapture} className="hidden" />
+              <input ref={galleryInputRef} type="file" accept="image/*" multiple onChange={handlePhotoCapture} className="hidden" />
+            </div>
+
+            {/* Photo Preview */}
+            {photos.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-gray-700">{photos.length} photo(s) ready</p>
+                  <button
+                    onClick={() => setPhotos([])}
+                    className="text-red-500 text-sm underline"
+                  >
+                    Clear all
+                  </button>
+                </div>
+                <div className="grid grid-cols-4 gap-2">
+                  {photos.map((photo) => (
+                    <div key={photo.id} className="relative">
+                      <img src={photo.data} alt="captured" className="w-full h-16 object-cover rounded-lg" />
+                      <button
+                        onClick={() => removePhoto(photo.id)}
+                        className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Save Options */}
+          {photos.length > 0 && selectedJob && (
+            <div className="bg-white rounded-xl p-4 shadow-sm space-y-3">
+              <h3 className="font-semibold text-gray-800">Save Photos</h3>
+
+              <button
+                onClick={downloadPhotos}
+                className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium flex items-center justify-center gap-2"
+              >
+                <span>📥</span> Download to Phone
+              </button>
+
+              <button
+                onClick={saveRecordingLocally}
+                className="w-full bg-green-600 text-white py-3 rounded-lg font-medium flex items-center justify-center gap-2"
+              >
+                <span>💾</span> Save in App
+              </button>
+
+              <button
+                onClick={uploadToDrive}
+                disabled={isUploading || !GoogleDriveSync.isConnected()}
+                className={`w-full py-3 rounded-lg font-medium flex items-center justify-center gap-2 ${
+                  GoogleDriveSync.isConnected()
+                    ? 'bg-orange-600 text-white'
+                    : 'bg-gray-300 text-gray-500'
+                }`}
+              >
+                {isUploading ? (
+                  <>
+                    <span className="animate-spin">⏳</span> Uploading...
+                  </>
+                ) : (
+                  <>
+                    <span>☁️</span> Upload to Google Drive
+                  </>
+                )}
+              </button>
+
+              {!GoogleDriveSync.isConnected() && (
+                <p className="text-xs text-gray-500 text-center">Connect Google Drive in Settings to enable cloud upload</p>
+              )}
+            </div>
+          )}
+
+          {/* Status Message */}
+          {uploadStatus && (
+            <div className={`p-3 rounded-lg text-center ${
+              uploadStatus.includes('error') || uploadStatus.includes('failed')
+                ? 'bg-red-100 text-red-700'
+                : 'bg-green-100 text-green-700'
+            }`}>
+              {uploadStatus}
+            </div>
+          )}
+
+          {/* Saved Recordings */}
+          {savedRecordings.length > 0 && (
+            <div className="bg-white rounded-xl p-4 shadow-sm">
+              <h3 className="font-semibold text-gray-800 mb-3">Saved Recordings</h3>
+              <div className="space-y-2">
+                {savedRecordings.slice(0, 10).map((recording) => (
+                  <button
+                    key={recording.id}
+                    onClick={() => setViewingRecording(recording)}
+                    className="w-full text-left p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <span className="text-2xl">📸</span>
+                        <div>
+                          <p className="font-medium text-gray-800">{recording.jobName}</p>
+                          <p className="text-xs text-gray-500">
+                            {new Date(recording.date).toLocaleDateString('en-AU')} - {recording.photos.length} photos
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {recording.driveUploaded && <span className="text-green-500 text-sm">☁️</span>}
+                        <span className="text-gray-400">›</span>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* View Recording Modal */}
+          {viewingRecording && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4">
+              <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl max-h-[80vh] overflow-hidden flex flex-col">
+                <div className="bg-teal-600 text-white p-4 flex items-center justify-between">
+                  <h2 className="text-lg font-bold">{viewingRecording.jobName}</h2>
+                  <button onClick={() => setViewingRecording(null)} className="text-white text-2xl">&times;</button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                  <p className="text-sm text-gray-500">
+                    {new Date(viewingRecording.date).toLocaleDateString('en-AU', {
+                      weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+                    })}
+                  </p>
+                  {viewingRecording.driveUploaded && (
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-2">
+                      <p className="text-green-700 text-sm">☁️ Uploaded to Google Drive</p>
+                    </div>
+                  )}
+                  <div className="grid grid-cols-3 gap-2">
+                    {viewingRecording.photos.map((photo, idx) => (
+                      <img
+                        key={idx}
+                        src={photo.data}
+                        alt={`Photo ${idx + 1}`}
+                        className="w-full h-24 object-cover rounded-lg cursor-pointer hover:opacity-80"
+                        onClick={() => {
+                          const win = window.open('', '_blank');
+                          win.document.write(`<img src="${photo.data}" style="max-width:100%;height:auto;">`);
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
+                <div className="p-4 border-t border-gray-200 space-y-2">
+                  <button
+                    onClick={() => {
+                      viewingRecording.photos.forEach((photo, idx) => {
+                        const link = document.createElement('a');
+                        link.href = photo.data;
+                        link.download = `${viewingRecording.jobName}-photo-${idx + 1}.jpg`;
+                        link.click();
+                      });
+                    }}
+                    className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold flex items-center justify-center gap-2"
+                  >
+                    <span>📥</span> Download All Photos
+                  </button>
+                  <button
+                    onClick={() => deleteRecording(viewingRecording.id)}
+                    className="w-full bg-red-100 text-red-600 py-3 rounded-xl font-semibold flex items-center justify-center gap-2"
+                  >
+                    <span>🗑️</span> Delete Recording
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Info Box */}
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+            <div className="flex items-start gap-3">
+              <span className="text-2xl">💡</span>
+              <div>
+                <h4 className="font-semibold text-blue-800">Storage Info</h4>
+                <p className="text-sm text-blue-700 mt-1">
+                  Photos are saved to your phone and can be uploaded to Google Drive.
+                  Firebase/Drive has plenty of space (~5GB free, affordable beyond that).
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ========================================
+    // RECORDINGS VIEW - Job Photo Recordings
+    // ========================================
+    function RecordingsView({ forms, sites }) {
+      const [selectedJob, setSelectedJob] = useState(null);
+      const [showJobSelector, setShowJobSelector] = useState(false);
+      const [photos, setPhotos] = useState([]);
+      const [isUploading, setIsUploading] = useState(false);
+      const [uploadStatus, setUploadStatus] = useState('');
+      const [savedRecordings, setSavedRecordings] = useState(() => {
+        const saved = localStorage.getItem('jmart-job-recordings');
+        return saved ? JSON.parse(saved) : [];
+      });
+      const [viewingRecording, setViewingRecording] = useState(null);
+      const cameraInputRef = useRef(null);
+      const galleryInputRef = useRef(null);
+
+      // Smart job detection - find today's prestart
+      useEffect(() => {
+        if (!selectedJob) {
+          const today = new Date().toDateString();
+          const todaysPrestarts = forms.filter(f =>
+            f.type === 'prestart' &&
+            new Date(f.createdAt).toDateString() === today
+          );
+
+          if (todaysPrestarts.length > 0) {
+            // Get the most recent prestart from today
+            const latestPrestart = todaysPrestarts.sort((a, b) =>
+              new Date(b.createdAt) - new Date(a.createdAt)
+            )[0];
+            setSelectedJob({
+              id: latestPrestart.id,
+              name: latestPrestart.data?.siteConducted || 'Unknown Site',
+              date: latestPrestart.createdAt,
+              type: 'prestart'
+            });
+          }
+        }
+      }, [forms, selectedJob]);
+
+      // Get available jobs from prestarts and sites
+      const getAvailableJobs = () => {
+        const jobs = [];
+
+        // Add jobs from recent prestarts (last 7 days)
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+        forms.filter(f =>
+          f.type === 'prestart' &&
+          new Date(f.createdAt) > sevenDaysAgo
+        ).forEach(prestart => {
+          const siteName = prestart.data?.siteConducted || 'Unknown Site';
+          const dateStr = new Date(prestart.createdAt).toLocaleDateString('en-AU');
+          jobs.push({
+            id: prestart.id,
+            name: siteName,
+            date: prestart.createdAt,
+            label: `${siteName} (${dateStr})`,
+            type: 'prestart'
+          });
+        });
+
+        // Add available sites (for manual selection)
+        const defaultSites = sites.length > 0 ? sites : ['Site 1 - Sydney CBD', 'Site 2 - Parramatta', 'Site 3 - North Sydney'];
+        defaultSites.forEach(site => {
+          // Only add if not already in the list from prestarts
+          if (!jobs.find(j => j.name === site)) {
+            jobs.push({
+              id: `site-${site}`,
+              name: site,
+              date: new Date().toISOString(),
+              label: `${site} (No prestart today)`,
+              type: 'site'
+            });
+          }
+        });
+
+        return jobs;
+      };
+
+      // Compress image
+      const compressImage = (file, maxWidth = 1200, quality = 0.7) => {
+        return new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            const img = new Image();
+            img.onload = () => {
+              const canvas = document.createElement('canvas');
+              let width = img.width;
+              let height = img.height;
+
+              if (width > maxWidth) {
+                height = (height * maxWidth) / width;
+                width = maxWidth;
+              }
+
+              canvas.width = width;
+              canvas.height = height;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(img, 0, 0, width, height);
+              const compressedData = canvas.toDataURL('image/jpeg', quality);
+              resolve(compressedData);
+            };
+            img.onerror = () => resolve(event.target.result);
+            img.src = event.target.result;
+          };
+          reader.onerror = () => resolve(null);
+          reader.readAsDataURL(file);
+        });
+      };
+
+      // Handle photo capture
+      const handlePhotoCapture = async (e) => {
+        const files = e.target.files;
+        if (files && files.length > 0) {
+          for (const file of Array.from(files)) {
+            const compressedData = await compressImage(file);
+            if (compressedData) {
+              const newPhoto = {
+                id: Date.now() + Math.random(),
+                name: file.name,
+                data: compressedData,
+                timestamp: new Date().toISOString()
+              };
+              setPhotos(prev => [...prev, newPhoto]);
+            }
+          }
+        }
+        e.target.value = '';
+      };
+
+      // Remove photo
+      const removePhoto = (photoId) => {
+        setPhotos(prev => prev.filter(p => p.id !== photoId));
+      };
+
+      // Save recording locally
+      const saveRecordingLocally = () => {
+        if (!selectedJob || photos.length === 0) return;
+
+        const recording = {
+          id: Date.now(),
+          jobId: selectedJob.id,
+          jobName: selectedJob.name,
+          date: new Date().toISOString(),
+          photos: photos,
+          driveUploaded: false
+        };
+
+        const updatedRecordings = [recording, ...savedRecordings];
+        setSavedRecordings(updatedRecordings);
+        localStorage.setItem('jmart-job-recordings', JSON.stringify(updatedRecordings));
+        setPhotos([]);
+        setUploadStatus('Saved locally!');
+        setTimeout(() => setUploadStatus(''), 3000);
+      };
+
+      // Upload to Google Drive
+      const uploadToDrive = async () => {
+        if (!selectedJob || photos.length === 0) return;
+        if (!GoogleDriveSync.isConnected()) {
+          setUploadStatus('Please connect Google Drive in Settings first');
+          return;
+        }
+
+        setIsUploading(true);
+        setUploadStatus('Uploading to Google Drive...');
+
+        try {
+          const result = await GoogleDriveSync.uploadJobPhotos(photos, selectedJob.name, new Date());
+
+          if (result.success) {
+            // Save recording with drive upload status
+            const recording = {
+              id: Date.now(),
+              jobId: selectedJob.id,
+              jobName: selectedJob.name,
+              date: new Date().toISOString(),
+              photos: photos,
+              driveUploaded: true,
+              driveResults: result.results
+            };
+
+            const updatedRecordings = [recording, ...savedRecordings];
+            setSavedRecordings(updatedRecordings);
+            localStorage.setItem('jmart-job-recordings', JSON.stringify(updatedRecordings));
+
+            setPhotos([]);
+            setUploadStatus(`Uploaded ${result.uploaded} photos to Google Drive!`);
+          } else {
+            setUploadStatus('Upload failed: ' + result.error);
+          }
+        } catch (error) {
+          setUploadStatus('Upload error: ' + error.message);
+        }
+
+        setIsUploading(false);
+        setTimeout(() => setUploadStatus(''), 5000);
+      };
+
+      // Download photos as ZIP (using individual downloads since we can't create ZIP in browser easily)
+      const downloadPhotos = () => {
+        photos.forEach((photo, idx) => {
+          const link = document.createElement('a');
+          link.href = photo.data;
+          link.download = `${selectedJob?.name || 'job'}-photo-${idx + 1}.jpg`;
+          link.click();
+        });
+        setUploadStatus(`Downloaded ${photos.length} photos!`);
+        setTimeout(() => setUploadStatus(''), 3000);
+      };
+
+      // Delete saved recording
+      const deleteRecording = (recordingId) => {
+        const updatedRecordings = savedRecordings.filter(r => r.id !== recordingId);
+        setSavedRecordings(updatedRecordings);
+        localStorage.setItem('jmart-job-recordings', JSON.stringify(updatedRecordings));
+        setViewingRecording(null);
+      };
+
+      const todayDate = new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+      return (
+        <div className="space-y-4">
+          {/* Header */}
+          <div className="bg-gradient-to-r from-teal-500 to-teal-600 rounded-xl p-4 text-white">
+            <h2 className="text-xl font-bold flex items-center gap-2">
+              <span>📸</span> Job Recordings
+            </h2>
+            <p className="text-teal-100 text-sm mt-1">Capture and save photos for your job</p>
+            <div className="mt-2 flex items-center gap-2 text-sm">
+              <span>📅</span>
+              <span>{todayDate}</span>
+            </div>
+          </div>
+
+          {/* Job Selector */}
+          <div className="bg-white rounded-xl p-4 shadow-sm">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="font-semibold text-gray-800">Current Job</h3>
+              <button
+                onClick={() => setShowJobSelector(!showJobSelector)}
+                className="text-teal-600 text-sm underline"
+              >
+                Change
+              </button>
+            </div>
+
+            {selectedJob ? (
+              <div className="bg-teal-50 border border-teal-200 rounded-lg p-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">{selectedJob.type === 'prestart' ? '📋' : '🏗️'}</span>
+                  <div>
+                    <p className="font-medium text-teal-800">{selectedJob.name}</p>
+                    <p className="text-xs text-teal-600">
+                      {selectedJob.type === 'prestart' ? 'Prestart completed' : 'Manual selection'} - {new Date(selectedJob.date).toLocaleDateString('en-AU')}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                <p className="text-yellow-800 text-sm">No job detected for today. Please select a job.</p>
+              </div>
+            )}
+
+            {showJobSelector && (
+              <div className="mt-3 space-y-2 max-h-48 overflow-y-auto">
+                {getAvailableJobs().map((job, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => {
+                      setSelectedJob(job);
+                      setShowJobSelector(false);
+                    }}
+                    className={`w-full text-left p-3 rounded-lg border transition ${
+                      selectedJob?.id === job.id
+                        ? 'bg-teal-100 border-teal-300'
+                        : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span>{job.type === 'prestart' ? '📋' : '🏗️'}</span>
+                      <span className="text-sm font-medium">{job.label}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Photo Capture */}
+          <div className="bg-white rounded-xl p-4 shadow-sm">
+            <h3 className="font-semibold text-gray-800 mb-3">Take Photos</h3>
+
+            <div className="flex gap-2 mb-4">
+              <button
+                onClick={() => cameraInputRef.current?.click()}
+                className="flex-1 bg-teal-600 text-white py-3 rounded-lg font-medium flex items-center justify-center gap-2"
+              >
+                <span>📷</span> Camera
+              </button>
+              <button
+                onClick={() => galleryInputRef.current?.click()}
+                className="flex-1 bg-purple-600 text-white py-3 rounded-lg font-medium flex items-center justify-center gap-2"
+              >
+                <span>🖼️</span> Gallery
+              </button>
+              <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={handlePhotoCapture} className="hidden" />
+              <input ref={galleryInputRef} type="file" accept="image/*" multiple onChange={handlePhotoCapture} className="hidden" />
+            </div>
+
+            {/* Photo Preview */}
+            {photos.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-gray-700">{photos.length} photo(s) ready</p>
+                  <button
+                    onClick={() => setPhotos([])}
+                    className="text-red-500 text-sm underline"
+                  >
+                    Clear all
+                  </button>
+                </div>
+                <div className="grid grid-cols-4 gap-2">
+                  {photos.map((photo) => (
+                    <div key={photo.id} className="relative">
+                      <img src={photo.data} alt="captured" className="w-full h-16 object-cover rounded-lg" />
+                      <button
+                        onClick={() => removePhoto(photo.id)}
+                        className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Save Options */}
+          {photos.length > 0 && selectedJob && (
+            <div className="bg-white rounded-xl p-4 shadow-sm space-y-3">
+              <h3 className="font-semibold text-gray-800">Save Photos</h3>
+
+              <button
+                onClick={downloadPhotos}
+                className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium flex items-center justify-center gap-2"
+              >
+                <span>📥</span> Download to Phone
+              </button>
+
+              <button
+                onClick={saveRecordingLocally}
+                className="w-full bg-green-600 text-white py-3 rounded-lg font-medium flex items-center justify-center gap-2"
+              >
+                <span>💾</span> Save in App
+              </button>
+
+              <button
+                onClick={uploadToDrive}
+                disabled={isUploading || !GoogleDriveSync.isConnected()}
+                className={`w-full py-3 rounded-lg font-medium flex items-center justify-center gap-2 ${
+                  GoogleDriveSync.isConnected()
+                    ? 'bg-orange-600 text-white'
+                    : 'bg-gray-300 text-gray-500'
+                }`}
+              >
+                {isUploading ? (
+                  <>
+                    <span className="animate-spin">⏳</span> Uploading...
+                  </>
+                ) : (
+                  <>
+                    <span>☁️</span> Upload to Google Drive
+                  </>
+                )}
+              </button>
+
+              {!GoogleDriveSync.isConnected() && (
+                <p className="text-xs text-gray-500 text-center">Connect Google Drive in Settings to enable cloud upload</p>
+              )}
+            </div>
+          )}
+
+          {/* Status Message */}
+          {uploadStatus && (
+            <div className={`p-3 rounded-lg text-center ${
+              uploadStatus.includes('error') || uploadStatus.includes('failed')
+                ? 'bg-red-100 text-red-700'
+                : 'bg-green-100 text-green-700'
+            }`}>
+              {uploadStatus}
+            </div>
+          )}
+
+          {/* Saved Recordings */}
+          {savedRecordings.length > 0 && (
+            <div className="bg-white rounded-xl p-4 shadow-sm">
+              <h3 className="font-semibold text-gray-800 mb-3">Saved Recordings</h3>
+              <div className="space-y-2">
+                {savedRecordings.slice(0, 10).map((recording) => (
+                  <button
+                    key={recording.id}
+                    onClick={() => setViewingRecording(recording)}
+                    className="w-full text-left p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <span className="text-2xl">📸</span>
+                        <div>
+                          <p className="font-medium text-gray-800">{recording.jobName}</p>
+                          <p className="text-xs text-gray-500">
+                            {new Date(recording.date).toLocaleDateString('en-AU')} - {recording.photos.length} photos
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {recording.driveUploaded && <span className="text-green-500 text-sm">☁️</span>}
+                        <span className="text-gray-400">›</span>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* View Recording Modal */}
+          {viewingRecording && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4">
+              <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl max-h-[80vh] overflow-hidden flex flex-col">
+                <div className="bg-teal-600 text-white p-4 flex items-center justify-between">
+                  <h2 className="text-lg font-bold">{viewingRecording.jobName}</h2>
+                  <button onClick={() => setViewingRecording(null)} className="text-white text-2xl">&times;</button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                  <p className="text-sm text-gray-500">
+                    {new Date(viewingRecording.date).toLocaleDateString('en-AU', {
+                      weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+                    })}
+                  </p>
+                  {viewingRecording.driveUploaded && (
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-2">
+                      <p className="text-green-700 text-sm">☁️ Uploaded to Google Drive</p>
+                    </div>
+                  )}
+                  <div className="grid grid-cols-3 gap-2">
+                    {viewingRecording.photos.map((photo, idx) => (
+                      <img
+                        key={idx}
+                        src={photo.data}
+                        alt={`Photo ${idx + 1}`}
+                        className="w-full h-24 object-cover rounded-lg cursor-pointer hover:opacity-80"
+                        onClick={() => {
+                          const win = window.open('', '_blank');
+                          win.document.write(`<img src="${photo.data}" style="max-width:100%;height:auto;">`);
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
+                <div className="p-4 border-t border-gray-200 space-y-2">
+                  <button
+                    onClick={() => {
+                      viewingRecording.photos.forEach((photo, idx) => {
+                        const link = document.createElement('a');
+                        link.href = photo.data;
+                        link.download = `${viewingRecording.jobName}-photo-${idx + 1}.jpg`;
+                        link.click();
+                      });
+                    }}
+                    className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold flex items-center justify-center gap-2"
+                  >
+                    <span>📥</span> Download All Photos
+                  </button>
+                  <button
+                    onClick={() => deleteRecording(viewingRecording.id)}
+                    className="w-full bg-red-100 text-red-600 py-3 rounded-xl font-semibold flex items-center justify-center gap-2"
+                  >
+                    <span>🗑️</span> Delete Recording
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Info Box */}
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+            <div className="flex items-start gap-3">
+              <span className="text-2xl">💡</span>
+              <div>
+                <h4 className="font-semibold text-blue-800">Storage Info</h4>
+                <p className="text-sm text-blue-700 mt-1">
+                  Photos are saved to your phone and can be uploaded to Google Drive.
+                  Firebase/Drive has plenty of space (~5GB free, affordable beyond that).
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       );
