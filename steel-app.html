@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>STEEL - AI Trade Documentation Suite</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔩</text></svg>">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            color: #fff;
+            padding: 20px;
+        }
+        .header {
+            text-align: center;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .header h1 {
+            font-size: 2.5rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .header p { color: #888; margin-top: 8px; }
+
+        /* Navigation */
+        .nav-tabs {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+        .nav-tab {
+            padding: 12px 24px;
+            background: rgba(255,255,255,0.1);
+            border: none;
+            border-radius: 8px;
+            color: #fff;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        .nav-tab:hover { background: rgba(255,255,255,0.2); }
+        .nav-tab.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .nav-tab.offline {
+            opacity: 0.5;
+            position: relative;
+        }
+        .nav-tab.offline::after {
+            content: "API";
+            font-size: 8px;
+            background: #f59e0b;
+            padding: 2px 4px;
+            border-radius: 3px;
+            position: absolute;
+            top: -5px;
+            right: -5px;
+        }
+
+        /* Agent Section */
+        .agent-section {
+            display: none;
+            background: rgba(0,0,0,0.3);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .agent-section.active { display: block; }
+        .agent-header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .agent-icon { font-size: 2.5rem; }
+        .agent-title h2 {
+            color: #60a5fa;
+            font-size: 1.5rem;
+        }
+        .agent-title p { color: #888; font-size: 0.9rem; }
+
+        /* Controls */
+        .control-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 15px;
+        }
+        .btn-group {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+        }
+        .btn {
+            padding: 10px 16px;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 8px;
+            color: #fff;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+        .btn:hover { background: rgba(255,255,255,0.2); }
+        .btn.active {
+            background: #3b82f6;
+            border-color: #3b82f6;
+        }
+        .btn.primary {
+            background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+            border: none;
+        }
+        label { color: rgba(255,255,255,0.7); margin-bottom: 5px; display: block; font-size: 13px; }
+
+        /* Results */
+        .result-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 10px;
+            margin: 15px 0;
+        }
+        .result-card {
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+            padding: 12px;
+            text-align: center;
+        }
+        .result-card .label { color: #888; font-size: 11px; margin-bottom: 4px; }
+        .result-card .value { font-size: 1.4rem; font-weight: bold; color: #60a5fa; }
+        .result-card .unit { color: #888; font-size: 12px; }
+
+        /* Table */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+            font-size: 13px;
+        }
+        .data-table th, .data-table td {
+            padding: 10px;
+            text-align: center;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .data-table th {
+            background: rgba(245,158,11,0.3);
+            color: #f59e0b;
+        }
+        .data-table td { background: rgba(0,0,0,0.2); }
+
+        /* Section Buttons Grid */
+        .section-btns {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 15px 0;
+            max-height: 200px;
+            overflow-y: auto;
+            padding: 5px;
+        }
+        .section-btn {
+            padding: 8px 12px;
+            background: rgba(59,130,246,0.2);
+            border: 1px solid rgba(59,130,246,0.3);
+            border-radius: 6px;
+            color: #93c5fd;
+            cursor: pointer;
+            font-size: 12px;
+            font-family: monospace;
+        }
+        .section-btn:hover { background: rgba(59,130,246,0.4); }
+        .section-btn.active {
+            background: #3b82f6;
+            color: #fff;
+        }
+
+        /* Calculator inputs */
+        .calc-row {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: flex-end;
+            margin: 15px 0;
+            padding: 15px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 8px;
+        }
+        .calc-input { flex: 1; min-width: 120px; }
+        .calc-input input {
+            width: 100%;
+            padding: 10px;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 6px;
+            color: #fff;
+            font-size: 14px;
+        }
+        .calc-total {
+            text-align: center;
+            padding: 10px 20px;
+            background: rgba(34,197,94,0.2);
+            border-radius: 8px;
+        }
+        .calc-total .value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #22c55e;
+        }
+
+        /* Console */
+        .console {
+            background: rgba(0,0,0,0.4);
+            border-radius: 8px;
+            padding: 12px 15px;
+            font-family: monospace;
+            font-size: 13px;
+            color: #22c55e;
+            margin-top: 15px;
+        }
+
+        /* API Notice */
+        .api-notice {
+            background: rgba(245,158,11,0.2);
+            border: 1px solid rgba(245,158,11,0.5);
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .api-notice h3 { color: #f59e0b; margin-bottom: 10px; }
+        .api-notice p { color: #fcd34d; }
+
+        /* Status badge */
+        .status-badge {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .status-badge.online { background: rgba(34,197,94,0.3); color: #22c55e; }
+        .status-badge.offline { background: rgba(239,68,68,0.3); color: #ef4444; }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔩 STEEL Command Center</h1>
+        <p>AI-Powered Trade Documentation Suite</p>
+    </div>
+
+    <!-- Navigation -->
+    <div class="nav-tabs">
+        <button class="nav-tab active" onclick="showSection('hobart')">🔩 HOBART</button>
+        <button class="nav-tab" onclick="showSection('igor')">⚖️ IGOR</button>
+        <button class="nav-tab" onclick="showSection('chuck')">🧪 CHUCK</button>
+        <button class="nav-tab" onclick="showSection('brittany')">💪 BRITTANY</button>
+        <button class="nav-tab offline" onclick="showSection('ai-agents')">🤖 AI Agents</button>
+    </div>
+
+    <!-- HOBART Section -->
+    <div id="hobart" class="agent-section active">
+        <div class="agent-header">
+            <div class="agent-icon">🔩</div>
+            <div class="agent-title">
+                <h2>HOBART - Hollo-Bolt Reference</h2>
+                <p>Lindapter Hollo-Bolt drilling, capacities & grip ranges</p>
+            </div>
+        </div>
+
+        <label>Bolt Type</label>
+        <div class="btn-group" id="hobartTypeButtons">
+            <button class="btn active" onclick="hobartSetType('HB', this)">HB Hex Head</button>
+            <button class="btn" onclick="hobartSetType('HBCSK', this)">HBCSK Countersunk</button>
+            <button class="btn" onclick="hobartSetType('HBFF', this)">HBFF Flush Fit</button>
+            <button class="btn" onclick="hobartSetType('LB', this)">LB2 LindiBolt</button>
+        </div>
+
+        <label style="margin-top:15px">Bolt Size</label>
+        <div class="btn-group" id="hobartSizeButtons">
+            <button class="btn" onclick="hobartSetSize('M8', this)">M8</button>
+            <button class="btn" onclick="hobartSetSize('M10', this)">M10</button>
+            <button class="btn active" onclick="hobartSetSize('M12', this)">M12</button>
+            <button class="btn" onclick="hobartSetSize('M16', this)">M16</button>
+            <button class="btn" onclick="hobartSetSize('M20', this)">M20</button>
+        </div>
+
+        <div class="result-grid" id="hobartResults"></div>
+
+        <table class="data-table" id="hobartGripTable">
+            <thead>
+                <tr><th>Product Code</th><th>Clamping Range (mm)</th></tr>
+            </thead>
+            <tbody id="hobartGripBody"></tbody>
+        </table>
+
+        <div class="console" id="hobartConsole">🔩 HOBART Ready - "Lindapter Hollo-Bolt at your service"</div>
+    </div>
+
+    <!-- IGOR Section -->
+    <div id="igor" class="agent-section">
+        <div class="agent-header">
+            <div class="agent-icon">⚖️</div>
+            <div class="agent-title">
+                <h2>IGOR - IBSC Steel Reference</h2>
+                <p>Complete IBSC Know Your Steel V11 catalogue - 543 sections across 14 types</p>
+            </div>
+        </div>
+
+        <label>Section Type</label>
+        <div class="btn-group" id="igorTypeButtons">
+            <button class="btn active" onclick="igorSetType('SHS', this)">SHS</button>
+            <button class="btn" onclick="igorSetType('RHS', this)">RHS</button>
+            <button class="btn" onclick="igorSetType('CHS', this)">CHS</button>
+            <button class="btn" onclick="igorSetType('EA', this)">EA</button>
+            <button class="btn" onclick="igorSetType('UA', this)">UA</button>
+            <button class="btn" onclick="igorSetType('FB', this)">FB</button>
+            <button class="btn" onclick="igorSetType('RB', this)">RB</button>
+            <button class="btn" onclick="igorSetType('SB', this)">SB</button>
+            <button class="btn" onclick="igorSetType('UB', this)">UB</button>
+            <button class="btn" onclick="igorSetType('WB', this)">WB</button>
+            <button class="btn" onclick="igorSetType('UC', this)">UC</button>
+            <button class="btn" onclick="igorSetType('WC', this)">WC</button>
+            <button class="btn" onclick="igorSetType('PFC', this)">PFC</button>
+            <button class="btn" onclick="igorSetType('TFB', this)">TFB</button>
+        </div>
+
+        <label style="margin-top:15px">Select Section</label>
+        <div class="section-btns" id="igorSectionButtons"></div>
+
+        <div class="result-grid" id="igorResults" style="display:none"></div>
+
+        <div class="calc-row" id="igorCalcRow" style="display:none">
+            <div class="calc-input">
+                <label>Length (m)</label>
+                <input type="number" id="igorLength" placeholder="e.g. 6.0" step="0.1" oninput="igorCalculate()">
+            </div>
+            <div class="calc-input">
+                <label>Quantity</label>
+                <input type="number" id="igorQty" value="1" min="1" oninput="igorCalculate()">
+            </div>
+            <div class="calc-total">
+                <div class="label">Total Weight</div>
+                <div class="value" id="igorTotalWeight">0 kg</div>
+            </div>
+        </div>
+
+        <div class="console" id="igorConsole">⚖️ IGOR Ready - "I know the weight of every steel section"</div>
+    </div>
+
+    <!-- CHUCK Section -->
+    <div id="chuck" class="agent-section">
+        <div class="agent-header">
+            <div class="agent-icon">🧪</div>
+            <div class="agent-title">
+                <h2>CHUCK - Hilti Calculator</h2>
+                <p>Chemical anchor usage calculator</p>
+            </div>
+        </div>
+
+        <label>Chemical Type</label>
+        <div class="btn-group" id="chuckTypeButtons">
+            <button class="btn active" onclick="chuckSetType('HY200R', this)">HY 200-R</button>
+            <button class="btn" onclick="chuckSetType('HY200A', this)">HY 200-A</button>
+            <button class="btn" onclick="chuckSetType('RE500', this)">RE 500</button>
+        </div>
+
+        <label style="margin-top:15px">Rod Size</label>
+        <div class="btn-group" id="chuckSizeButtons">
+            <button class="btn" onclick="chuckSetSize('M10', this)">M10</button>
+            <button class="btn" onclick="chuckSetSize('M12', this)">M12</button>
+            <button class="btn active" onclick="chuckSetSize('M16', this)">M16</button>
+            <button class="btn" onclick="chuckSetSize('M20', this)">M20</button>
+            <button class="btn" onclick="chuckSetSize('M24', this)">M24</button>
+        </div>
+
+        <div class="calc-row">
+            <div class="calc-input">
+                <label>Embed Depth (mm)</label>
+                <input type="number" id="chuckDepth" value="96" oninput="chuckCalculate()">
+            </div>
+            <div class="calc-input">
+                <label>Quantity</label>
+                <input type="number" id="chuckQty" value="10" min="1" oninput="chuckCalculate()">
+            </div>
+        </div>
+
+        <div class="result-grid" id="chuckResults"></div>
+
+        <div class="console" id="chuckConsole">🧪 CHUCK Ready - "Hilti chemical calculations at your service"</div>
+    </div>
+
+    <!-- BRITTANY Section -->
+    <div id="brittany" class="agent-section">
+        <div class="agent-header">
+            <div class="agent-icon">💪</div>
+            <div class="agent-title">
+                <h2>BRITTANY - Fixing Capacity</h2>
+                <p>Will it hold? How many kg?</p>
+            </div>
+        </div>
+
+        <label>Fixing Type</label>
+        <div class="btn-group" id="brittanyTypeButtons">
+            <button class="btn active" onclick="brittanySetType('dynabolt', this)">Dynabolt</button>
+            <button class="btn" onclick="brittanySetType('trubolt', this)">TruBolt</button>
+            <button class="btn" onclick="brittanySetType('hilti_hsl', this)">Hilti HSL</button>
+            <button class="btn" onclick="brittanySetType('chemset', this)">Chemset</button>
+        </div>
+
+        <label style="margin-top:15px">Size</label>
+        <div class="btn-group" id="brittanySizeButtons">
+            <button class="btn" onclick="brittanySetSize('M8', this)">M8</button>
+            <button class="btn" onclick="brittanySetSize('M10', this)">M10</button>
+            <button class="btn active" onclick="brittanySetSize('M12', this)">M12</button>
+            <button class="btn" onclick="brittanySetSize('M16', this)">M16</button>
+            <button class="btn" onclick="brittanySetSize('M20', this)">M20</button>
+        </div>
+
+        <div class="calc-row">
+            <div class="calc-input">
+                <label>Quantity</label>
+                <input type="number" id="brittanyQty" value="4" min="1" oninput="brittanyCalculate()">
+            </div>
+            <div class="calc-input">
+                <label>Concrete (MPa)</label>
+                <select id="brittanyConcrete" onchange="brittanyCalculate()">
+                    <option value="25">25 MPa</option>
+                    <option value="32" selected>32 MPa</option>
+                    <option value="40">40 MPa</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="result-grid" id="brittanyResults"></div>
+
+        <div class="console" id="brittanyConsole">💪 BRITTANY Ready - "I'll tell you if it'll hold"</div>
+    </div>
+
+    <!-- AI Agents Section -->
+    <div id="ai-agents" class="agent-section">
+        <div class="agent-header">
+            <div class="agent-icon">🤖</div>
+            <div class="agent-title">
+                <h2>AI-Powered Agents</h2>
+                <p>These agents require API connection</p>
+            </div>
+        </div>
+
+        <div class="api-notice">
+            <h3>⚡ API Connection Required</h3>
+            <p>The following agents use Claude AI and require the STEEL server running locally:</p>
+        </div>
+
+        <div class="result-grid" style="margin-top:20px">
+            <div class="result-card"><div class="label">FRANK</div><div class="value" style="font-size:1rem">SWMS Generator</div></div>
+            <div class="result-card"><div class="label">GRETA</div><div class="value" style="font-size:1rem">Plan Intelligence</div></div>
+            <div class="result-card"><div class="label">VICTOR</div><div class="value" style="font-size:1rem">MSDS Finder</div></div>
+            <div class="result-card"><div class="label">DORIS</div><div class="value" style="font-size:1rem">Document Organizer</div></div>
+            <div class="result-card"><div class="label">QUINCY</div><div class="value" style="font-size:1rem">Quality Memory</div></div>
+            <div class="result-card"><div class="label">UGO</div><div class="value" style="font-size:1rem">System Overseer</div></div>
+            <div class="result-card"><div class="label">SIMON</div><div class="value" style="font-size:1rem">Quote Analyzer</div></div>
+            <div class="result-card"><div class="label">PAMELA</div><div class="value" style="font-size:1rem">Warranty Generator</div></div>
+            <div class="result-card"><div class="label">JERRY</div><div class="value" style="font-size:1rem">Workshop Creator</div></div>
+            <div class="result-card"><div class="label">HANNA</div><div class="value" style="font-size:1rem">Receipt Tracker</div></div>
+        </div>
+
+        <div class="console">🤖 To use AI agents, run: python steel/api.py</div>
+    </div>
+
+    <!-- Status Badge -->
+    <div class="status-badge offline" id="statusBadge">
+        <div class="status-dot"></div>
+        <span>Standalone Mode</span>
+    </div>
+
+    <script>
+    // ═══════════════════════════════════════════════════════════════════════════
+    // EMBEDDED DATA - HOBART
+    // ═══════════════════════════════════════════════════════════════════════════
+    const HOLLO_BOLT_DATA={DRILLING_DATA:{M8:{clearance_hole:14,tolerance:"+1.0/-0.2",min_hole_distance:35,min_edge_distance:13},M10:{clearance_hole:18,tolerance:"+1.0/-0.2",min_hole_distance:40,min_edge_distance:15},M12:{clearance_hole:20,tolerance:"+1.0/-0.2",min_hole_distance:50,min_edge_distance:18},M16:{clearance_hole:26,tolerance:"+2.0/-0.2",min_hole_distance:55,min_edge_distance:20,min_outer_ply:8},M20:{clearance_hole:33,tolerance:"+2.0/-0.2",min_hole_distance:70,min_edge_distance:25,min_outer_ply:8}},HEXAGONAL_HEAD:{M8:{product_codes_with_sizes:["HB08-1 (L=45mm, clamp 3-22mm)","HB08-2 (L=65mm, clamp 22-41mm)","HB08-3 (L=85mm, clamp 41-60mm)"],clamping_ranges:["3-22","22-41","41-60"],torque_nm:23,spanner_mm:19,tensile_swl_kn:4.0,shear_swl_kn:5.0},M10:{product_codes_with_sizes:["HB10-1 (L=49mm, clamp 3-22mm)","HB10-2 (L=64mm, clamp 22-41mm)","HB10-3 (L=84mm, clamp 41-60mm)"],clamping_ranges:["3-22","22-41","41-60"],torque_nm:45,spanner_mm:24,tensile_swl_kn:8.5,shear_swl_kn:10.0},M12:{product_codes_with_sizes:["HB12-1 (L=53mm, clamp 3-25mm)","HB12-2 (L=73mm, clamp 25-47mm)","HB12-3 (L=93mm, clamp 47-69mm)"],clamping_ranges:["3-25","25-47","47-69"],torque_nm:80,spanner_mm:30,tensile_swl_kn:10.5,shear_swl_kn:15.0},M16:{product_codes_with_sizes:["HB16-1 (L=67mm, clamp 12-29mm)","HB16-2 (L=92mm, clamp 29-50mm)","HB16-3 (L=112mm, clamp 50-71mm)"],clamping_ranges:["12-29","29-50","50-71"],torque_nm:190,spanner_mm:36,tensile_swl_kn:21.0,shear_swl_kn:30.0},M20:{product_codes_with_sizes:["HB20-1 (L=80mm, clamp 12-34mm)","HB20-2 (L=110mm, clamp 34-60mm)","HB20-3 (L=140mm, clamp 60-86mm)"],clamping_ranges:["12-34","34-60","60-86"],torque_nm:300,spanner_mm:46,tensile_swl_kn:35.0,shear_swl_kn:40.0}},COUNTERSUNK_HEAD:{M8:{product_codes_with_sizes:["HBCSK08-1 (L=45mm, clamp 3-22mm)","HBCSK08-2 (L=65mm, clamp 22-41mm)","HBCSK08-3 (L=85mm, clamp 41-60mm)"],clamping_ranges:["3-22","22-41","41-60"],torque_nm:23,spanner_mm:19,tensile_swl_kn:4.0,shear_swl_kn:5.0},M10:{product_codes_with_sizes:["HBCSK10-1 (L=44mm, clamp 3-22mm)","HBCSK10-2 (L=64mm, clamp 22-41mm)","HBCSK10-3 (L=84mm, clamp 41-60mm)"],clamping_ranges:["3-22","22-41","41-60"],torque_nm:45,spanner_mm:24,tensile_swl_kn:8.5,shear_swl_kn:10.0},M12:{product_codes_with_sizes:["HBCSK12-1 (L=48mm, clamp 3-25mm)","HBCSK12-2 (L=73mm, clamp 25-47mm)","HBCSK12-3 (L=93mm, clamp 47-69mm)"],clamping_ranges:["3-25","25-47","47-69"],torque_nm:80,spanner_mm:30,tensile_swl_kn:10.5,shear_swl_kn:15.0},M16:{product_codes_with_sizes:["HBCSK16-1 (L=62mm, clamp 12-29mm)","HBCSK16-2 (L=92mm, clamp 29-50mm)","HBCSK16-3 (L=112mm, clamp 50-71mm)"],clamping_ranges:["12-29","29-50","50-71"],torque_nm:190,spanner_mm:36,tensile_swl_kn:21.0,shear_swl_kn:30.0}},FLUSH_FIT_HEAD:{M8:{product_codes_with_sizes:["HBFF08-1 (L=50mm, clamp 10-27mm)","HBFF08-2 (L=70mm, clamp 27-45mm)","HBFF08-3 (L=90mm, clamp 45-64mm)"],clamping_ranges:["10-27","27-45","45-64"],torque_nm:23,spanner_mm:19,tensile_swl_kn:4.0,shear_swl_kn:5.0},M10:{product_codes_with_sizes:["HBFF10-1 (L=50mm, clamp 12-27mm)","HBFF10-2 (L=70mm, clamp 27-45mm)","HBFF10-3 (L=90mm, clamp 45-64mm)"],clamping_ranges:["12-27","27-45","45-64"],torque_nm:45,spanner_mm:24,tensile_swl_kn:8.5,shear_swl_kn:10.0},M12:{product_codes_with_sizes:["HBFF12-1 (L=55mm, clamp 12-30mm)","HBFF12-2 (L=80mm, clamp 30-52mm)","HBFF12-3 (L=100mm, clamp 52-74mm)"],clamping_ranges:["12-30","30-52","52-74"],torque_nm:80,spanner_mm:30,tensile_swl_kn:10.5,shear_swl_kn:15.0}},LINDIBOLT:{M10:{product_codes_with_sizes:["LB10 (L=74mm, clamp 7-30mm)"],clamping_ranges:["7-30"],torque_nm:20,spanner_mm:17,tensile_swl_kn:3.0,shear_swl_kn:3.4},M12:{product_codes_with_sizes:["LB12 (L=85mm, clamp 10-36mm)"],clamping_ranges:["10-36"],torque_nm:31,spanner_mm:19,tensile_swl_kn:5.0,shear_swl_kn:5.0},M16:{product_codes_with_sizes:["LB16 (L=105mm, clamp 12-48mm)"],clamping_ranges:["12-48"],torque_nm:81,spanner_mm:24,tensile_swl_kn:8.0,shear_swl_kn:9.8},M20:{product_codes_with_sizes:["LB20 (L=128mm, clamp 14-60mm)"],clamping_ranges:["14-60"],torque_nm:129,spanner_mm:30,tensile_swl_kn:14.0,shear_swl_kn:15.2},M24:{product_codes_with_sizes:["LB24 (L=158mm, clamp 18-72mm)"],clamping_ranges:["18-72"],torque_nm:203,spanner_mm:36,tensile_swl_kn:20.0,shear_swl_kn:22.5}}};
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // EMBEDDED DATA - IGOR (Steel Sections)
+    // ═══════════════════════════════════════════════════════════════════════════
+    const STEEL_SECTIONS = {
+        SHS: {desc:"Square Hollow Sections",data:{"25x25x1.6":1.12,"25x25x2.0":1.36,"25x25x2.5":1.64,"25x25x3.0":1.89,"30x30x1.6":1.38,"30x30x2.0":1.68,"30x30x2.5":2.03,"30x30x3.0":2.36,"35x35x1.6":1.63,"35x35x2.0":1.99,"35x35x2.5":2.42,"35x35x3.0":2.83,"40x40x1.6":1.88,"40x40x2.0":2.31,"40x40x2.5":2.82,"40x40x3.0":3.30,"40x40x4.0":4.09,"50x50x1.6":2.38,"50x50x2.0":2.93,"50x50x2.5":3.60,"50x50x3.0":4.25,"50x50x4.0":5.35,"50x50x5.0":6.39,"50x50x6.0":7.32,"65x65x2.0":3.88,"65x65x2.5":4.78,"65x65x3.0":5.66,"65x65x4.0":7.23,"65x65x5.0":8.75,"65x65x6.0":10.1,"75x75x2.0":4.50,"75x75x2.5":5.56,"75x75x3.0":6.60,"75x75x4.0":8.49,"75x75x5.0":10.3,"75x75x6.0":12.0,"89x89x3.5":9.07,"89x89x5.0":12.5,"89x89x6.0":14.7,"100x100x2.0":6.07,"100x100x2.5":7.53,"100x100x3.0":8.96,"100x100x4.0":11.6,"100x100x5.0":14.2,"100x100x6.0":16.7,"100x100x8.0":21.4,"100x100x9.0":23.5,"100x100x10.0":25.6,"125x125x4.0":14.8,"125x125x5.0":18.2,"125x125x6.0":21.4,"125x125x8.0":27.7,"150x150x5.0":22.1,"150x150x6.0":26.2,"150x150x8.0":33.9,"150x150x10.0":41.3,"200x200x5.0":29.9,"200x200x6.0":35.6,"200x200x8.0":46.5,"200x200x10.0":57.0}},
+        RHS: {desc:"Rectangular Hollow Sections",data:{"50x25x1.6":1.75,"50x25x2.0":2.15,"50x25x2.5":2.62,"50x25x3.0":3.07,"65x35x2.0":2.93,"65x35x2.5":3.60,"65x35x3.0":4.25,"75x50x2.0":3.72,"75x50x2.5":4.58,"75x50x3.0":5.42,"75x50x4.0":6.92,"100x50x2.0":4.50,"100x50x2.5":5.56,"100x50x3.0":6.60,"100x50x4.0":8.49,"100x50x5.0":10.3,"100x50x6.0":12.0,"125x75x3.0":8.96,"125x75x4.0":11.6,"125x75x5.0":14.2,"125x75x6.0":16.7,"150x50x3.0":8.96,"150x50x4.0":11.6,"150x50x5.0":14.2,"150x100x4.0":14.8,"150x100x5.0":18.2,"150x100x6.0":21.4,"200x100x4.0":17.9,"200x100x5.0":22.1,"200x100x6.0":26.2,"250x150x6.0":35.6,"250x150x8.0":46.5}},
+        CHS: {desc:"Circular Hollow Sections",data:{"21.3x2.0":0.952,"26.9x2.0":1.23,"26.9x2.6":1.56,"33.7x2.6":1.99,"33.7x3.2":2.41,"42.4x2.6":2.55,"42.4x3.2":3.10,"48.3x3.2":3.56,"48.3x4.0":4.37,"60.3x3.6":5.03,"60.3x4.5":6.19,"76.1x3.6":6.44,"76.1x4.5":7.95,"88.9x4.0":8.38,"88.9x4.8":9.97,"101.6x4.0":9.63,"101.6x4.8":11.5,"114.3x4.5":12.2,"114.3x5.4":14.5,"139.7x5.0":16.6,"139.7x6.3":20.7,"165.1x5.0":19.7,"165.1x6.3":24.7,"219.1x6.4":33.6,"219.1x8.2":42.6,"273.1x6.4":42.1,"323.9x6.4":50.1}},
+        EA: {desc:"Equal Angles",data:{"25x25x3":1.12,"25x25x5":1.65,"30x30x3":1.35,"30x30x5":2.01,"40x40x3":1.83,"40x40x5":2.73,"40x40x6":3.50,"50x50x3":2.31,"50x50x5":3.48,"50x50x6":4.46,"65x65x5":4.56,"65x65x6":5.87,"65x65x8":7.51,"75x75x5":5.27,"75x75x6":6.81,"75x75x8":8.73,"90x90x6":8.22,"90x90x8":10.6,"100x100x6":9.16,"100x100x8":11.8,"100x100x10":14.2}},
+        UA: {desc:"Unequal Angles",data:{"65x50x5":4.02,"65x50x6":5.16,"75x50x5":4.40,"75x50x6":5.66,"100x75x6":7.98,"100x75x8":10.3,"125x75x6":9.16,"125x75x8":11.8,"150x90x8":14.3,"150x90x10":17.3,"150x100x10":18.0}},
+        FB: {desc:"Flat Bars",data:{"25x3":0.60,"25x5":1.00,"25x6":1.21,"32x5":1.29,"32x6":1.55,"40x5":1.61,"40x6":1.93,"40x8":2.57,"50x5":2.01,"50x6":2.42,"50x8":3.22,"50x10":4.03,"65x6":3.14,"65x8":4.18,"65x10":5.23,"75x6":3.62,"75x8":4.83,"75x10":6.04,"100x6":4.83,"100x8":6.44,"100x10":8.05,"100x12":9.66}},
+        RB: {desc:"Round Bars",data:{"10":0.64,"12":0.91,"14":1.24,"16":1.62,"18":2.05,"20":2.53,"22":3.05,"24":3.64,"27":4.61,"30":5.69,"33":6.88,"36":8.19,"40":10.1,"45":12.8,"50":15.8}},
+        SB: {desc:"Square Bars",data:{"10x10":0.81,"12x12":1.16,"16x16":2.06,"20x20":3.22,"25x25":5.03,"32x32":8.24,"40x40":12.9}},
+        UB: {desc:"Universal Beams",data:{"150UB14":14.0,"150UB18":18.0,"180UB16":16.1,"180UB18":18.1,"180UB22":22.2,"200UB18":18.2,"200UB22":22.3,"200UB25":25.4,"200UB30":29.8,"250UB26":25.7,"250UB31":31.4,"250UB37":37.3,"310UB32":32.0,"310UB40":40.4,"310UB46":46.2,"360UB45":44.7,"360UB51":50.7,"360UB57":56.7,"410UB54":53.7,"410UB60":59.7,"460UB67":67.1,"460UB75":74.6,"460UB82":82.1,"530UB82":82.0,"530UB92":92.4,"610UB101":101,"610UB113":113,"610UB125":125}},
+        WB: {desc:"Welded Beams",data:{"700WB115":115,"700WB130":130,"700WB150":150,"700WB173":173,"800WB122":122,"800WB146":146,"800WB168":168,"800WB192":192,"900WB175":175,"900WB218":218,"900WB257":257,"1000WB215":215,"1000WB258":258,"1000WB296":296,"1200WB249":249,"1200WB278":278,"1200WB317":317}},
+        UC: {desc:"Universal Columns",data:{"100UC15":14.8,"150UC23":23.4,"150UC30":30.0,"150UC37":37.2,"200UC46":46.2,"200UC52":52.2,"200UC60":59.5,"250UC73":72.9,"250UC90":89.5,"310UC97":96.8,"310UC118":118,"310UC137":137,"310UC158":158}},
+        WC: {desc:"Welded Columns",data:{"350WC197":197,"350WC230":230,"350WC258":258,"350WC280":280,"400WC144":144,"400WC181":181,"400WC212":212,"400WC270":270,"400WC303":303,"500WC228":228,"500WC267":267,"500WC290":290,"500WC340":340,"500WC383":383}},
+        PFC: {desc:"Parallel Flange Channels",data:{"75x40":5.92,"100x50":8.33,"125x65":11.9,"150x75":17.7,"180x75":20.9,"200x75":22.9,"230x75":25.1,"250x90":35.5,"300x90":40.1,"380x100":55.2}},
+        TFB: {desc:"Taper Flange Beams",data:{"100x45":7.20,"125x65":13.1}}
+    };
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // EMBEDDED DATA - CHUCK (Hilti Chemicals)
+    // ═══════════════════════════════════════════════════════════════════════════
+    const HILTI_DATA = {
+        HY200R: {name:"HIT-HY 200-R",volume_ml:330,sizes:{M10:{hole:12,embed:80},M12:{hole:14,embed:96},M16:{hole:18,embed:125},M20:{hole:22,embed:160},M24:{hole:26,embed:192}}},
+        HY200A: {name:"HIT-HY 200-A",volume_ml:330,sizes:{M10:{hole:12,embed:80},M12:{hole:14,embed:96},M16:{hole:18,embed:125},M20:{hole:22,embed:160},M24:{hole:26,embed:192}}},
+        RE500: {name:"HIT-RE 500",volume_ml:500,sizes:{M10:{hole:12,embed:90},M12:{hole:14,embed:110},M16:{hole:18,embed:125},M20:{hole:24,embed:170},M24:{hole:28,embed:210}}}
+    };
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // EMBEDDED DATA - BRITTANY (Fixing Capacities)
+    // ═══════════════════════════════════════════════════════════════════════════
+    const FIXING_DATA = {
+        dynabolt: {name:"Dynabolt Plus",sizes:{M8:{tension:4.2,shear:4.0,embed:35},M10:{tension:5.9,shear:6.4,embed:45},M12:{tension:7.7,shear:7.9,embed:50},M16:{tension:11.9,shear:10.5,embed:65},M20:{tension:16.6,shear:15.6,embed:85}}},
+        trubolt: {name:"TruBolt Stud",sizes:{M8:{tension:5.4,shear:4.8,embed:30},M10:{tension:8.2,shear:7.5,embed:40},M12:{tension:12.5,shear:10.8,embed:50},M16:{tension:20.0,shear:17.2,embed:65},M20:{tension:30.0,shear:26.0,embed:85}}},
+        hilti_hsl: {name:"Hilti HSL-3",sizes:{M8:{tension:7.3,shear:7.0,embed:50},M10:{tension:11.0,shear:11.5,embed:60},M12:{tension:16.5,shear:16.5,embed:80},M16:{tension:27.5,shear:27.5,embed:95},M20:{tension:40.0,shear:40.0,embed:125}}},
+        chemset: {name:"Chemset 101",sizes:{M10:{tension:12.0,shear:10.0,embed:90},M12:{tension:18.0,shear:15.0,embed:110},M16:{tension:28.0,shear:24.0,embed:125},M20:{tension:45.0,shear:38.0,embed:170}}}
+    };
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // NAVIGATION
+    // ═══════════════════════════════════════════════════════════════════════════
+    function showSection(id) {
+        document.querySelectorAll('.agent-section').forEach(s => s.classList.remove('active'));
+        document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+        document.getElementById(id).classList.add('active');
+        event.target.classList.add('active');
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // HOBART FUNCTIONS
+    // ═══════════════════════════════════════════════════════════════════════════
+    let hobartType = 'HB', hobartSize = 'M12';
+
+    function hobartSetType(type, btn) {
+        hobartType = type;
+        document.querySelectorAll('#hobartTypeButtons .btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        hobartUpdateSizes();
+        hobartUpdate();
+    }
+
+    function hobartSetSize(size, btn) {
+        hobartSize = size;
+        document.querySelectorAll('#hobartSizeButtons .btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        hobartUpdate();
+    }
+
+    function hobartUpdateSizes() {
+        const container = document.getElementById('hobartSizeButtons');
+        let sizes = ['M8','M10','M12','M16','M20'];
+        if (hobartType === 'HBFF') sizes = ['M8','M10','M12'];
+        else if (hobartType === 'HBCSK') sizes = ['M8','M10','M12','M16'];
+        else if (hobartType === 'LB') sizes = ['M10','M12','M16','M20','M24'];
+
+        container.innerHTML = sizes.map(s =>
+            `<button class="btn${s === hobartSize ? ' active' : ''}" onclick="hobartSetSize('${s}', this)">${s}</button>`
+        ).join('');
+
+        if (!sizes.includes(hobartSize)) {
+            hobartSize = sizes[0];
+            container.querySelector('.btn').classList.add('active');
+        }
+    }
+
+    function hobartUpdate() {
+        let dataSource;
+        if (hobartType === 'HB') dataSource = HOLLO_BOLT_DATA.HEXAGONAL_HEAD;
+        else if (hobartType === 'HBCSK') dataSource = HOLLO_BOLT_DATA.COUNTERSUNK_HEAD;
+        else if (hobartType === 'HBFF') dataSource = HOLLO_BOLT_DATA.FLUSH_FIT_HEAD;
+        else dataSource = HOLLO_BOLT_DATA.LINDIBOLT;
+
+        const data = dataSource[hobartSize];
+        const drill = HOLLO_BOLT_DATA.DRILLING_DATA[hobartSize] || {};
+
+        if (!data) {
+            document.getElementById('hobartResults').innerHTML = '<div class="result-card"><div class="value">Not Available</div></div>';
+            return;
+        }
+
+        const tensionKg = Math.round(data.tensile_swl_kn * 102);
+        const shearKg = Math.round(data.shear_swl_kn * 102);
+
+        document.getElementById('hobartResults').innerHTML = `
+            <div class="result-card"><div class="label">Clearance Hole</div><div class="value">${drill.clearance_hole || '-'}<span class="unit">mm</span></div></div>
+            <div class="result-card"><div class="label">Tolerance</div><div class="value">${drill.tolerance || '-'}</div></div>
+            <div class="result-card"><div class="label">Min Edge</div><div class="value">${drill.min_edge_distance || '-'}<span class="unit">mm</span></div></div>
+            <div class="result-card"><div class="label">Min Spacing</div><div class="value">${drill.min_hole_distance || '-'}<span class="unit">mm</span></div></div>
+            <div class="result-card"><div class="label">Tension SWL</div><div class="value">${tensionKg}<span class="unit">kg</span></div></div>
+            <div class="result-card"><div class="label">Shear SWL</div><div class="value">${shearKg}<span class="unit">kg</span></div></div>
+            <div class="result-card"><div class="label">Torque</div><div class="value">${data.torque_nm}<span class="unit">Nm</span></div></div>
+            <div class="result-card"><div class="label">Spanner</div><div class="value">${data.spanner_mm}<span class="unit">mm</span></div></div>
+        `;
+
+        const tbody = document.getElementById('hobartGripBody');
+        tbody.innerHTML = data.product_codes_with_sizes.map((code, i) =>
+            `<tr><td>${code}</td><td>${data.clamping_ranges[i]}</td></tr>`
+        ).join('');
+
+        document.getElementById('hobartConsole').textContent = `🔩 ${hobartType} ${hobartSize}: Drill ${drill.clearance_hole}mm hole, torque to ${data.torque_nm}Nm`;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // IGOR FUNCTIONS
+    // ═══════════════════════════════════════════════════════════════════════════
+    let igorType = 'SHS', igorSection = null, igorMass = 0;
+
+    function igorSetType(type, btn) {
+        igorType = type;
+        document.querySelectorAll('#igorTypeButtons .btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        igorUpdateSections();
+        igorSection = null;
+        document.getElementById('igorResults').style.display = 'none';
+        document.getElementById('igorCalcRow').style.display = 'none';
+    }
+
+    function igorUpdateSections() {
+        const data = STEEL_SECTIONS[igorType].data;
+        const container = document.getElementById('igorSectionButtons');
+        container.innerHTML = Object.keys(data).map(s =>
+            `<button class="section-btn" onclick="igorSelectSection('${s}', this)">${s}</button>`
+        ).join('');
+        document.getElementById('igorConsole').textContent = `⚖️ ${igorType}: ${Object.keys(data).length} sections available`;
+    }
+
+    function igorSelectSection(section, btn) {
+        igorSection = section;
+        igorMass = STEEL_SECTIONS[igorType].data[section];
+        document.querySelectorAll('.section-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        document.getElementById('igorResults').style.display = 'grid';
+        document.getElementById('igorResults').innerHTML = `
+            <div class="result-card"><div class="label">Section</div><div class="value" style="font-size:1.1rem">${section}</div></div>
+            <div class="result-card"><div class="label">Type</div><div class="value" style="font-size:1rem">${STEEL_SECTIONS[igorType].desc}</div></div>
+            <div class="result-card"><div class="label">Mass</div><div class="value">${igorMass}<span class="unit">kg/m</span></div></div>
+            <div class="result-card"><div class="label">Stainless</div><div class="value">${(igorMass * 1.02).toFixed(2)}<span class="unit">kg/m</span></div></div>
+        `;
+        document.getElementById('igorCalcRow').style.display = 'flex';
+        igorCalculate();
+    }
+
+    function igorCalculate() {
+        const length = parseFloat(document.getElementById('igorLength').value) || 0;
+        const qty = parseInt(document.getElementById('igorQty').value) || 1;
+        const total = (igorMass * length * qty).toFixed(2);
+        document.getElementById('igorTotalWeight').textContent = `${total} kg`;
+        if (length > 0) {
+            document.getElementById('igorConsole').textContent = `⚖️ ${igorType} ${igorSection}: ${length}m × ${qty} = ${total} kg`;
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CHUCK FUNCTIONS
+    // ═══════════════════════════════════════════════════════════════════════════
+    let chuckType = 'HY200R', chuckSize = 'M16';
+
+    function chuckSetType(type, btn) {
+        chuckType = type;
+        document.querySelectorAll('#chuckTypeButtons .btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        chuckCalculate();
+    }
+
+    function chuckSetSize(size, btn) {
+        chuckSize = size;
+        document.querySelectorAll('#chuckSizeButtons .btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const sizeData = HILTI_DATA[chuckType].sizes[size];
+        if (sizeData) document.getElementById('chuckDepth').value = sizeData.embed;
+        chuckCalculate();
+    }
+
+    function chuckCalculate() {
+        const depth = parseFloat(document.getElementById('chuckDepth').value) || 0;
+        const qty = parseInt(document.getElementById('chuckQty').value) || 1;
+        const chemical = HILTI_DATA[chuckType];
+        const sizeData = chemical.sizes[chuckSize];
+
+        if (!sizeData) return;
+
+        const holeVol = Math.PI * Math.pow(sizeData.hole/2, 2) * depth / 1000;
+        const totalVol = holeVol * qty * 1.15;
+        const cartridges = Math.ceil(totalVol / chemical.volume_ml);
+
+        document.getElementById('chuckResults').innerHTML = `
+            <div class="result-card"><div class="label">Hole Size</div><div class="value">${sizeData.hole}<span class="unit">mm</span></div></div>
+            <div class="result-card"><div class="label">Min Embed</div><div class="value">${sizeData.embed}<span class="unit">mm</span></div></div>
+            <div class="result-card"><div class="label">Vol/Hole</div><div class="value">${holeVol.toFixed(1)}<span class="unit">ml</span></div></div>
+            <div class="result-card"><div class="label">Total Vol</div><div class="value">${totalVol.toFixed(0)}<span class="unit">ml</span></div></div>
+            <div class="result-card"><div class="label">Cartridges</div><div class="value" style="color:#22c55e">${cartridges}</div></div>
+            <div class="result-card"><div class="label">Product</div><div class="value" style="font-size:0.9rem">${chemical.name}</div></div>
+        `;
+        document.getElementById('chuckConsole').textContent = `🧪 ${chemical.name} ${chuckSize}: ${qty} holes × ${depth}mm = ${cartridges} cartridge${cartridges>1?'s':''}`;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // BRITTANY FUNCTIONS
+    // ═══════════════════════════════════════════════════════════════════════════
+    let brittanyType = 'dynabolt', brittanySize = 'M12';
+
+    function brittanySetType(type, btn) {
+        brittanyType = type;
+        document.querySelectorAll('#brittanyTypeButtons .btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        brittanyUpdateSizes();
+        brittanyCalculate();
+    }
+
+    function brittanySetSize(size, btn) {
+        brittanySize = size;
+        document.querySelectorAll('#brittanySizeButtons .btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        brittanyCalculate();
+    }
+
+    function brittanyUpdateSizes() {
+        const sizes = Object.keys(FIXING_DATA[brittanyType].sizes);
+        const container = document.getElementById('brittanySizeButtons');
+        container.innerHTML = sizes.map(s =>
+            `<button class="btn${s === brittanySize ? ' active' : ''}" onclick="brittanySetSize('${s}', this)">${s}</button>`
+        ).join('');
+        if (!sizes.includes(brittanySize)) {
+            brittanySize = sizes[0];
+        }
+    }
+
+    function brittanyCalculate() {
+        const qty = parseInt(document.getElementById('brittanyQty').value) || 1;
+        const fixing = FIXING_DATA[brittanyType];
+        const sizeData = fixing.sizes[brittanySize];
+
+        if (!sizeData) return;
+
+        const totalTension = (sizeData.tension * qty * 102).toFixed(0);
+        const totalShear = (sizeData.shear * qty * 102).toFixed(0);
+
+        document.getElementById('brittanyResults').innerHTML = `
+            <div class="result-card"><div class="label">Tension (each)</div><div class="value">${(sizeData.tension*102).toFixed(0)}<span class="unit">kg</span></div></div>
+            <div class="result-card"><div class="label">Shear (each)</div><div class="value">${(sizeData.shear*102).toFixed(0)}<span class="unit">kg</span></div></div>
+            <div class="result-card"><div class="label">Total Tension</div><div class="value" style="color:#22c55e">${totalTension}<span class="unit">kg</span></div></div>
+            <div class="result-card"><div class="label">Total Shear</div><div class="value" style="color:#22c55e">${totalShear}<span class="unit">kg</span></div></div>
+            <div class="result-card"><div class="label">Min Embed</div><div class="value">${sizeData.embed}<span class="unit">mm</span></div></div>
+            <div class="result-card"><div class="label">Product</div><div class="value" style="font-size:0.9rem">${fixing.name}</div></div>
+        `;
+        document.getElementById('brittanyConsole').textContent = `💪 ${qty}× ${fixing.name} ${brittanySize}: Holds ${totalTension}kg tension, ${totalShear}kg shear`;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // INITIALIZATION
+    // ═══════════════════════════════════════════════════════════════════════════
+    document.addEventListener('DOMContentLoaded', () => {
+        hobartUpdate();
+        igorUpdateSections();
+        chuckCalculate();
+        brittanyCalculate();
+    });
+    </script>
+</body>
+</html>
