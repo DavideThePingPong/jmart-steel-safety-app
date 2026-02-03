@@ -5864,13 +5864,119 @@
         );
       }
 
+      // Function to load data from a previous prestart
+      const loadFromPrevious = (previousForm) => {
+        const data = previousForm.data;
+
+        // Set checklist type and move to step 2
+        setCheckType(data.type);
+
+        // Copy site details
+        setSupervisorName(data.supervisorName || '');
+        setSiteConducted(data.siteConducted || '');
+        setBuilder(data.builder || '');
+        setAddress(data.address || '');
+
+        // Copy work context fields (with media)
+        setWorkAreas(ensureMediaStructure(data.workAreas));
+        setTasksThisShift(ensureMediaStructure(data.tasksThisShift));
+        setMachineryControls(ensureMediaStructure(data.machineryControls));
+        setSiteHazards(ensureMediaStructure(data.siteHazards));
+        setPermitsRequired(ensureMediaStructure(data.permitsRequired));
+
+        // Copy yes/no fields
+        setIsPlantEquipmentUsed(data.isPlantEquipmentUsed ?? null);
+        setHighRiskWorks(data.highRiskWorks ?? null);
+        setWorksCoveredBySWMS(data.worksCoveredBySWMS ?? null);
+
+        // Copy checklist checks
+        setChecks(data.checks || {});
+
+        // Reset fields that should be fresh for new form
+        setFormDate(new Date()); // Current date/time
+        setHasSafetyIssues(null); // Reset safety issues question
+        setSafetyIssuesPreviousShift({ value: '', notes: [], media: [] }); // Clear safety issues
+        setNotes(''); // Clear notes
+        setTranslatorRequired(null);
+        setTranslatorSignature(null);
+        setTranslatorName('');
+        setSignatures({ 'Jeff Fu': null, 'Scott Seeho': null, 'Davide Casolini': null, 'Zonggang Jiang': null, 'Leon Yu': null, 'Wang Jia': null, 'Gen Bao': null }); // Clear all signatures
+
+        // Close modal and go to step 2
+        setShowPreviousList(false);
+        setStep(2);
+      };
+
       if (step === 1) {
         return (
           <div className="space-y-4">
+            {/* Previous Prestarts Modal */}
+            {showPreviousList && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-xl w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col">
+                  <div className="p-4 border-b flex items-center justify-between">
+                    <h3 className="text-lg font-bold text-gray-800">Load from Previous</h3>
+                    <button onClick={() => setShowPreviousList(false)} className="text-gray-500 text-xl">✕</button>
+                  </div>
+                  <div className="overflow-y-auto flex-1 p-4">
+                    {previousPrestarts.length === 0 ? (
+                      <div className="text-center py-8 text-gray-500">
+                        <p>No previous prestarts found.</p>
+                        <p className="text-sm mt-2">Complete a prestart first to use this feature.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <p className="text-sm text-gray-600 mb-3">Select a previous prestart to copy. Signatures and date will be reset.</p>
+                        {previousPrestarts.slice(0, 20).map((form) => {
+                          const formDate = new Date(form.data.date || form.createdAt);
+                          const typeInfo = checklistTypes.find(t => t.id === form.data.type);
+                          return (
+                            <button
+                              key={form.id}
+                              onClick={() => loadFromPrevious(form)}
+                              className="w-full bg-gray-50 hover:bg-orange-50 border border-gray-200 hover:border-orange-300 rounded-xl p-4 text-left transition-colors"
+                            >
+                              <div className="flex items-start gap-3">
+                                <div className={`w-10 h-10 ${typeInfo?.color || 'bg-gray-500'} rounded-full flex items-center justify-center text-lg flex-shrink-0`}>
+                                  {typeInfo?.emoji || '📋'}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-semibold text-gray-800 truncate">{form.data.siteConducted || 'Unknown Site'}</p>
+                                  <p className="text-sm text-gray-600 truncate">{typeInfo?.label || 'Pre-Start'} • {form.data.builder || 'No builder'}</p>
+                                  <p className="text-xs text-gray-400 mt-1">
+                                    {formDate.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+                                  </p>
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="bg-white rounded-xl p-4 shadow-sm">
               <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">📋 Pre-Start Checklists</h2>
               <p className="text-gray-500 text-sm mt-1">Select the type of pre-start check</p>
             </div>
+
+            {/* Load from Previous Button */}
+            {previousPrestarts.length > 0 && (
+              <button
+                onClick={() => setShowPreviousList(true)}
+                className="w-full bg-blue-50 hover:bg-blue-100 border-2 border-dashed border-blue-300 hover:border-blue-400 rounded-xl p-4 flex items-center justify-center gap-3 transition-colors"
+              >
+                <span className="text-2xl">📄</span>
+                <div className="text-left">
+                  <p className="font-semibold text-blue-700">Copy from Previous Prestart</p>
+                  <p className="text-sm text-blue-600">Same job, different day? Load previous details</p>
+                </div>
+              </button>
+            )}
+
             <div className="grid grid-cols-2 gap-3">
               {checklistTypes.map((type) => (
                 <button key={type.id} onClick={() => { setCheckType(type.id); setStep(2); }}
