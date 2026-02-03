@@ -363,6 +363,10 @@
         </div>
 
         <div class="console" id="igorConsole">⚖️ IGOR Ready - "I know the weight of every steel section"</div>
+
+        <button class="btn" onclick="igorDownloadExcel()" style="margin-top:15px; background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); padding: 12px 24px;">
+            📥 Download Excel Calculator
+        </button>
     </div>
 
     <!-- CHUCK Section -->
@@ -669,6 +673,90 @@
         if (length > 0) {
             document.getElementById('igorConsole').textContent = `⚖️ ${igorType} ${igorSection}: ${length}m × ${qty} = ${total} kg`;
         }
+    }
+
+    // Excel Download Function - generates multi-sheet IBSC Steel Calculator
+    async function igorDownloadExcel() {
+        document.getElementById('igorConsole').textContent = '⚖️ Generating Excel calculator... Please wait';
+
+        // Load SheetJS library dynamically
+        if (typeof XLSX === 'undefined') {
+            await new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+                script.onload = resolve;
+                script.onerror = reject;
+                document.head.appendChild(script);
+            });
+        }
+
+        const wb = XLSX.utils.book_new();
+        const SS_FACTOR = 1.02; // Stainless steel factor
+
+        // Sheet order for summary references
+        const sheetOrder = ['SHS', 'RHS', 'CHS', 'EA', 'UA', 'FB', 'RB', 'SB', 'UB', 'WB', 'UC', 'WC', 'PFC', 'TFB'];
+
+        // Create data sheets
+        sheetOrder.forEach(type => {
+            const typeData = STEEL_SECTIONS[type];
+            const rows = [['Size (mm)', 'Mass (kg/m)', 'Linear Metres', 'Total Weight (kg)']];
+
+            Object.entries(typeData.data).forEach(([size, mass], idx) => {
+                const rowNum = idx + 2;
+                rows.push([size, mass, '', { f: `IF(C${rowNum}>0,B${rowNum}*C${rowNum},"")` }]);
+            });
+
+            const ws = XLSX.utils.aoa_to_sheet(rows);
+
+            // Set column widths
+            ws['!cols'] = [{ wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 18 }];
+
+            XLSX.utils.book_append_sheet(wb, ws, type);
+        });
+
+        // Create Summary sheet
+        const summaryRows = [
+            ['STEEL WEIGHT SUMMARY'],
+            [''],
+            ['Enter linear metres in each sheet. Totals update automatically.'],
+            ['Stainless Steel weight = Mild Steel × 1.02 (density difference)'],
+            [''],
+            ['Category', 'Total Weight (kg)', 'Weight (tonnes)', 'Stainless (kg)']
+        ];
+
+        sheetOrder.forEach((type, idx) => {
+            const numItems = Object.keys(STEEL_SECTIONS[type].data).length;
+            const endRow = numItems + 1;
+            const rowNum = idx + 7;
+            summaryRows.push([
+                type,
+                { f: `SUM('${type}'!D2:D${endRow})` },
+                { f: `B${rowNum}/1000` },
+                { f: `B${rowNum}*${SS_FACTOR}` }
+            ]);
+        });
+
+        // Grand total row
+        const startRow = 7;
+        const endRow = startRow + sheetOrder.length - 1;
+        summaryRows.push(['']);
+        summaryRows.push([
+            'GRAND TOTAL',
+            { f: `SUM(B${startRow}:B${endRow})` },
+            { f: `SUM(C${startRow}:C${endRow})` },
+            { f: `SUM(D${startRow}:D${endRow})` }
+        ]);
+
+        const summaryWs = XLSX.utils.aoa_to_sheet(summaryRows);
+        summaryWs['!cols'] = [{ wch: 20 }, { wch: 18 }, { wch: 18 }, { wch: 18 }];
+
+        // Insert Summary as first sheet
+        wb.SheetNames.unshift('Summary');
+        wb.Sheets['Summary'] = summaryWs;
+
+        // Generate and download
+        XLSX.writeFile(wb, 'IBSC_Steel_Calculator.xlsx');
+        document.getElementById('igorConsole').textContent = '⚖️ Excel calculator downloaded! Open it to enter your steel lengths.';
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
