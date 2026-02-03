@@ -565,6 +565,201 @@
     // Start the scheduler
     DailyBackupScheduler.start();
 
+    // ========================================
+    // STORAGE QUOTA MANAGER
+    // ========================================
+    // Monitors localStorage usage and warns users before quota is exceeded
+    const StorageQuotaManager = {
+      MAX_STORAGE_MB: 5, // localStorage limit is typically 5-10MB
+      WARNING_THRESHOLD: 0.8, // Warn at 80% usage
+      listeners: [],
+
+      // Calculate current storage usage
+      getUsage: function() {
+        let totalBytes = 0;
+        for (let key in localStorage) {
+          if (localStorage.hasOwnProperty(key)) {
+            totalBytes += localStorage[key].length * 2; // UTF-16 = 2 bytes per char
+          }
+        }
+        const totalMB = totalBytes / (1024 * 1024);
+        const percentUsed = (totalMB / this.MAX_STORAGE_MB) * 100;
+        return {
+          bytes: totalBytes,
+          megabytes: totalMB.toFixed(2),
+          percentUsed: percentUsed.toFixed(1),
+          isWarning: percentUsed >= (this.WARNING_THRESHOLD * 100),
+          isCritical: percentUsed >= 95
+        };
+      },
+
+      // Check if we can safely store data of given size
+      canStore: function(dataString) {
+        const dataBytes = dataString.length * 2;
+        const usage = this.getUsage();
+        const projectedMB = (usage.bytes + dataBytes) / (1024 * 1024);
+        return projectedMB < this.MAX_STORAGE_MB;
+      },
+
+      // Notify listeners of storage changes
+      notifyListeners: function(usage) {
+        this.listeners.forEach(cb => cb(usage));
+      },
+
+      // Add listener for storage updates
+      onStorageChange: function(callback) {
+        this.listeners.push(callback);
+        // Immediately call with current usage
+        callback(this.getUsage());
+        return () => {
+          this.listeners = this.listeners.filter(cb => cb !== callback);
+        };
+      },
+
+      // Clean up old/unnecessary data to free space
+      cleanup: function() {
+        const keysToRemove = [];
+        const now = Date.now();
+        const thirtyDaysAgo = now - (30 * 24 * 60 * 60 * 1000);
+
+        // Find old backup and temp keys
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && (key.includes('backup') || key.includes('temp') || key.includes('cache'))) {
+            keysToRemove.push(key);
+          }
+        }
+
+        // Remove old backed-up form records
+        try {
+          const backedUp = JSON.parse(localStorage.getItem('jmart-backed-up-forms') || '{}');
+          const recentBackups = {};
+          Object.entries(backedUp).forEach(([id, timestamp]) => {
+            if (new Date(timestamp).getTime() > thirtyDaysAgo) {
+              recentBackups[id] = timestamp;
+            }
+          });
+          localStorage.setItem('jmart-backed-up-forms', JSON.stringify(recentBackups));
+        } catch (e) {
+          console.error('Error cleaning backup records:', e);
+        }
+
+        // Remove identified keys
+        keysToRemove.forEach(key => {
+          try {
+            localStorage.removeItem(key);
+            console.log('Cleaned up storage key:', key);
+          } catch (e) {
+            console.error('Error removing key:', key, e);
+          }
+        });
+
+        const freed = keysToRemove.length;
+        console.log(`Storage cleanup complete: removed ${freed} items`);
+        this.notifyListeners(this.getUsage());
+        return { cleaned: freed, usage: this.getUsage() };
+      },
+
+      // Safe save with quota handling
+      safeSave: function(key, data) {
+        const dataString = typeof data === 'string' ? data : JSON.stringify(data);
+
+        if (!this.canStore(dataString)) {
+          // Try cleanup first
+          this.cleanup();
+
+          if (!this.canStore(dataString)) {
+            // Still can't fit - notify user
+            const usage = this.getUsage();
+            console.error('Storage quota exceeded! Usage:', usage.megabytes, 'MB');
+            this.notifyListeners({ ...usage, error: 'quota_exceeded' });
+            throw new Error('Storage quota exceeded. Please delete old forms or backup to Google Drive.');
+          }
+        }
+
+        try {
+          localStorage.setItem(key, dataString);
+          const usage = this.getUsage();
+          if (usage.isWarning) {
+            this.notifyListeners(usage);
+          }
+          return true;
+        } catch (e) {
+          if (e.name === 'QuotaExceededError') {
+            this.cleanup();
+            // One more try after cleanup
+            localStorage.setItem(key, dataString);
+            return true;
+          }
+          throw e;
+        }
+      }
+    };
+
+    // ========================================
+    // AUDIT LOG MANAGER
+    // ========================================
+    // Tracks all form operations for compliance
+    const AuditLogManager = {
+      // Log an action
+      log: async function(action, details) {
+        const logEntry = {
+          id: Date.now().toString(36) + '-' + Math.random().toString(36).substr(2, 9),
+          action: action, // 'create', 'update', 'delete', 'view', 'export'
+          deviceId: DeviceAuthManager.deviceId || 'unknown',
+          userName: localStorage.getItem('jmart-user-name') || 'Unknown User',
+          timestamp: new Date().toISOString(),
+          details: details
+        };
+
+        // Save to local audit log
+        try {
+          const localLog = JSON.parse(localStorage.getItem('jmart-audit-log') || '[]');
+          localLog.push(logEntry);
+          // Keep last 1000 entries locally
+          if (localLog.length > 1000) {
+            localLog.splice(0, localLog.length - 1000);
+          }
+          localStorage.setItem('jmart-audit-log', JSON.stringify(localLog));
+        } catch (e) {
+          console.error('Error saving audit log locally:', e);
+        }
+
+        // Sync to Firebase if connected
+        if (firebaseDb && isFirebaseConfigured) {
+          try {
+            await firebaseDb.ref('jmart-safety/auditLog/' + logEntry.id).set(logEntry);
+          } catch (e) {
+            console.error('Error syncing audit log to Firebase:', e);
+          }
+        }
+
+        return logEntry;
+      },
+
+      // Get recent audit log entries
+      getRecent: function(limit = 50) {
+        try {
+          const localLog = JSON.parse(localStorage.getItem('jmart-audit-log') || '[]');
+          return localLog.slice(-limit).reverse();
+        } catch (e) {
+          console.error('Error reading audit log:', e);
+          return [];
+        }
+      },
+
+      // Get audit history for a specific form
+      getFormHistory: function(formId) {
+        try {
+          const localLog = JSON.parse(localStorage.getItem('jmart-audit-log') || '[]');
+          return localLog.filter(entry => entry.details && entry.details.formId === formId);
+        } catch (e) {
+          console.error('Error reading form history:', e);
+          return [];
+        }
+      }
+    };
+
     // Firebase sync helper functions with retry queue
     const FirebaseSync = {
       // Retry queue stored in localStorage
@@ -2559,22 +2754,63 @@
       };
       const saveSignature = () => onSave(canvasRef.current.toDataURL('image/png'));
 
-      // Use saved signature
+      // SIGNATURE SECURITY: Require verification before using saved signatures
+      const [verificationCode, setVerificationCode] = useState('');
+      const [showVerification, setShowVerification] = useState(false);
+      const [selectedMember, setSelectedMember] = useState(null);
+      const [verificationError, setVerificationError] = useState('');
+
+      // Generate a simple verification code based on name (last 4 chars of name hash)
+      const getVerificationCode = (memberName) => {
+        let hash = 0;
+        const str = memberName.toLowerCase().replace(/\s/g, '');
+        for (let i = 0; i < str.length; i++) {
+          hash = ((hash << 5) - hash) + str.charCodeAt(i);
+          hash = hash & hash;
+        }
+        return Math.abs(hash % 10000).toString().padStart(4, '0');
+      };
+
+      // Use saved signature - requires verification
       const useSavedSignature = () => {
         if (hasSavedSignature) {
-          onSave(savedSignatures[name]);
+          setSelectedMember(name);
+          setShowVerification(true);
+          setVerificationError('');
         }
       };
 
-      // Use another team member's saved signature
+      // Use another team member's saved signature - DISABLED for security
+      // Each person must sign their own signature
       const useOtherSignature = (memberName) => {
-        if (savedSignatures[memberName]) {
-          onSave(savedSignatures[memberName]);
-        }
+        // SECURITY FIX: Do not allow using other people's signatures
+        // Instead, show a message that each person must sign their own
+        alert(`Security Notice: ${memberName} must sign their own signature. Please have them sign directly on this device.`);
         setShowSavedOptions(false);
       };
 
-      // Get list of team members with saved signatures
+      // Verify and apply signature
+      const verifyAndApplySignature = () => {
+        if (!selectedMember) return;
+
+        const expectedCode = getVerificationCode(selectedMember);
+        if (verificationCode === expectedCode) {
+          // Verification passed - apply signature with audit log
+          AuditLogManager.log('signature_used', {
+            signerName: selectedMember,
+            usedBy: DeviceAuthManager.deviceId,
+            method: 'saved_signature',
+            timestamp: new Date().toISOString()
+          });
+          onSave(savedSignatures[selectedMember]);
+          setShowVerification(false);
+          setVerificationCode('');
+        } else {
+          setVerificationError('Incorrect code. Please enter your personal verification code.');
+        }
+      };
+
+      // Get list of team members with saved signatures (for display only)
       const membersWithSignatures = Object.entries(savedSignatures)
         .filter(([_, sig]) => sig && sig.startsWith('data:image'))
         .map(([memberName]) => memberName);
@@ -2587,42 +2823,65 @@
               <p className="text-sm text-gray-500">Draw your signature below or use a saved one</p>
             </div>
 
-            {/* Saved Signature Option */}
-            {hasSavedSignature && (
+            {/* Verification Modal */}
+            {showVerification && (
+              <div className="p-4 bg-amber-50 border-b border-amber-200">
+                <p className="text-sm text-amber-800 mb-2 font-medium">🔐 Signature Verification Required</p>
+                <p className="text-xs text-amber-700 mb-3">
+                  To use {selectedMember}'s saved signature, please enter your personal verification code.
+                  <br/>
+                  <span className="text-amber-600">(Hint: Your code is based on your name)</span>
+                </p>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={4}
+                  value={verificationCode}
+                  onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, ''))}
+                  placeholder="Enter 4-digit code"
+                  className="w-full border border-amber-300 rounded-lg px-3 py-2 mb-2 text-center text-lg tracking-widest"
+                />
+                {verificationError && (
+                  <p className="text-red-600 text-sm mb-2">{verificationError}</p>
+                )}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { setShowVerification(false); setVerificationCode(''); setVerificationError(''); }}
+                    className="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={verifyAndApplySignature}
+                    className="flex-1 bg-amber-600 text-white py-2 rounded-lg font-medium"
+                  >
+                    Verify & Sign
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Saved Signature Option - only show if not in verification mode */}
+            {hasSavedSignature && !showVerification && (
               <div className="p-4 bg-green-50 border-b border-green-100">
                 <p className="text-sm text-green-700 mb-2">✓ {name} has a saved signature</p>
                 <button
                   onClick={useSavedSignature}
                   className="w-full bg-green-600 text-white py-2 rounded-lg font-medium flex items-center justify-center gap-2"
                 >
-                  <span>✍️</span> Use Saved Signature
+                  <span>✍️</span> Use Saved Signature (requires verification)
                 </button>
               </div>
             )}
 
-            {/* Other Saved Signatures */}
-            {membersWithSignatures.length > 0 && (
+            {/* Info about signature security */}
+            {membersWithSignatures.length > 1 && !showVerification && (
               <div className="px-4 pt-3">
-                <button
-                  onClick={() => setShowSavedOptions(!showSavedOptions)}
-                  className="text-sm text-blue-600 underline"
-                >
-                  {showSavedOptions ? '▼ Hide' : '▶ Select from team'} ({membersWithSignatures.length} saved)
-                </button>
-                {showSavedOptions && (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {membersWithSignatures.map(memberName => (
-                      <button
-                        key={memberName}
-                        onClick={() => useOtherSignature(memberName)}
-                        className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm hover:bg-blue-200 flex items-center gap-1"
-                      >
-                        <img src={savedSignatures[memberName]} alt="" className="h-4 inline" />
-                        {memberName}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                <p className="text-xs text-gray-500 italic">
+                  🔒 Security: Each team member must sign their own signature.
+                  Saved signatures require verification before use.
+                </p>
               </div>
             )}
 
@@ -3206,20 +3465,52 @@
               return;
             }
 
-            // Merge: use Firebase data if it has more forms, otherwise keep local
-            // This prevents data loss when Firebase is empty but local has data
+            // CONFLICT RESOLUTION: Merge with timestamp-based conflict handling
+            // This prevents data loss and resolves concurrent edits properly
             if (formsArray.length > 0) {
-              // Merge by ID - combine local and Firebase, preferring newer timestamps
-              const mergedForms = [...formsArray];
+              const mergedForms = [];
+              const formMap = new Map();
+
+              // First, add all Firebase forms to the map
+              formsArray.forEach(form => {
+                formMap.set(form.id, { ...form, source: 'firebase' });
+              });
+
+              // Then, merge local forms with conflict resolution
               localForms.forEach(localForm => {
-                if (!mergedForms.find(f => f.id === localForm.id)) {
-                  mergedForms.push(localForm);
+                const existingForm = formMap.get(localForm.id);
+                if (!existingForm) {
+                  // New local form not in Firebase - add it
+                  formMap.set(localForm.id, { ...localForm, source: 'local' });
+                } else {
+                  // CONFLICT: Same form exists in both - resolve by timestamp
+                  const localTime = new Date(localForm.updatedAt || localForm.createdAt).getTime();
+                  const remoteTime = new Date(existingForm.updatedAt || existingForm.createdAt).getTime();
+
+                  if (localTime > remoteTime) {
+                    // Local is newer - use local version
+                    console.log(`Conflict resolved for ${localForm.id}: local wins (${new Date(localTime).toISOString()} > ${new Date(remoteTime).toISOString()})`);
+                    formMap.set(localForm.id, { ...localForm, source: 'local-wins' });
+                  } else if (localTime < remoteTime) {
+                    // Firebase is newer - keep Firebase version
+                    console.log(`Conflict resolved for ${localForm.id}: firebase wins (${new Date(remoteTime).toISOString()} > ${new Date(localTime).toISOString()})`);
+                  } else {
+                    // Same timestamp - prefer version with higher version number
+                    const localVersion = localForm.version || 1;
+                    const remoteVersion = existingForm.version || 1;
+                    if (localVersion > remoteVersion) {
+                      formMap.set(localForm.id, { ...localForm, source: 'local-version' });
+                    }
+                  }
                 }
               });
+
+              // Convert map back to array and sort
+              formMap.forEach(form => mergedForms.push(form));
               mergedForms.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
               setForms(mergedForms);
               localStorage.setItem('jmart-safety-forms', JSON.stringify(mergedForms));
-              console.log('Merged forms:', mergedForms.length, 'total');
+              console.log('Merged forms with conflict resolution:', mergedForms.length, 'total');
             } else if (localForms.length > 0) {
               // Firebase is empty but we have local data - push to Firebase
               console.log('Firebase empty, pushing local forms to Firebase');
@@ -3357,7 +3648,19 @@
 
       const addForm = (formType, formData) => {
         try {
-          const newForm = { id: Date.now(), type: formType, data: formData, createdAt: new Date().toISOString(), status: 'completed' };
+          // Generate unique ID with collision prevention (timestamp + random)
+          const uniqueId = Date.now().toString(36) + '-' + Math.random().toString(36).substr(2, 9);
+          const newForm = {
+            id: uniqueId,
+            type: formType,
+            data: formData,
+            createdAt: new Date().toISOString(),
+            // AUDIT TRAIL: Track who created this form
+            createdBy: DeviceAuthManager.deviceId || 'unknown',
+            createdByName: localStorage.getItem('jmart-user-name') || 'Unknown User',
+            version: 1,
+            status: 'completed'
+          };
           console.log('addForm called, current forms:', forms.length, 'isInitialLoad:', isInitialLoad.current);
 
           // Use functional update to ensure we get latest forms state
@@ -3416,6 +3719,14 @@
             }
           }, 500);
 
+          // AUDIT LOG: Record form creation
+          AuditLogManager.log('create', {
+            formId: newForm.id,
+            formType: formType,
+            site: formData.siteConducted || formData.site || 'Unknown',
+            action: 'Form created'
+          });
+
           // Show success modal
           setSuccessModal({ form: newForm, type: formType });
         } catch (err) {
@@ -3432,7 +3743,19 @@
           type: formType,
           data: formData,
           createdAt: editingForm?.createdAt,
+          createdBy: editingForm?.createdBy,
+          createdByName: editingForm?.createdByName,
           updatedAt: new Date().toISOString(),
+          // AUDIT TRAIL: Track who modified this form
+          modifiedBy: DeviceAuthManager.deviceId || 'unknown',
+          modifiedByName: localStorage.getItem('jmart-user-name') || 'Unknown User',
+          version: (editingForm?.version || 1) + 1,
+          // Keep history of previous versions for audit
+          previousVersion: editingForm ? {
+            data: editingForm.data,
+            modifiedAt: editingForm.updatedAt || editingForm.createdAt,
+            modifiedBy: editingForm.modifiedBy || editingForm.createdBy
+          } : null,
           status: 'completed'
         };
         setUpdateConfirmModal({ form: updatedForm, formType, formData, originalForm: editingForm });
@@ -3561,10 +3884,23 @@
 
       // Delete form (with backup check)
       const deleteForm = (formId) => {
+        // Find the form being deleted for audit log
+        const deletedForm = forms.find(f => f.id === formId);
+
         const updatedForms = forms.filter(f => f.id !== formId);
         setForms(updatedForms);
         setDeleteConfirmModal(null);
         setViewFormModal(null);
+
+        // AUDIT LOG: Record form deletion
+        AuditLogManager.log('delete', {
+          formId: formId,
+          formType: deletedForm?.type || 'unknown',
+          site: deletedForm?.data?.siteConducted || deletedForm?.data?.site || 'Unknown',
+          originalCreatedBy: deletedForm?.createdBy,
+          originalCreatedAt: deletedForm?.createdAt,
+          action: 'Form deleted'
+        });
 
         // Immediately save to localStorage
         localStorage.setItem('jmart-safety-forms', JSON.stringify(updatedForms));

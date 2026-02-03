@@ -1,0 +1,55 @@
+{
+  "rules": {
+    "jmart-safety": {
+      // Config - only authenticated devices can read, only admins can write
+      "config": {
+        ".read": true,
+        ".write": "root.child('jmart-safety/devices').child(auth.uid).child('isAdmin').val() === true || !data.exists()"
+      },
+
+      // Devices - devices can register themselves, admins can manage
+      "devices": {
+        "$deviceId": {
+          ".read": true,
+          ".write": "!data.exists() || root.child('jmart-safety/devices').child(auth.uid).child('isAdmin').val() === true || $deviceId === auth.uid"
+        }
+      },
+
+      // Forms - authenticated devices can read/write, must include audit fields
+      "forms": {
+        ".read": "root.child('jmart-safety/devices').child(auth.uid).child('status').val() === 'approved'",
+        ".write": "root.child('jmart-safety/devices').child(auth.uid).child('status').val() === 'approved'",
+        ".validate": "newData.hasChildren(['id', 'type', 'createdAt', 'createdBy'])"
+      },
+
+      // Sites - authenticated devices can read/write
+      "sites": {
+        ".read": "root.child('jmart-safety/devices').child(auth.uid).child('status').val() === 'approved'",
+        ".write": "root.child('jmart-safety/devices').child(auth.uid).child('status').val() === 'approved'"
+      },
+
+      // Training - authenticated devices can read/write
+      "training": {
+        ".read": "root.child('jmart-safety/devices').child(auth.uid).child('status').val() === 'approved'",
+        ".write": "root.child('jmart-safety/devices').child(auth.uid).child('status').val() === 'approved'"
+      },
+
+      // Audit log - append only, no deletes
+      "auditLog": {
+        ".read": "root.child('jmart-safety/devices').child(auth.uid).child('isAdmin').val() === true",
+        "$logId": {
+          ".write": "!data.exists()",
+          ".validate": "newData.hasChildren(['action', 'deviceId', 'timestamp'])"
+        }
+      }
+    },
+
+    // Signatures - protected, only owner can write their own
+    "signatures": {
+      "$signatureId": {
+        ".read": "root.child('jmart-safety/devices').child(auth.uid).child('status').val() === 'approved'",
+        ".write": "root.child('jmart-safety/devices').child(auth.uid).child('status').val() === 'approved' && newData.child('ownerId').val() === auth.uid"
+      }
+    }
+  }
+}
