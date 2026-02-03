@@ -258,6 +258,135 @@
             border-radius: 50%;
             background: currentColor;
         }
+
+        /* IGOR Dropdown Styles */
+        .igor-dropdown-container {
+            background: rgba(0,0,0,0.2);
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        .igor-dropdown-row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 8px;
+        }
+        .igor-labels {
+            display: flex;
+            gap: 8px;
+            font-size: 11px;
+            color: rgba(255,255,255,0.5);
+        }
+        .igor-labels span:nth-child(1) { flex: 2; min-width: 120px; }
+        .igor-labels span:nth-child(2) { flex: 2; min-width: 150px; }
+        .igor-labels span:nth-child(3) { width: 80px; }
+        .igor-labels span:nth-child(4) { width: 60px; }
+        .igor-labels span:nth-child(5) { width: 40px; }
+        .igor-select {
+            flex: 2;
+            min-width: 120px;
+            padding: 12px;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 8px;
+            color: #fff;
+            font-size: 14px;
+        }
+        .igor-select:focus { outline: none; border-color: #3b82f6; }
+        .igor-select option { background: #1a1a2e; color: #fff; }
+        .igor-input {
+            width: 80px;
+            padding: 12px;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 8px;
+            color: #fff;
+            font-size: 14px;
+            text-align: center;
+        }
+        .igor-input.igor-qty { width: 60px; }
+        .igor-input:focus { outline: none; border-color: #3b82f6; }
+        .igor-add-btn {
+            width: 44px;
+            height: 44px;
+            background: linear-gradient(135deg, #a855f7 0%, #7c3aed 100%);
+            border: none;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 24px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .igor-add-btn:hover { transform: scale(1.05); }
+        .igor-preview {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 15px;
+            background: rgba(168,85,247,0.1);
+            border: 1px solid rgba(168,85,247,0.3);
+            border-radius: 8px;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        .igor-members-list {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .igor-member-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 15px;
+            background: rgba(59,130,246,0.1);
+            border: 1px solid rgba(59,130,246,0.2);
+            border-radius: 8px;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        .igor-member-item .weight { color: #a855f7; margin-left: auto; margin-right: 15px; }
+        .igor-member-item .remove-btn {
+            background: rgba(239,68,68,0.3);
+            border: none;
+            border-radius: 50%;
+            width: 28px;
+            height: 28px;
+            color: #ef4444;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .igor-member-item .remove-btn:hover { background: rgba(239,68,68,0.5); }
+        .igor-results {
+            background: rgba(34,197,94,0.1);
+            border: 1px solid rgba(34,197,94,0.3);
+            border-radius: 10px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .igor-breakdown {
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .igor-totals { }
+        .igor-total-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            font-size: 16px;
+        }
+        .igor-total-row.total {
+            font-size: 20px;
+            font-weight: bold;
+            color: #22c55e;
+        }
+        @media (max-width: 600px) {
+            .igor-dropdown-row { flex-direction: column; }
+            .igor-select, .igor-input { width: 100%; min-width: unset; }
+            .igor-labels { display: none; }
+            .igor-add-btn { width: 100%; height: 44px; }
+        }
     </style>
 </head>
 <body>
@@ -324,49 +453,74 @@
             </div>
         </div>
 
-        <label>Section Type</label>
-        <div class="btn-group" id="igorTypeButtons">
-            <button class="btn active" onclick="igorSetType('SHS', this)">SHS</button>
-            <button class="btn" onclick="igorSetType('RHS', this)">RHS</button>
-            <button class="btn" onclick="igorSetType('CHS', this)">CHS</button>
-            <button class="btn" onclick="igorSetType('EA', this)">EA</button>
-            <button class="btn" onclick="igorSetType('UA', this)">UA</button>
-            <button class="btn" onclick="igorSetType('FB', this)">FB</button>
-            <button class="btn" onclick="igorSetType('RB', this)">RB</button>
-            <button class="btn" onclick="igorSetType('SB', this)">SB</button>
-            <button class="btn" onclick="igorSetType('UB', this)">UB</button>
-            <button class="btn" onclick="igorSetType('WB', this)">WB</button>
-            <button class="btn" onclick="igorSetType('UC', this)">UC</button>
-            <button class="btn" onclick="igorSetType('WC', this)">WC</button>
-            <button class="btn" onclick="igorSetType('PFC', this)">PFC</button>
-            <button class="btn" onclick="igorSetType('TFB', this)">TFB</button>
+        <!-- Dropdown-based member selector -->
+        <div class="igor-dropdown-container">
+            <div class="igor-dropdown-row">
+                <select id="igorTypeSelect" onchange="igorLoadSections()" class="igor-select">
+                    <option value="">Type</option>
+                    <option value="SHS">SHS - Square Hollow</option>
+                    <option value="RHS">RHS - Rectangular Hollow</option>
+                    <option value="CHS">CHS - Circular Hollow</option>
+                    <option value="EA">EA - Equal Angle</option>
+                    <option value="UA">UA - Unequal Angle</option>
+                    <option value="FB">FB - Flat Bar</option>
+                    <option value="RB">RB - Round Bar</option>
+                    <option value="SB">SB - Square Bar</option>
+                    <option value="UB">UB - Universal Beam</option>
+                    <option value="WB">WB - Welded Beam</option>
+                    <option value="UC">UC - Universal Column</option>
+                    <option value="WC">WC - Welded Column</option>
+                    <option value="PFC">PFC - Parallel Flange Channel</option>
+                    <option value="TFB">TFB - Taper Flange Beam</option>
+                </select>
+                <select id="igorSectionSelect" onchange="igorUpdatePreview()" class="igor-select">
+                    <option value="">Section</option>
+                </select>
+                <input type="number" id="igorLengthInput" class="igor-input" placeholder="Length (m)" min="0.1" step="0.1" value="1" onchange="igorUpdatePreview()" oninput="igorUpdatePreview()">
+                <input type="number" id="igorQtyInput" class="igor-input igor-qty" placeholder="Qty" min="1" value="1" onchange="igorUpdatePreview()" oninput="igorUpdatePreview()">
+                <button class="igor-add-btn" onclick="igorAddMember()" title="Add member">+</button>
+            </div>
+            <div class="igor-labels">
+                <span>Type</span>
+                <span>Section</span>
+                <span>Length (m)</span>
+                <span>Qty</span>
+                <span></span>
+            </div>
+            <div class="igor-preview" id="igorPreview" style="display: none;">
+                <span id="igorPreviewMember">-</span>
+                <span id="igorPreviewWeight" style="color:#a855f7;">0 kg</span>
+            </div>
         </div>
 
-        <label style="margin-top:15px">Select Section</label>
-        <div class="section-btns" id="igorSectionButtons"></div>
+        <!-- Added members list -->
+        <div class="igor-members-list" id="igorMembersList"></div>
 
-        <div class="result-grid" id="igorResults" style="display:none"></div>
+        <!-- Results -->
+        <div class="igor-results" id="igorResultsSection" style="display:none">
+            <div class="igor-breakdown" id="igorBreakdown"></div>
+            <div class="igor-totals">
+                <div class="igor-total-row">
+                    <span>Steel Weight:</span>
+                    <span id="igorSteelWeight">0 kg</span>
+                </div>
+                <div class="igor-total-row total">
+                    <span>+ 10% Fittings:</span>
+                    <span id="igorTotalWeight">0 kg</span>
+                </div>
+            </div>
+        </div>
 
-        <div class="calc-row" id="igorCalcRow" style="display:none">
-            <div class="calc-input">
-                <label>Length (m)</label>
-                <input type="number" id="igorLength" placeholder="e.g. 6.0" step="0.1" oninput="igorCalculate()">
-            </div>
-            <div class="calc-input">
-                <label>Quantity</label>
-                <input type="number" id="igorQty" value="1" min="1" oninput="igorCalculate()">
-            </div>
-            <div class="calc-total">
-                <div class="label">Total Weight</div>
-                <div class="value" id="igorTotalWeight">0 kg</div>
-            </div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:15px;">
+            <button class="btn primary" onclick="igorCalculateTotal()" style="flex:1; min-width:150px;">
+                ⚖️ Calculate Weight
+            </button>
+            <button class="btn" onclick="igorDownloadExcel()" style="background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); flex:1; min-width:150px;">
+                📥 Download Excel
+            </button>
         </div>
 
         <div class="console" id="igorConsole">⚖️ IGOR Ready - "I know the weight of every steel section"</div>
-
-        <button class="btn" onclick="igorDownloadExcel()" style="margin-top:15px; background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); padding: 12px 24px;">
-            📥 Download Excel Calculator
-        </button>
     </div>
 
     <!-- CHUCK Section -->
@@ -625,54 +779,144 @@
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // IGOR FUNCTIONS
+    // IGOR FUNCTIONS (Dropdown-based)
     // ═══════════════════════════════════════════════════════════════════════════
-    let igorType = 'SHS', igorSection = null, igorMass = 0;
+    let igorMembers = []; // Array to store added members
 
-    function igorSetType(type, btn) {
-        igorType = type;
-        document.querySelectorAll('#igorTypeButtons .btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        igorUpdateSections();
-        igorSection = null;
-        document.getElementById('igorResults').style.display = 'none';
-        document.getElementById('igorCalcRow').style.display = 'none';
-    }
+    // Load sections into dropdown when type changes
+    function igorLoadSections() {
+        const typeSelect = document.getElementById('igorTypeSelect');
+        const sectionSelect = document.getElementById('igorSectionSelect');
+        const selectedType = typeSelect.value;
 
-    function igorUpdateSections() {
-        const data = STEEL_SECTIONS[igorType].data;
-        const container = document.getElementById('igorSectionButtons');
-        container.innerHTML = Object.keys(data).map(s =>
-            `<button class="section-btn" onclick="igorSelectSection('${s}', this)">${s}</button>`
-        ).join('');
-        document.getElementById('igorConsole').textContent = `⚖️ ${igorType}: ${Object.keys(data).length} sections available`;
-    }
-
-    function igorSelectSection(section, btn) {
-        igorSection = section;
-        igorMass = STEEL_SECTIONS[igorType].data[section];
-        document.querySelectorAll('.section-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-
-        document.getElementById('igorResults').style.display = 'grid';
-        document.getElementById('igorResults').innerHTML = `
-            <div class="result-card"><div class="label">Section</div><div class="value" style="font-size:1.1rem">${section}</div></div>
-            <div class="result-card"><div class="label">Type</div><div class="value" style="font-size:1rem">${STEEL_SECTIONS[igorType].desc}</div></div>
-            <div class="result-card"><div class="label">Mass</div><div class="value">${igorMass}<span class="unit">kg/m</span></div></div>
-            <div class="result-card"><div class="label">Stainless</div><div class="value">${(igorMass * 1.02).toFixed(2)}<span class="unit">kg/m</span></div></div>
-        `;
-        document.getElementById('igorCalcRow').style.display = 'flex';
-        igorCalculate();
-    }
-
-    function igorCalculate() {
-        const length = parseFloat(document.getElementById('igorLength').value) || 0;
-        const qty = parseInt(document.getElementById('igorQty').value) || 1;
-        const total = (igorMass * length * qty).toFixed(2);
-        document.getElementById('igorTotalWeight').textContent = `${total} kg`;
-        if (length > 0) {
-            document.getElementById('igorConsole').textContent = `⚖️ ${igorType} ${igorSection}: ${length}m × ${qty} = ${total} kg`;
+        if (!selectedType) {
+            sectionSelect.innerHTML = '<option value="">Section</option>';
+            document.getElementById('igorPreview').style.display = 'none';
+            return;
         }
+
+        const sections = STEEL_SECTIONS[selectedType].data;
+        sectionSelect.innerHTML = '<option value="">Select section</option>';
+
+        Object.entries(sections).forEach(([name, mass]) => {
+            const opt = document.createElement('option');
+            opt.value = name;
+            opt.dataset.mass = mass;
+            opt.textContent = `${name} (${mass} kg/m)`;
+            sectionSelect.appendChild(opt);
+        });
+
+        document.getElementById('igorConsole').textContent = `⚖️ ${selectedType}: ${Object.keys(sections).length} sections available`;
+        document.getElementById('igorPreview').style.display = 'none';
+    }
+
+    // Update preview when section/length/qty changes
+    function igorUpdatePreview() {
+        const typeSelect = document.getElementById('igorTypeSelect');
+        const sectionSelect = document.getElementById('igorSectionSelect');
+        const lengthInput = document.getElementById('igorLengthInput');
+        const qtyInput = document.getElementById('igorQtyInput');
+        const preview = document.getElementById('igorPreview');
+
+        const type = typeSelect.value;
+        const section = sectionSelect.value;
+        const length = parseFloat(lengthInput.value) || 0;
+        const qty = parseInt(qtyInput.value) || 1;
+
+        if (!section || !length) {
+            preview.style.display = 'none';
+            return;
+        }
+
+        const selectedOption = sectionSelect.options[sectionSelect.selectedIndex];
+        const massPerM = parseFloat(selectedOption.dataset.mass) || 0;
+        const totalWeight = massPerM * length * qty;
+
+        document.getElementById('igorPreviewMember').textContent = `${qty}x ${section} ${type} @ ${length}m`;
+        document.getElementById('igorPreviewWeight').textContent = `${totalWeight.toFixed(1)} kg`;
+        preview.style.display = 'flex';
+    }
+
+    // Add member to list
+    function igorAddMember() {
+        const typeSelect = document.getElementById('igorTypeSelect');
+        const sectionSelect = document.getElementById('igorSectionSelect');
+        const lengthInput = document.getElementById('igorLengthInput');
+        const qtyInput = document.getElementById('igorQtyInput');
+
+        const type = typeSelect.value;
+        const section = sectionSelect.value;
+        const length = parseFloat(lengthInput.value) || 0;
+        const qty = parseInt(qtyInput.value) || 1;
+
+        if (!section || !length) {
+            alert('Please select a section and enter a length');
+            return;
+        }
+
+        const selectedOption = sectionSelect.options[sectionSelect.selectedIndex];
+        const massPerM = parseFloat(selectedOption.dataset.mass) || 0;
+        const total = massPerM * length * qty;
+
+        igorMembers.push({ type, section, length, qty, massPerM, total });
+        igorRenderMembers();
+
+        // Reset for next entry
+        sectionSelect.value = '';
+        lengthInput.value = '1';
+        qtyInput.value = '1';
+        document.getElementById('igorPreview').style.display = 'none';
+
+        document.getElementById('igorConsole').textContent = `⚖️ Added: ${qty}x ${section} ${type} @ ${length}m = ${total.toFixed(1)} kg`;
+    }
+
+    // Render members list
+    function igorRenderMembers() {
+        const list = document.getElementById('igorMembersList');
+        list.innerHTML = igorMembers.map((m, i) => `
+            <div class="igor-member-item">
+                <span>${m.qty}x ${m.section} ${m.type} @ ${m.length}m</span>
+                <span class="weight">${m.total.toFixed(1)} kg</span>
+                <button class="remove-btn" onclick="igorRemoveMember(${i})">×</button>
+            </div>
+        `).join('');
+    }
+
+    // Remove member from list
+    function igorRemoveMember(index) {
+        igorMembers.splice(index, 1);
+        igorRenderMembers();
+        document.getElementById('igorResultsSection').style.display = 'none';
+    }
+
+    // Calculate total weight
+    function igorCalculateTotal() {
+        if (igorMembers.length === 0) {
+            alert('Please add at least one steel member');
+            return;
+        }
+
+        const breakdown = {};
+        let totalWeight = 0;
+
+        igorMembers.forEach(m => {
+            const key = m.type;
+            if (!breakdown[key]) breakdown[key] = 0;
+            breakdown[key] += m.total;
+            totalWeight += m.total;
+        });
+
+        // Render breakdown
+        const breakdownHtml = Object.entries(breakdown).map(([type, weight]) =>
+            `<div style="display:flex;justify-content:space-between;padding:5px 0;"><span>${type}:</span><span>${weight.toFixed(1)} kg</span></div>`
+        ).join('');
+
+        document.getElementById('igorBreakdown').innerHTML = breakdownHtml;
+        document.getElementById('igorSteelWeight').textContent = `${totalWeight.toFixed(1)} kg`;
+        document.getElementById('igorTotalWeight').textContent = `${(totalWeight * 1.1).toFixed(1)} kg`;
+        document.getElementById('igorResultsSection').style.display = 'block';
+
+        document.getElementById('igorConsole').textContent = `⚖️ Total: ${totalWeight.toFixed(1)} kg steel + 10% fittings = ${(totalWeight * 1.1).toFixed(1)} kg`;
     }
 
     // Excel Download Function - generates multi-sheet IBSC Steel Calculator
