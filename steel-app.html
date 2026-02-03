@@ -387,6 +387,179 @@
             .igor-labels { display: none; }
             .igor-add-btn { width: 100%; height: 44px; }
         }
+
+        /* CHUCK Temperature & Cure Styles */
+        .chuck-temp-display {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            background: rgba(59,130,246,0.2);
+            border: 1px solid rgba(59,130,246,0.3);
+            border-radius: 10px;
+            padding: 12px 15px;
+            margin-bottom: 15px;
+        }
+        .chuck-temp-display .temp-value {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #60a5fa;
+        }
+        .chuck-temp-display .temp-location {
+            flex: 1;
+            color: rgba(255,255,255,0.7);
+            font-size: 13px;
+        }
+        .chuck-temp-display .temp-refresh {
+            background: rgba(255,255,255,0.1);
+            border: none;
+            border-radius: 6px;
+            padding: 8px 12px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .chuck-cure-section {
+            background: rgba(245,158,11,0.1);
+            border: 1px solid rgba(245,158,11,0.3);
+            border-radius: 10px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .cure-cards {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+        }
+        .cure-card {
+            background: rgba(0,0,0,0.2);
+            border-radius: 8px;
+            padding: 12px;
+            text-align: center;
+        }
+        .cure-card.standard { border-left: 3px solid #22c55e; }
+        .cure-card.coastal { border-left: 3px solid #3b82f6; }
+        .cure-card.shade { border-left: 3px solid #a855f7; }
+        .cure-icon { font-size: 1.5rem; margin-bottom: 5px; }
+        .cure-label { font-size: 11px; color: rgba(255,255,255,0.6); margin-bottom: 5px; }
+        .cure-work { font-size: 12px; color: #f59e0b; }
+        .cure-time { font-size: 14px; font-weight: bold; color: #fff; }
+        .chuck-cartridge-options {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+        .cart-option {
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+            padding: 10px 20px;
+            text-align: center;
+        }
+        .cart-size { display: block; font-size: 12px; color: rgba(255,255,255,0.6); }
+        .cart-count { display: block; font-size: 1.2rem; font-weight: bold; color: #22c55e; }
+
+        /* BRITTANY Parameters Styles */
+        .brittany-params {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            margin: 15px 0;
+            padding: 15px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 8px;
+        }
+        .param-group {
+            flex: 1;
+            min-width: 100px;
+        }
+        .param-group label {
+            display: block;
+            font-size: 12px;
+            color: rgba(255,255,255,0.7);
+            margin-bottom: 5px;
+        }
+        .param-group input {
+            width: 100%;
+            padding: 8px;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 6px;
+            color: #fff;
+            font-size: 14px;
+        }
+        .param-min {
+            display: block;
+            font-size: 10px;
+            color: rgba(255,255,255,0.5);
+            margin-top: 3px;
+        }
+        .brittany-options {
+            margin: 15px 0;
+        }
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            color: rgba(255,255,255,0.8);
+            font-size: 14px;
+        }
+        .checkbox-label input { width: 18px; height: 18px; }
+        .brittany-load-check {
+            background: rgba(168,85,247,0.1);
+            border: 1px solid rgba(168,85,247,0.3);
+            border-radius: 10px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .brittany-load-check label {
+            color: #a855f7;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .load-input-row {
+            display: flex;
+            gap: 10px;
+        }
+        .load-input-row input {
+            flex: 1;
+            padding: 10px;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 6px;
+            color: #fff;
+            font-size: 14px;
+        }
+        .load-input-row select {
+            padding: 10px;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 6px;
+            color: #fff;
+            font-size: 14px;
+        }
+        .load-check-result { margin-top: 15px; }
+        .load-bar {
+            height: 20px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .load-fill {
+            height: 100%;
+            transition: width 0.3s, background 0.3s;
+            border-radius: 10px;
+        }
+        .load-status {
+            text-align: center;
+            margin-top: 8px;
+            font-weight: bold;
+        }
+        @media (max-width: 600px) {
+            .cure-cards { grid-template-columns: 1fr; }
+            .brittany-params { flex-direction: column; }
+            .load-input-row { flex-direction: column; }
+        }
     </style>
 </head>
 <body>
@@ -529,8 +702,15 @@
             <div class="agent-icon">🧪</div>
             <div class="agent-title">
                 <h2>CHUCK - Hilti Calculator</h2>
-                <p>Chemical anchor usage calculator</p>
+                <p>Chemical anchor usage calculator with cure times</p>
             </div>
+        </div>
+
+        <!-- Temperature Display -->
+        <div class="chuck-temp-display" id="chuckTempDisplay">
+            <div class="temp-value"><span id="chuckCurrentTemp">--</span>°C</div>
+            <div class="temp-location" id="chuckLocation">📍 Getting location...</div>
+            <button class="temp-refresh" onclick="chuckGetWeather()">🔄</button>
         </div>
 
         <label>Chemical Type</label>
@@ -538,6 +718,7 @@
             <button class="btn active" onclick="chuckSetType('HY200R', this)">HY 200-R</button>
             <button class="btn" onclick="chuckSetType('HY200A', this)">HY 200-A</button>
             <button class="btn" onclick="chuckSetType('RE500', this)">RE 500</button>
+            <button class="btn" onclick="chuckSetType('HY170', this)">HY 170</button>
         </div>
 
         <label style="margin-top:15px">Rod Size</label>
@@ -547,12 +728,13 @@
             <button class="btn active" onclick="chuckSetSize('M16', this)">M16</button>
             <button class="btn" onclick="chuckSetSize('M20', this)">M20</button>
             <button class="btn" onclick="chuckSetSize('M24', this)">M24</button>
+            <button class="btn" onclick="chuckSetSize('M30', this)">M30</button>
         </div>
 
         <div class="calc-row">
             <div class="calc-input">
                 <label>Embed Depth (mm)</label>
-                <input type="number" id="chuckDepth" value="96" oninput="chuckCalculate()">
+                <input type="number" id="chuckDepth" value="125" oninput="chuckCalculate()">
             </div>
             <div class="calc-input">
                 <label>Quantity</label>
@@ -561,6 +743,38 @@
         </div>
 
         <div class="result-grid" id="chuckResults"></div>
+
+        <!-- Cure Times Section -->
+        <div class="chuck-cure-section" id="chuckCureSection" style="display:none">
+            <h4 style="color:#f59e0b;margin-bottom:10px">⏱️ Cure Times @ <span id="chuckCureTemp">--</span>°C</h4>
+            <div class="cure-cards">
+                <div class="cure-card standard">
+                    <div class="cure-icon">🏗️</div>
+                    <div class="cure-label">Standard</div>
+                    <div class="cure-work" id="cureWorkStd">-</div>
+                    <div class="cure-time" id="cureCureStd">-</div>
+                </div>
+                <div class="cure-card coastal">
+                    <div class="cure-icon">🌊</div>
+                    <div class="cure-label">Coastal/Humid</div>
+                    <div class="cure-work" id="cureWorkCoast">-</div>
+                    <div class="cure-time" id="cureCureCoast">-</div>
+                </div>
+                <div class="cure-card shade">
+                    <div class="cure-icon">🌥️</div>
+                    <div class="cure-label">Shade/Cold</div>
+                    <div class="cure-work" id="cureWorkShade">-</div>
+                    <div class="cure-time" id="cureCureShade">-</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Cartridge Options -->
+        <div class="chuck-cartridge-options" id="chuckCartOptions" style="display:none">
+            <div class="cart-option"><span class="cart-size">330ml</span><span class="cart-count" id="chuckCart330">-</span></div>
+            <div class="cart-option"><span class="cart-size">500ml</span><span class="cart-count" id="chuckCart500">-</span></div>
+            <div class="cart-option"><span class="cart-size">1400ml</span><span class="cart-count" id="chuckCart1400">-</span></div>
+        </div>
 
         <div class="console" id="chuckConsole">🧪 CHUCK Ready - "Hilti chemical calculations at your service"</div>
     </div>
@@ -581,6 +795,7 @@
             <button class="btn" onclick="brittanySetType('trubolt', this)">TruBolt</button>
             <button class="btn" onclick="brittanySetType('hilti_hsl', this)">Hilti HSL</button>
             <button class="btn" onclick="brittanySetType('chemset', this)">Chemset</button>
+            <button class="btn" onclick="brittanySetType('dropin', this)">Drop-In</button>
         </div>
 
         <label style="margin-top:15px">Size</label>
@@ -590,6 +805,7 @@
             <button class="btn active" onclick="brittanySetSize('M12', this)">M12</button>
             <button class="btn" onclick="brittanySetSize('M16', this)">M16</button>
             <button class="btn" onclick="brittanySetSize('M20', this)">M20</button>
+            <button class="btn" onclick="brittanySetSize('M24', this)">M24</button>
         </div>
 
         <div class="calc-row">
@@ -600,6 +816,7 @@
             <div class="calc-input">
                 <label>Concrete (MPa)</label>
                 <select id="brittanyConcrete" onchange="brittanyCalculate()">
+                    <option value="20">20 MPa</option>
                     <option value="25">25 MPa</option>
                     <option value="32" selected>32 MPa</option>
                     <option value="40">40 MPa</option>
@@ -607,7 +824,50 @@
             </div>
         </div>
 
+        <!-- Adjustable Parameters -->
+        <div class="brittany-params">
+            <div class="param-group">
+                <label>Embed (mm)</label>
+                <input type="number" id="brittanyEmbed" placeholder="auto" onchange="brittanyCalculate()">
+                <span class="param-min" id="brittanyEmbedMin">min: -</span>
+            </div>
+            <div class="param-group">
+                <label>Edge (mm)</label>
+                <input type="number" id="brittanyEdge" placeholder="auto" onchange="brittanyCalculate()">
+                <span class="param-min" id="brittanyEdgeMin">min: -</span>
+            </div>
+            <div class="param-group">
+                <label>Spacing (mm)</label>
+                <input type="number" id="brittanySpacing" placeholder="auto" onchange="brittanyCalculate()">
+                <span class="param-min" id="brittanySpacingMin">min: -</span>
+            </div>
+        </div>
+
+        <!-- Options -->
+        <div class="brittany-options">
+            <label class="checkbox-label">
+                <input type="checkbox" id="brittanyOverhead" onchange="brittanyCalculate()">
+                <span>Overhead / Cracked Concrete (50% reduction)</span>
+            </label>
+        </div>
+
         <div class="result-grid" id="brittanyResults"></div>
+
+        <!-- Load Check -->
+        <div class="brittany-load-check">
+            <label>Check Load (kg)</label>
+            <div class="load-input-row">
+                <input type="number" id="brittanyLoad" placeholder="e.g. 500" oninput="brittanyCheckLoad()">
+                <select id="brittanyLoadType" onchange="brittanyCheckLoad()">
+                    <option value="tension">Tension ↓</option>
+                    <option value="shear">Shear →</option>
+                </select>
+            </div>
+            <div class="load-check-result" id="brittanyLoadResult" style="display:none">
+                <div class="load-bar"><div class="load-fill" id="brittanyLoadFill"></div></div>
+                <div class="load-status" id="brittanyLoadStatus"></div>
+            </div>
+        </div>
 
         <div class="console" id="brittanyConsole">💪 BRITTANY Ready - "I'll tell you if it'll hold"</div>
     </div>
@@ -679,19 +939,107 @@
     // EMBEDDED DATA - CHUCK (Hilti Chemicals)
     // ═══════════════════════════════════════════════════════════════════════════
     const HILTI_DATA = {
-        HY200R: {name:"HIT-HY 200-R",volume_ml:330,sizes:{M10:{hole:12,embed:80},M12:{hole:14,embed:96},M16:{hole:18,embed:125},M20:{hole:22,embed:160},M24:{hole:26,embed:192}}},
-        HY200A: {name:"HIT-HY 200-A",volume_ml:330,sizes:{M10:{hole:12,embed:80},M12:{hole:14,embed:96},M16:{hole:18,embed:125},M20:{hole:22,embed:160},M24:{hole:26,embed:192}}},
-        RE500: {name:"HIT-RE 500",volume_ml:500,sizes:{M10:{hole:12,embed:90},M12:{hole:14,embed:110},M16:{hole:18,embed:125},M20:{hole:24,embed:170},M24:{hole:28,embed:210}}}
+        HY200R: {name:"HIT-HY 200-R",volume_ml:330,sizes:{M10:{hole:12,embed:80},M12:{hole:14,embed:96},M16:{hole:18,embed:125},M20:{hole:22,embed:160},M24:{hole:26,embed:192},M30:{hole:35,embed:240}}},
+        HY200A: {name:"HIT-HY 200-A",volume_ml:330,sizes:{M10:{hole:12,embed:80},M12:{hole:14,embed:96},M16:{hole:18,embed:125},M20:{hole:22,embed:160},M24:{hole:26,embed:192},M30:{hole:35,embed:240}}},
+        RE500: {name:"HIT-RE 500",volume_ml:500,sizes:{M10:{hole:12,embed:90},M12:{hole:14,embed:110},M16:{hole:18,embed:125},M20:{hole:24,embed:170},M24:{hole:28,embed:210},M30:{hole:35,embed:270}}},
+        HY170: {name:"HIT-HY 170",volume_ml:330,sizes:{M8:{hole:10,embed:60},M10:{hole:12,embed:75},M12:{hole:14,embed:90},M16:{hole:18,embed:115},M20:{hole:22,embed:145}}}
+    };
+
+    // Cure time data based on temperature (minutes)
+    const CURE_TIME_DATA = {
+        'HY200R': [
+            {min: -10, max: -5, work: 180, cure: 1200},
+            {min: -4, max: 0, work: 120, cure: 420},
+            {min: 1, max: 5, work: 60, cure: 180},
+            {min: 6, max: 10, work: 40, cure: 120},
+            {min: 11, max: 20, work: 15, cure: 60},
+            {min: 21, max: 30, work: 9, cure: 60},
+            {min: 31, max: 40, work: 6, cure: 60},
+        ],
+        'HY200A': [
+            {min: -10, max: -5, work: 90, cure: 420},
+            {min: -4, max: 0, work: 50, cure: 240},
+            {min: 1, max: 5, work: 25, cure: 120},
+            {min: 6, max: 10, work: 15, cure: 60},
+            {min: 11, max: 20, work: 7, cure: 30},
+            {min: 21, max: 30, work: 4, cure: 30},
+            {min: 31, max: 40, work: 3, cure: 30},
+        ],
+        'RE500': [
+            {min: -5, max: 0, work: 120, cure: 1440},
+            {min: 1, max: 5, work: 90, cure: 720},
+            {min: 6, max: 10, work: 60, cure: 360},
+            {min: 11, max: 15, work: 45, cure: 180},
+            {min: 16, max: 20, work: 30, cure: 120},
+            {min: 21, max: 25, work: 21, cure: 90},
+            {min: 26, max: 30, work: 15, cure: 60},
+            {min: 31, max: 40, work: 10, cure: 45},
+        ],
+        'HY170': [
+            {min: -5, max: 0, work: 10, cure: 720},
+            {min: 1, max: 5, work: 10, cure: 180},
+            {min: 6, max: 10, work: 8, cure: 150},
+            {min: 11, max: 20, work: 5, cure: 90},
+            {min: 21, max: 30, work: 4, cure: 60},
+            {min: 31, max: 40, work: 3, cure: 45},
+        ]
     };
 
     // ═══════════════════════════════════════════════════════════════════════════
     // EMBEDDED DATA - BRITTANY (Fixing Capacities)
+    // Format: [tensionKn, shearKn, minEmbed, minEdge, minSpacing, holeSize]
     // ═══════════════════════════════════════════════════════════════════════════
     const FIXING_DATA = {
-        dynabolt: {name:"Dynabolt Plus",sizes:{M8:{tension:4.2,shear:4.0,embed:35},M10:{tension:5.9,shear:6.4,embed:45},M12:{tension:7.7,shear:7.9,embed:50},M16:{tension:11.9,shear:10.5,embed:65},M20:{tension:16.6,shear:15.6,embed:85}}},
-        trubolt: {name:"TruBolt Stud",sizes:{M8:{tension:5.4,shear:4.8,embed:30},M10:{tension:8.2,shear:7.5,embed:40},M12:{tension:12.5,shear:10.8,embed:50},M16:{tension:20.0,shear:17.2,embed:65},M20:{tension:30.0,shear:26.0,embed:85}}},
-        hilti_hsl: {name:"Hilti HSL-3",sizes:{M8:{tension:7.3,shear:7.0,embed:50},M10:{tension:11.0,shear:11.5,embed:60},M12:{tension:16.5,shear:16.5,embed:80},M16:{tension:27.5,shear:27.5,embed:95},M20:{tension:40.0,shear:40.0,embed:125}}},
-        chemset: {name:"Chemset 101",sizes:{M10:{tension:12.0,shear:10.0,embed:90},M12:{tension:18.0,shear:15.0,embed:110},M16:{tension:28.0,shear:24.0,embed:125},M20:{tension:45.0,shear:38.0,embed:170}}}
+        dynabolt: {
+            name: 'Dynabolt Plus',
+            sizes: {
+                M8: [4.2, 4.0, 35, 60, 105, 10],
+                M10: [5.9, 6.4, 45, 70, 135, 12],
+                M12: [7.7, 7.9, 50, 75, 150, 16],
+                M16: [11.9, 10.5, 65, 100, 195, 20],
+                M20: [16.6, 15.6, 85, 130, 255, 24],
+            }
+        },
+        trubolt: {
+            name: 'TruBolt Stud',
+            sizes: {
+                M8: [5.4, 4.8, 30, 55, 80, 8],
+                M10: [8.5, 8.1, 40, 60, 120, 10],
+                M12: [11.2, 10.5, 48, 75, 150, 12],
+                M16: [17.2, 15.2, 64, 100, 200, 16],
+                M20: [24.0, 21.3, 80, 120, 240, 20],
+            }
+        },
+        hilti_hsl: {
+            name: 'Hilti HSL-3',
+            sizes: {
+                M8: [5.7, 7.9, 50, 48, 100, 12],
+                M10: [8.5, 12.5, 60, 60, 120, 15],
+                M12: [11.9, 19.4, 70, 72, 140, 18],
+                M16: [18.8, 31.1, 90, 96, 192, 24],
+                M20: [24.4, 47.9, 110, 120, 240, 28],
+                M24: [28.6, 44.8, 130, 144, 288, 32],
+            }
+        },
+        chemset: {
+            name: 'ChemSet',
+            sizes: {
+                M10: [12.0, 11.0, 100, 60, 100, 12],
+                M12: [17.0, 15.5, 120, 72, 120, 14],
+                M16: [28.0, 26.0, 160, 96, 160, 18],
+                M20: [42.0, 38.0, 200, 120, 200, 24],
+                M24: [55.0, 50.0, 240, 144, 240, 28],
+            }
+        },
+        dropin: {
+            name: 'Drop-In Anchor',
+            sizes: {
+                M8: [4.0, 5.0, 30, 45, 60, 10],
+                M10: [6.0, 7.5, 40, 55, 80, 13],
+                M12: [8.5, 10.0, 50, 65, 100, 16],
+                M16: [12.0, 15.0, 65, 85, 130, 20],
+            }
+        }
     };
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -919,100 +1267,361 @@
         document.getElementById('igorConsole').textContent = `⚖️ Total: ${totalWeight.toFixed(1)} kg steel + 10% fittings = ${(totalWeight * 1.1).toFixed(1)} kg`;
     }
 
-    // Excel Download Function - generates multi-sheet IBSC Steel Calculator
+    // Excel Download Function - generates multi-sheet IBSC Steel Calculator with styling
     async function igorDownloadExcel() {
         document.getElementById('igorConsole').textContent = '⚖️ Generating Excel calculator... Please wait';
 
-        // Load SheetJS library dynamically
-        if (typeof XLSX === 'undefined') {
+        // Load ExcelJS library dynamically (supports styling)
+        if (typeof ExcelJS === 'undefined') {
             await new Promise((resolve, reject) => {
                 const script = document.createElement('script');
-                script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+                script.src = 'https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js';
                 script.onload = resolve;
                 script.onerror = reject;
                 document.head.appendChild(script);
             });
         }
 
-        const wb = XLSX.utils.book_new();
-        const SS_FACTOR = 1.02; // Stainless steel factor
+        const workbook = new ExcelJS.Workbook();
+        workbook.creator = 'IGOR - STEEL Command Center';
+        workbook.created = new Date();
+
+        const SS_FACTOR = 1.02; // Stainless steel factor (density 8000 vs 7850 kg/m³)
+
+        // Colors for styling
+        const headerFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '2F5496' } };
+        const headerFont = { bold: true, color: { argb: 'FFFFFF' } };
+        const ssHeaderFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '4A7C59' } };
+        const titleFont = { bold: true, size: 16 };
+        const border = {
+            top: { style: 'thin' },
+            left: { style: 'thin' },
+            bottom: { style: 'thin' },
+            right: { style: 'thin' }
+        };
 
         // Sheet order for summary references
         const sheetOrder = ['SHS', 'RHS', 'CHS', 'EA', 'UA', 'FB', 'RB', 'SB', 'UB', 'WB', 'UC', 'WC', 'PFC', 'TFB'];
+        const sheetInfo = [];
 
         // Create data sheets
         sheetOrder.forEach(type => {
             const typeData = STEEL_SECTIONS[type];
-            const rows = [['Size (mm)', 'Mass (kg/m)', 'Linear Metres', 'Total Weight (kg)']];
+            const ws = workbook.addWorksheet(type);
+            const entries = Object.entries(typeData.data);
 
-            Object.entries(typeData.data).forEach(([size, mass], idx) => {
-                const rowNum = idx + 2;
-                rows.push([size, mass, '', { f: `IF(C${rowNum}>0,B${rowNum}*C${rowNum},"")` }]);
+            // Headers
+            const headers = ['Size (mm)', 'Mass (kg/m)', 'Linear Metres', 'Total Weight (kg)'];
+            const headerRow = ws.addRow(headers);
+            headerRow.eachCell(cell => {
+                cell.fill = headerFill;
+                cell.font = headerFont;
+                cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                cell.border = border;
             });
 
-            const ws = XLSX.utils.aoa_to_sheet(rows);
+            // Data rows
+            entries.forEach(([size, mass], idx) => {
+                const rowNum = idx + 2;
+                const row = ws.addRow([size, mass, null, { formula: `IF(C${rowNum}>0,B${rowNum}*C${rowNum},"")` }]);
+                row.eachCell(cell => {
+                    cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                    cell.border = border;
+                });
+                row.getCell(2).numFmt = '0.00';
+                row.getCell(3).numFmt = '0.00';
+                row.getCell(4).numFmt = '0.00';
+            });
 
             // Set column widths
-            ws['!cols'] = [{ wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 18 }];
+            ws.getColumn(1).width = 25;
+            ws.getColumn(2).width = 15;
+            ws.getColumn(3).width = 15;
+            ws.getColumn(4).width = 18;
 
-            XLSX.utils.book_append_sheet(wb, ws, type);
+            // Freeze header
+            ws.views = [{ state: 'frozen', ySplit: 1 }];
+
+            sheetInfo.push({ name: type, rows: entries.length });
         });
 
-        // Create Summary sheet
-        const summaryRows = [
-            ['STEEL WEIGHT SUMMARY'],
-            [''],
-            ['Enter linear metres in each sheet. Totals update automatically.'],
-            ['Stainless Steel weight = Mild Steel × 1.02 (density difference)'],
-            [''],
-            ['Category', 'Total Weight (kg)', 'Weight (tonnes)', 'Stainless (kg)']
-        ];
+        // Create Summary sheet at the beginning
+        const summary = workbook.addWorksheet('Summary');
 
-        sheetOrder.forEach((type, idx) => {
-            const numItems = Object.keys(STEEL_SECTIONS[type].data).length;
-            const endRow = numItems + 1;
+        // Title - merge cells A1:D1
+        summary.mergeCells('A1:D1');
+        const titleCell = summary.getCell('A1');
+        titleCell.value = 'STEEL WEIGHT SUMMARY';
+        titleCell.font = titleFont;
+        titleCell.alignment = { horizontal: 'center' };
+
+        // Instructions
+        summary.mergeCells('A3:D3');
+        summary.getCell('A3').value = 'Enter linear metres in each sheet. Totals update automatically.';
+        summary.getCell('A3').font = { italic: true };
+
+        summary.mergeCells('A4:D4');
+        summary.getCell('A4').value = 'Stainless Steel weight = Mild Steel × 1.02 (density difference)';
+        summary.getCell('A4').font = { italic: true };
+
+        // Headers at row 6
+        const summaryHeaders = ['Category', 'Total Weight (kg)', 'Weight (tonnes)', 'Stainless (kg)'];
+        const summaryHeaderRow = summary.getRow(6);
+        summaryHeaders.forEach((h, idx) => {
+            const cell = summaryHeaderRow.getCell(idx + 1);
+            cell.value = h;
+            cell.fill = idx === 3 ? ssHeaderFill : headerFill;
+            cell.font = headerFont;
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            cell.border = border;
+        });
+
+        // Data rows
+        sheetInfo.forEach((info, idx) => {
             const rowNum = idx + 7;
-            summaryRows.push([
-                type,
-                { f: `SUM('${type}'!D2:D${endRow})` },
-                { f: `B${rowNum}/1000` },
-                { f: `B${rowNum}*${SS_FACTOR}` }
-            ]);
+            const endRow = info.rows + 1;
+            const row = summary.getRow(rowNum);
+
+            row.getCell(1).value = info.name;
+            row.getCell(2).value = { formula: `SUM('${info.name}'!D2:D${endRow})` };
+            row.getCell(3).value = { formula: `B${rowNum}/1000` };
+            row.getCell(4).value = { formula: `B${rowNum}*${SS_FACTOR}` };
+
+            row.eachCell(cell => {
+                cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                cell.border = border;
+            });
+            row.getCell(2).numFmt = '#,##0.00';
+            row.getCell(3).numFmt = '#,##0.000';
+            row.getCell(4).numFmt = '#,##0.00';
         });
 
         // Grand total row
-        const startRow = 7;
-        const endRow = startRow + sheetOrder.length - 1;
-        summaryRows.push(['']);
-        summaryRows.push([
-            'GRAND TOTAL',
-            { f: `SUM(B${startRow}:B${endRow})` },
-            { f: `SUM(C${startRow}:C${endRow})` },
-            { f: `SUM(D${startRow}:D${endRow})` }
-        ]);
+        const startDataRow = 7;
+        const endDataRow = 6 + sheetInfo.length;
+        const totalRowNum = endDataRow + 2;
+        const totalRow = summary.getRow(totalRowNum);
 
-        const summaryWs = XLSX.utils.aoa_to_sheet(summaryRows);
-        summaryWs['!cols'] = [{ wch: 20 }, { wch: 18 }, { wch: 18 }, { wch: 18 }];
+        totalRow.getCell(1).value = 'GRAND TOTAL';
+        totalRow.getCell(1).font = { bold: true, size: 12 };
+        totalRow.getCell(2).value = { formula: `SUM(B${startDataRow}:B${endDataRow})` };
+        totalRow.getCell(3).value = { formula: `SUM(C${startDataRow}:C${endDataRow})` };
+        totalRow.getCell(4).value = { formula: `SUM(D${startDataRow}:D${endDataRow})` };
 
-        // Insert Summary as first sheet
-        wb.SheetNames.unshift('Summary');
-        wb.Sheets['Summary'] = summaryWs;
+        totalRow.eachCell(cell => {
+            cell.font = { bold: true };
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            cell.border = border;
+        });
+        totalRow.getCell(2).numFmt = '#,##0.00';
+        totalRow.getCell(3).numFmt = '#,##0.000';
+        totalRow.getCell(4).numFmt = '#,##0.00';
+
+        // Set column widths
+        summary.getColumn(1).width = 20;
+        summary.getColumn(2).width = 18;
+        summary.getColumn(3).width = 18;
+        summary.getColumn(4).width = 18;
+
+        // Freeze at row 7
+        summary.views = [{ state: 'frozen', ySplit: 6 }];
+
+        // Move Summary to first position
+        workbook.removeWorksheet('Summary');
+        const summaryNew = workbook.addWorksheet('Summary');
+
+        // Re-create Summary (ExcelJS doesn't support moving sheets easily)
+        // Copy content...
+        summaryNew.mergeCells('A1:D1');
+        summaryNew.getCell('A1').value = 'STEEL WEIGHT SUMMARY';
+        summaryNew.getCell('A1').font = titleFont;
+        summaryNew.getCell('A1').alignment = { horizontal: 'center' };
+
+        summaryNew.mergeCells('A3:D3');
+        summaryNew.getCell('A3').value = 'Enter linear metres in each sheet. Totals update automatically.';
+        summaryNew.getCell('A3').font = { italic: true };
+
+        summaryNew.mergeCells('A4:D4');
+        summaryNew.getCell('A4').value = 'Stainless Steel weight = Mild Steel × 1.02 (density difference)';
+        summaryNew.getCell('A4').font = { italic: true };
+
+        const newHeaderRow = summaryNew.getRow(6);
+        summaryHeaders.forEach((h, idx) => {
+            const cell = newHeaderRow.getCell(idx + 1);
+            cell.value = h;
+            cell.fill = idx === 3 ? ssHeaderFill : headerFill;
+            cell.font = headerFont;
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            cell.border = border;
+        });
+
+        sheetInfo.forEach((info, idx) => {
+            const rowNum = idx + 7;
+            const endRow = info.rows + 1;
+            const row = summaryNew.getRow(rowNum);
+
+            row.getCell(1).value = info.name;
+            row.getCell(2).value = { formula: `SUM('${info.name}'!D2:D${endRow})` };
+            row.getCell(3).value = { formula: `B${rowNum}/1000` };
+            row.getCell(4).value = { formula: `B${rowNum}*${SS_FACTOR}` };
+
+            row.eachCell(cell => {
+                cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                cell.border = border;
+            });
+            row.getCell(2).numFmt = '#,##0.00';
+            row.getCell(3).numFmt = '#,##0.000';
+            row.getCell(4).numFmt = '#,##0.00';
+        });
+
+        const newTotalRow = summaryNew.getRow(totalRowNum);
+        newTotalRow.getCell(1).value = 'GRAND TOTAL';
+        newTotalRow.getCell(1).font = { bold: true, size: 12 };
+        newTotalRow.getCell(2).value = { formula: `SUM(B${startDataRow}:B${endDataRow})` };
+        newTotalRow.getCell(3).value = { formula: `SUM(C${startDataRow}:C${endDataRow})` };
+        newTotalRow.getCell(4).value = { formula: `SUM(D${startDataRow}:D${endDataRow})` };
+
+        newTotalRow.eachCell(cell => {
+            cell.font = { bold: true };
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            cell.border = border;
+        });
+        newTotalRow.getCell(2).numFmt = '#,##0.00';
+        newTotalRow.getCell(3).numFmt = '#,##0.000';
+        newTotalRow.getCell(4).numFmt = '#,##0.00';
+
+        summaryNew.getColumn(1).width = 20;
+        summaryNew.getColumn(2).width = 18;
+        summaryNew.getColumn(3).width = 18;
+        summaryNew.getColumn(4).width = 18;
+        summaryNew.views = [{ state: 'frozen', ySplit: 6 }];
 
         // Generate and download
-        XLSX.writeFile(wb, 'IBSC_Steel_Calculator.xlsx');
-        document.getElementById('igorConsole').textContent = '⚖️ Excel calculator downloaded! Open it to enter your steel lengths.';
+        const buffer = await workbook.xlsx.writeBuffer();
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'IBSC_Steel_Calculator.xlsx';
+        a.click();
+        URL.revokeObjectURL(url);
+
+        document.getElementById('igorConsole').textContent = '⚖️ Excel calculator downloaded! Blue headers, stainless steel column, all formatting included.';
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // CHUCK FUNCTIONS
     // ═══════════════════════════════════════════════════════════════════════════
     let chuckType = 'HY200R', chuckSize = 'M16';
+    let chuckLat = null, chuckLon = null, chuckCurrentTemp = null;
+
+    function chuckGetLocation() {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    chuckLat = position.coords.latitude;
+                    chuckLon = position.coords.longitude;
+                    chuckGetWeather();
+                },
+                (error) => {
+                    console.log('Location error:', error);
+                    document.getElementById('chuckLocation').textContent = '📍 Location unavailable';
+                    chuckLat = -33.87; // Sydney default
+                    chuckLon = 151.21;
+                    chuckGetWeather();
+                }
+            );
+        }
+    }
+
+    async function chuckGetWeather() {
+        if (!chuckLat || !chuckLon) return;
+
+        try {
+            const url = `https://api.open-meteo.com/v1/forecast?latitude=${chuckLat}&longitude=${chuckLon}&current=temperature_2m,relative_humidity_2m&timezone=auto`;
+            const res = await fetch(url);
+            const data = await res.json();
+
+            if (data.current) {
+                chuckCurrentTemp = Math.round(data.current.temperature_2m);
+                document.getElementById('chuckCurrentTemp').textContent = chuckCurrentTemp;
+
+                // Try to get location name
+                try {
+                    const geoUrl = `https://nominatim.openstreetmap.org/reverse?lat=${chuckLat}&lon=${chuckLon}&format=json`;
+                    const geoRes = await fetch(geoUrl);
+                    const geoData = await geoRes.json();
+                    const suburb = geoData.address?.suburb || geoData.address?.city || geoData.address?.town || 'Your location';
+                    document.getElementById('chuckLocation').textContent = `📍 ${suburb}`;
+                } catch (e) {
+                    document.getElementById('chuckLocation').textContent = '📍 Your location';
+                }
+
+                // Update cure times display
+                chuckUpdateCureTimes();
+            }
+        } catch (err) {
+            console.log('Weather error:', err);
+            document.getElementById('chuckCurrentTemp').textContent = '20';
+            chuckCurrentTemp = 20;
+        }
+    }
+
+    function getCureTimeLocal(product, temp) {
+        const data = CURE_TIME_DATA[product] || CURE_TIME_DATA['HY200R'];
+        for (const entry of data) {
+            if (temp >= entry.min && temp <= entry.max) {
+                return { work: formatCureTime(entry.work), cure: formatCureTime(entry.cure), cureMin: entry.cure };
+            }
+        }
+        return { work: '15 min', cure: '1h', cureMin: 60 };
+    }
+
+    function formatCureTime(mins) {
+        mins = Math.round(mins);
+        if (mins < 60) return `${mins} min`;
+        if (mins < 1440) {
+            const h = mins / 60;
+            return h === Math.floor(h) ? `${h}h` : `${h.toFixed(1)}h`;
+        }
+        return `${(mins/1440).toFixed(1)} days`;
+    }
+
+    function chuckUpdateCureTimes() {
+        const temp = chuckCurrentTemp || 20;
+        const cureData = getCureTimeLocal(chuckType, temp);
+
+        document.getElementById('chuckCureTemp').textContent = temp;
+        document.getElementById('cureWorkStd').textContent = `Work: ${cureData.work}`;
+        document.getElementById('cureCureStd').textContent = cureData.cure;
+
+        document.getElementById('cureWorkCoast').textContent = `Work: ${cureData.work}`;
+        document.getElementById('cureCureCoast').textContent = formatCureTime(cureData.cureMin * 1.5);
+
+        const shadeCure = getCureTimeLocal(chuckType, temp - 5);
+        document.getElementById('cureWorkShade').textContent = `Work: ${shadeCure.work}`;
+        document.getElementById('cureCureShade').textContent = shadeCure.cure;
+
+        document.getElementById('chuckCureSection').style.display = 'block';
+    }
 
     function chuckSetType(type, btn) {
         chuckType = type;
         document.querySelectorAll('#chuckTypeButtons .btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
+        chuckUpdateSizes();
         chuckCalculate();
+    }
+
+    function chuckUpdateSizes() {
+        const sizes = Object.keys(HILTI_DATA[chuckType].sizes);
+        const container = document.getElementById('chuckSizeButtons');
+        container.innerHTML = sizes.map(s =>
+            `<button class="btn${s === chuckSize ? ' active' : ''}" onclick="chuckSetSize('${s}', this)">${s}</button>`
+        ).join('');
+        if (!sizes.includes(chuckSize)) {
+            chuckSize = sizes[Math.floor(sizes.length/2)];
+        }
     }
 
     function chuckSetSize(size, btn) {
@@ -1034,23 +1643,40 @@
 
         const holeVol = Math.PI * Math.pow(sizeData.hole/2, 2) * depth / 1000;
         const totalVol = holeVol * qty * 1.15;
-        const cartridges = Math.ceil(totalVol / chemical.volume_ml);
+
+        // Calculate cartridge options
+        const cart330 = Math.ceil(totalVol / 330);
+        const cart500 = Math.ceil(totalVol / 500);
+        const cart1400 = Math.ceil(totalVol / 1400);
 
         document.getElementById('chuckResults').innerHTML = `
             <div class="result-card"><div class="label">Hole Size</div><div class="value">${sizeData.hole}<span class="unit">mm</span></div></div>
             <div class="result-card"><div class="label">Min Embed</div><div class="value">${sizeData.embed}<span class="unit">mm</span></div></div>
             <div class="result-card"><div class="label">Vol/Hole</div><div class="value">${holeVol.toFixed(1)}<span class="unit">ml</span></div></div>
             <div class="result-card"><div class="label">Total Vol</div><div class="value">${totalVol.toFixed(0)}<span class="unit">ml</span></div></div>
-            <div class="result-card"><div class="label">Cartridges</div><div class="value" style="color:#22c55e">${cartridges}</div></div>
+            <div class="result-card"><div class="label">Cartridges</div><div class="value" style="color:#22c55e">${cart330}</div></div>
             <div class="result-card"><div class="label">Product</div><div class="value" style="font-size:0.9rem">${chemical.name}</div></div>
         `;
-        document.getElementById('chuckConsole').textContent = `🧪 ${chemical.name} ${chuckSize}: ${qty} holes × ${depth}mm = ${cartridges} cartridge${cartridges>1?'s':''}`;
+
+        // Show cartridge options
+        document.getElementById('chuckCart330').textContent = cart330;
+        document.getElementById('chuckCart500').textContent = cart500;
+        document.getElementById('chuckCart1400').textContent = cart1400;
+        document.getElementById('chuckCartOptions').style.display = 'flex';
+
+        // Update cure times if temp available
+        if (chuckCurrentTemp) {
+            chuckUpdateCureTimes();
+        }
+
+        document.getElementById('chuckConsole').textContent = `🧪 ${chemical.name} ${chuckSize}: ${qty} holes × ${depth}mm = ${cart330} × 330ml cartridge${cart330>1?'s':''}`;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // BRITTANY FUNCTIONS
     // ═══════════════════════════════════════════════════════════════════════════
     let brittanyType = 'dynabolt', brittanySize = 'M12';
+    let brittanyTotalTension = 0, brittanyTotalShear = 0;
 
     function brittanySetType(type, btn) {
         brittanyType = type;
@@ -1068,35 +1694,132 @@
     }
 
     function brittanyUpdateSizes() {
-        const sizes = Object.keys(FIXING_DATA[brittanyType].sizes);
+        const data = FIXING_DATA[brittanyType];
+        const availableSizes = Object.keys(data.sizes);
         const container = document.getElementById('brittanySizeButtons');
-        container.innerHTML = sizes.map(s =>
+
+        container.innerHTML = availableSizes.map(s =>
             `<button class="btn${s === brittanySize ? ' active' : ''}" onclick="brittanySetSize('${s}', this)">${s}</button>`
         ).join('');
-        if (!sizes.includes(brittanySize)) {
-            brittanySize = sizes[0];
+
+        if (!availableSizes.includes(brittanySize)) {
+            brittanySize = availableSizes[0];
+        }
+
+        // Update min values display
+        if (data.sizes[brittanySize]) {
+            const [t, s, embed, edge, spacing, hole] = data.sizes[brittanySize];
+            document.getElementById('brittanyEmbedMin').textContent = `min: ${embed}`;
+            document.getElementById('brittanyEdgeMin').textContent = `min: ${edge}`;
+            document.getElementById('brittanySpacingMin').textContent = `min: ${spacing}`;
         }
     }
 
     function brittanyCalculate() {
         const qty = parseInt(document.getElementById('brittanyQty').value) || 1;
+        const concrete = parseInt(document.getElementById('brittanyConcrete').value);
+        const overhead = document.getElementById('brittanyOverhead').checked;
         const fixing = FIXING_DATA[brittanyType];
         const sizeData = fixing.sizes[brittanySize];
 
         if (!sizeData) return;
 
-        const totalTension = (sizeData.tension * qty * 102).toFixed(0);
-        const totalShear = (sizeData.shear * qty * 102).toFixed(0);
+        const [tensionKn, shearKn, minEmbed, minEdge, minSpacing, holeSize] = sizeData;
+
+        // Get custom params or use minimums
+        const embedInput = document.getElementById('brittanyEmbed').value;
+        const edgeInput = document.getElementById('brittanyEdge').value;
+        const spacingInput = document.getElementById('brittanySpacing').value;
+
+        const embed = embedInput ? parseInt(embedInput) : minEmbed;
+        const edge = edgeInput ? parseInt(edgeInput) : minEdge;
+        const spacing = spacingInput ? parseInt(spacingInput) : minSpacing;
+
+        // Update min displays
+        document.getElementById('brittanyEmbedMin').textContent = `min: ${minEmbed}`;
+        document.getElementById('brittanyEdgeMin').textContent = `min: ${minEdge}`;
+        document.getElementById('brittanySpacingMin').textContent = `min: ${minSpacing}`;
+
+        // Calculate reduction factors
+        const edgeFactor = edge < minEdge ? Math.max(0.5, edge / minEdge) : 1.0;
+        const spacingFactor = spacing < minSpacing ? Math.max(0.5, spacing / minSpacing) : 1.0;
+        let embedFactor = 1.0;
+        if (brittanyType === 'chemset') {
+            embedFactor = Math.min(2.0, Math.max(0.5, embed / minEmbed));
+        } else if (embed < minEmbed) {
+            embedFactor = Math.max(0.5, embed / minEmbed);
+        }
+
+        // Concrete factor
+        const concFactors = {20: 0.74, 25: 0.86, 32: 1.0, 40: 1.13, 50: 1.27};
+        const concFactor = concFactors[concrete] || 1.0;
+
+        // Overhead/cracked factor (50% reduction as shown in checkbox label)
+        const overheadFactor = overhead ? 0.5 : 1.0;
+
+        // Calculate
+        const tensionPerKg = Math.round(tensionKn * concFactor * overheadFactor * edgeFactor * embedFactor * 102);
+        const shearPerKg = Math.round(shearKn * concFactor * overheadFactor * edgeFactor * spacingFactor * 102);
+        brittanyTotalTension = tensionPerKg * qty;
+        brittanyTotalShear = shearPerKg * qty;
 
         document.getElementById('brittanyResults').innerHTML = `
-            <div class="result-card"><div class="label">Tension (each)</div><div class="value">${(sizeData.tension*102).toFixed(0)}<span class="unit">kg</span></div></div>
-            <div class="result-card"><div class="label">Shear (each)</div><div class="value">${(sizeData.shear*102).toFixed(0)}<span class="unit">kg</span></div></div>
-            <div class="result-card"><div class="label">Total Tension</div><div class="value" style="color:#22c55e">${totalTension}<span class="unit">kg</span></div></div>
-            <div class="result-card"><div class="label">Total Shear</div><div class="value" style="color:#22c55e">${totalShear}<span class="unit">kg</span></div></div>
-            <div class="result-card"><div class="label">Min Embed</div><div class="value">${sizeData.embed}<span class="unit">mm</span></div></div>
+            <div class="result-card"><div class="label">Tension (each)</div><div class="value">${tensionPerKg}<span class="unit">kg</span></div></div>
+            <div class="result-card"><div class="label">Shear (each)</div><div class="value">${shearPerKg}<span class="unit">kg</span></div></div>
+            <div class="result-card"><div class="label">Total Tension</div><div class="value" style="color:#22c55e">${brittanyTotalTension.toLocaleString()}<span class="unit">kg</span></div></div>
+            <div class="result-card"><div class="label">Total Shear</div><div class="value" style="color:#22c55e">${brittanyTotalShear.toLocaleString()}<span class="unit">kg</span></div></div>
+            <div class="result-card"><div class="label">Hole Size</div><div class="value">${holeSize}<span class="unit">mm</span></div></div>
             <div class="result-card"><div class="label">Product</div><div class="value" style="font-size:0.9rem">${fixing.name}</div></div>
         `;
-        document.getElementById('brittanyConsole').textContent = `💪 ${qty}× ${fixing.name} ${brittanySize}: Holds ${totalTension}kg tension, ${totalShear}kg shear`;
+
+        // Show warnings for reduced factors
+        let warnings = [];
+        if (edgeFactor < 1.0) warnings.push(`Edge: ${Math.round(edgeFactor*100)}%`);
+        if (spacingFactor < 1.0) warnings.push(`Spacing: ${Math.round(spacingFactor*100)}%`);
+        if (embedFactor !== 1.0 && brittanyType === 'chemset') warnings.push(`Embed: ${Math.round(embedFactor*100)}%`);
+
+        let consoleMsg = `💪 ${qty}× ${fixing.name} ${brittanySize}: Holds ${brittanyTotalTension.toLocaleString()}kg tension, ${brittanyTotalShear.toLocaleString()}kg shear`;
+        if (warnings.length > 0) consoleMsg += ` (Reduced: ${warnings.join(', ')})`;
+        document.getElementById('brittanyConsole').textContent = consoleMsg;
+
+        // Update load check if there's a value
+        brittanyCheckLoad();
+    }
+
+    function brittanyCheckLoad() {
+        const loadInput = document.getElementById('brittanyLoad').value;
+        const loadType = document.getElementById('brittanyLoadType').value;
+        const resultDiv = document.getElementById('brittanyLoadResult');
+
+        if (!loadInput) {
+            resultDiv.style.display = 'none';
+            return;
+        }
+
+        const load = parseInt(loadInput);
+        const capacity = loadType === 'tension' ? brittanyTotalTension : brittanyTotalShear;
+        const utilisation = load / capacity;
+        const percent = Math.min(utilisation * 100, 150);
+
+        resultDiv.style.display = 'block';
+        const fill = document.getElementById('brittanyLoadFill');
+        const status = document.getElementById('brittanyLoadStatus');
+
+        fill.style.width = `${Math.min(percent, 100)}%`;
+
+        if (utilisation <= 0.8) {
+            fill.style.background = '#22c55e';
+            status.textContent = `✅ OK - ${Math.round(utilisation * 100)}% utilised`;
+            status.style.color = '#22c55e';
+        } else if (utilisation <= 1.0) {
+            fill.style.background = '#f59e0b';
+            status.textContent = `⚠️ OK - ${Math.round(utilisation * 100)}% utilised (close to limit)`;
+            status.style.color = '#f59e0b';
+        } else {
+            fill.style.background = '#ef4444';
+            status.textContent = `❌ FAIL - ${Math.round(utilisation * 100)}% (exceeds capacity!)`;
+            status.style.color = '#ef4444';
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -1104,8 +1827,11 @@
     // ═══════════════════════════════════════════════════════════════════════════
     document.addEventListener('DOMContentLoaded', () => {
         hobartUpdate();
-        igorUpdateSections();
+        // IGOR dropdowns are already in HTML
+        chuckGetLocation(); // Get weather/temp on load
+        chuckUpdateSizes(); // Set up size buttons for default type
         chuckCalculate();
+        brittanyUpdateSizes(); // Set up size buttons for default type
         brittanyCalculate();
     });
     </script>
