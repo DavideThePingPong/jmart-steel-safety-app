@@ -1513,6 +1513,9 @@
         // Remove old range divs (except the current marker)
         diagram.querySelectorAll('.grip-range-segment').forEach(el => el.remove());
 
+        // Get product codes (extract short name from full description)
+        const productCodes = data.product_codes_with_sizes.map(p => p.split(' ')[0]);
+
         // Draw each bolt length range with different color intensity
         const colors = ['#22c55e', '#3b82f6', '#a855f7']; // green, blue, purple
         allRanges.forEach((range, i) => {
@@ -1533,7 +1536,7 @@
                 border: 1px solid rgba(255,255,255,0.3);
             `;
             // Add label
-            rangeDiv.innerHTML = `<span style="font-size:10px;color:#fff;padding:2px;white-space:nowrap">${data.product_codes[i]}</span>`;
+            rangeDiv.innerHTML = `<span style="font-size:10px;color:#fff;padding:2px;white-space:nowrap">${productCodes[i]}</span>`;
             diagram.appendChild(rangeDiv);
         });
 
@@ -1551,7 +1554,7 @@
             let matchingBolt = null;
             allRanges.forEach((range, i) => {
                 if (userClamp >= range[0] && userClamp <= range[1]) {
-                    matchingBolt = data.product_codes[i];
+                    matchingBolt = productCodes[i];
                 }
             });
 
