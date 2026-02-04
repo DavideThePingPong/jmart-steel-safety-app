@@ -1779,6 +1779,24 @@
 
         // Sheet order for summary references
         const sheetOrder = ['SHS', 'RHS', 'CHS', 'EA', 'UA', 'FB', 'RB', 'SB', 'UB', 'WB', 'UC', 'WC', 'PFC', 'TFB'];
+
+        // Full names for member types
+        const memberFullNames = {
+            'SHS': 'Square Hollow Section',
+            'RHS': 'Rectangular Hollow Section',
+            'CHS': 'Circular Hollow Section',
+            'EA': 'Equal Angle',
+            'UA': 'Unequal Angle',
+            'FB': 'Flat Bar',
+            'RB': 'Round Bar',
+            'SB': 'Square Bar',
+            'UB': 'Universal Beam',
+            'WB': 'Welded Beam',
+            'UC': 'Universal Column',
+            'WC': 'Welded Column',
+            'PFC': 'Parallel Flange Channel',
+            'TFB': 'Taper Flange Beam'
+        };
         const sheetInfo = [];
 
         // Create hidden Lists sheet for dropdown references
@@ -1829,7 +1847,8 @@
         const NUM_EMPTY_ROWS = 50; // 50 empty rows for user input
         sheetOrder.forEach(type => {
             const typeData = STEEL_SECTIONS[type];
-            const ws = workbook.addWorksheet(type);
+            const fullName = memberFullNames[type] || type;
+            const ws = workbook.addWorksheet(fullName);
             const entries = Object.entries(typeData.data);
 
             // Set tab color
@@ -1891,7 +1910,7 @@
             // Freeze header
             ws.views = [{ state: 'frozen', ySplit: 1 }];
 
-            sheetInfo.push({ name: type, rows: NUM_EMPTY_ROWS });
+            sheetInfo.push({ name: fullName, shortName: type, rows: NUM_EMPTY_ROWS, color: sheetColors[type] });
         });
 
         // Create Summary sheet at the beginning
@@ -2016,8 +2035,8 @@
         summaryNew.getCell('A8').value = 'Stainless Steel weight = Mild Steel × 1.02 (density difference)';
         summaryNew.getCell('A8').font = { italic: true };
 
-        // Headers including Breakdown column
-        const newSummaryHeaders = ['Category', 'Total Weight (kg)', 'Weight (tonnes)', 'Stainless (kg)', 'Breakdown'];
+        // Headers including Breakdown column (Stainless now in tonnes)
+        const newSummaryHeaders = ['Category', 'Total Weight (kg)', 'Weight (tonnes)', 'Stainless (t)', 'Breakdown'];
         const newHeaderRow = summaryNew.getRow(10);
         newSummaryHeaders.forEach((h, idx) => {
             const cell = newHeaderRow.getCell(idx + 1);
@@ -2034,10 +2053,14 @@
             const endRow = info.rows + 1;
             const row = summaryNew.getRow(rowNum);
 
+            // Row fill color matching the member sheet tab color
+            const rowFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: info.color } };
+
             row.getCell(1).value = info.name;
             row.getCell(2).value = { formula: `SUM('${info.name}'!D2:D${endRow})` };
             row.getCell(3).value = { formula: `B${rowNum}/1000` };
-            row.getCell(4).value = { formula: `B${rowNum}*${SS_FACTOR}` };
+            // Stainless now in TONNES: (kg * 1.02) / 1000
+            row.getCell(4).value = { formula: `(B${rowNum}*${SS_FACTOR})/1000` };
             // Breakdown: Add a helper column E on each member sheet that concatenates size + metres
             // Then use TEXTJOIN to combine all non-empty values from that column
             const breakdownFormula = `_xlfn.TEXTJOIN(", ",TRUE,'${info.name}'!E2:E${endRow})`;
@@ -2046,10 +2069,15 @@
             for (let c = 1; c <= 5; c++) {
                 row.getCell(c).alignment = { horizontal: c === 5 ? 'left' : 'center', vertical: 'middle' };
                 row.getCell(c).border = border;
+                // Color the Category cell (col 1) with the member's color
+                if (c === 1) {
+                    row.getCell(c).fill = rowFill;
+                    row.getCell(c).font = { bold: true, color: { argb: 'FFFFFF' } };
+                }
             }
             row.getCell(2).numFmt = '#,##0.00';
             row.getCell(3).numFmt = '#,##0.000';
-            row.getCell(4).numFmt = '#,##0.00';
+            row.getCell(4).numFmt = '#,##0.000';  // Stainless tonnes - 3 decimals
         });
 
         // Grand total row for new summary
@@ -2071,9 +2099,9 @@
         }
         newTotalRow.getCell(2).numFmt = '#,##0.00';
         newTotalRow.getCell(3).numFmt = '#,##0.000';
-        newTotalRow.getCell(4).numFmt = '#,##0.00';
+        newTotalRow.getCell(4).numFmt = '#,##0.000';  // Stainless tonnes
 
-        summaryNew.getColumn(1).width = 12;
+        summaryNew.getColumn(1).width = 25;  // Wider for full names
         summaryNew.getColumn(2).width = 16;
         summaryNew.getColumn(3).width = 16;
         summaryNew.getColumn(4).width = 16;
