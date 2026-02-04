@@ -1252,22 +1252,25 @@
             {min: 31, max: 40, work: 3, cure: 30},
         ],
         'RE500': [
-            {min: -5, max: 0, work: 120, cure: 1440},
-            {min: 1, max: 5, work: 90, cure: 720},
-            {min: 6, max: 10, work: 60, cure: 360},
-            {min: 11, max: 15, work: 45, cure: 180},
-            {min: 16, max: 20, work: 30, cure: 120},
-            {min: 21, max: 25, work: 21, cure: 90},
-            {min: 26, max: 30, work: 15, cure: 60},
-            {min: 31, max: 40, work: 10, cure: 45},
+            // RE 500 V3 EPOXY - VERY LONG cure times! (per Hilti ETA-16/0143)
+            {min: -5, max: -1, work: 120, cure: 10080},  // 7 days at -5 to -1°C
+            {min: 0, max: 4, work: 120, cure: 2880},     // 48h at 0-4°C
+            {min: 5, max: 9, work: 120, cure: 1440},     // 24h at 5-9°C
+            {min: 10, max: 14, work: 90, cure: 960},     // 16h at 10-14°C
+            {min: 15, max: 19, work: 60, cure: 720},     // 12h at 15-19°C
+            {min: 20, max: 24, work: 30, cure: 420},     // 7h at 20-24°C
+            {min: 25, max: 29, work: 20, cure: 360},     // 6h at 25-29°C
+            {min: 30, max: 34, work: 15, cure: 300},     // 5h at 30-34°C
+            {min: 35, max: 40, work: 10, cure: 270},     // 4.5h at 35-40°C
         ],
         'HY170': [
-            {min: -5, max: 0, work: 10, cure: 720},
-            {min: 1, max: 5, work: 10, cure: 180},
-            {min: 6, max: 10, work: 8, cure: 150},
-            {min: 11, max: 20, work: 5, cure: 90},
-            {min: 21, max: 30, work: 4, cure: 60},
-            {min: 31, max: 40, work: 3, cure: 45},
+            // HY 170 HYBRID - Fast cure times (per Hilti IFU)
+            {min: -5, max: 0, work: 10, cure: 720},      // 12h at -5 to 0°C
+            {min: 1, max: 5, work: 10, cure: 360},       // 6h at 1-5°C (interpolated)
+            {min: 6, max: 10, work: 8, cure: 150},       // 2.5h at 6-10°C
+            {min: 11, max: 20, work: 5, cure: 90},       // 1.5h at 11-20°C
+            {min: 21, max: 30, work: 4, cure: 60},       // 1h at 21-30°C
+            {min: 31, max: 40, work: 3, cure: 45},       // 45min at 31-40°C
         ]
     };
 
@@ -1534,9 +1537,17 @@
                 opacity: 0.7;
                 border-radius: 3px;
                 border: 1px solid rgba(255,255,255,0.3);
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 0 4px;
+                box-sizing: border-box;
             `;
-            // Add label
-            rangeDiv.innerHTML = `<span style="font-size:10px;color:#fff;padding:2px;white-space:nowrap">${productCodes[i]}</span>`;
+            // Add label with product code AND range numbers
+            rangeDiv.innerHTML = `
+                <span style="font-size:9px;color:#fff;white-space:nowrap;font-weight:bold">${productCodes[i]}</span>
+                <span style="font-size:8px;color:rgba(255,255,255,0.9);white-space:nowrap">${range[0]}-${range[1]}</span>
+            `;
             diagram.appendChild(rangeDiv);
         });
 
