@@ -2035,7 +2035,7 @@
             row.getCell(3).value = { formula: `B${rowNum}/1000` };
             row.getCell(4).value = { formula: `B${rowNum}*${SS_FACTOR}` };
             // Breakdown: TEXTJOIN formula to list all items with metres
-            row.getCell(5).value = { formula: `TEXTJOIN(", ",TRUE,IF('${info.name}'!A2:A${endRow}<>"",${info.name}&" "&'${info.name}'!A2:A${endRow}&" - "&'${info.name}'!C2:C${endRow}&"m",""))` };
+            row.getCell(5).value = { formula: `TEXTJOIN(", ",TRUE,IF('${info.name}'!A2:A${endRow}<>"",'${info.name}'!A2:A${endRow}&" - "&TEXT('${info.name}'!C2:C${endRow},"0.#")&"m",""))` };
 
             for (let c = 1; c <= 5; c++) {
                 row.getCell(c).alignment = { horizontal: c === 5 ? 'left' : 'center', vertical: 'middle' };
