@@ -1803,7 +1803,30 @@
             listCol++;
         });
 
-        // Create data sheets with different colors and dropdowns
+        // Create lookup sheet for VLOOKUP formulas
+        const lookupSheet = workbook.addWorksheet('_Lookup');
+        lookupSheet.state = 'veryHidden';
+        let lookupCol = 1;
+        const lookupRanges = {};
+
+        // Populate lookup sheet with size -> mass data
+        sheetOrder.forEach(type => {
+            const typeData = STEEL_SECTIONS[type];
+            const entries = Object.entries(typeData.data);
+
+            entries.forEach(([size, mass], idx) => {
+                lookupSheet.getCell(idx + 1, lookupCol).value = size;
+                lookupSheet.getCell(idx + 1, lookupCol + 1).value = mass;
+            });
+
+            const colLetter1 = String.fromCharCode(64 + lookupCol);
+            const colLetter2 = String.fromCharCode(64 + lookupCol + 1);
+            lookupRanges[type] = `_Lookup!$${colLetter1}$1:$${colLetter2}$${entries.length}`;
+            lookupCol += 2;
+        });
+
+        // Create data sheets with different colors and dropdowns (EMPTY rows)
+        const NUM_EMPTY_ROWS = 50; // 50 empty rows for user input
         sheetOrder.forEach(type => {
             const typeData = STEEL_SECTIONS[type];
             const ws = workbook.addWorksheet(type);
@@ -1823,13 +1846,21 @@
                 cell.border = border;
             });
 
-            // Data rows with input highlighting and dropdowns
-            entries.forEach(([size, mass], idx) => {
+            // Empty data rows with dropdowns and VLOOKUP for mass
+            for (let idx = 0; idx < NUM_EMPTY_ROWS; idx++) {
                 const rowNum = idx + 2;
-                const row = ws.addRow([size, mass, null, { formula: `IF(C${rowNum}>0,B${rowNum}*C${rowNum},"")` }]);
+                // Mass uses VLOOKUP from hidden sheet, Weight calculates if linear metres entered
+                const row = ws.addRow([
+                    null,
+                    { formula: `IF(A${rowNum}="","",VLOOKUP(A${rowNum},${lookupRanges[type]},2,FALSE))` },
+                    null,
+                    { formula: `IF(OR(A${rowNum}="",C${rowNum}=""),"",B${rowNum}*C${rowNum})` }
+                ]);
                 row.eachCell((cell, colNumber) => {
                     cell.alignment = { horizontal: 'center', vertical: 'middle' };
                     cell.border = border;
+                    // Column 1 (Size) is input - yellow
+                    if (colNumber === 1) cell.fill = inputFill;
                     // Column 3 (Linear Metres) is input - yellow
                     if (colNumber === 3) cell.fill = inputFill;
                     // Column 4 (Total Weight) is calculated - light blue
@@ -1845,7 +1876,7 @@
                     allowBlank: true,
                     formulae: [listRanges[type]]
                 };
-            });
+            }
 
             // Set column widths
             ws.getColumn(1).width = 25;
@@ -1856,7 +1887,7 @@
             // Freeze header
             ws.views = [{ state: 'frozen', ySplit: 1 }];
 
-            sheetInfo.push({ name: type, rows: entries.length });
+            sheetInfo.push({ name: type, rows: NUM_EMPTY_ROWS });
         });
 
         // Create Summary sheet at the beginning
@@ -1948,41 +1979,43 @@
         // Company Header
         const companyHeaderFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '1a365d' } };
 
-        summaryNew.mergeCells('A1:D1');
+        summaryNew.mergeCells('A1:E1');
         summaryNew.getCell('A1').value = 'J&M Art Steel Fabrication P/L';
         summaryNew.getCell('A1').font = { bold: true, size: 18, color: { argb: 'FFFFFF' } };
         summaryNew.getCell('A1').fill = companyHeaderFill;
         summaryNew.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
         summaryNew.getRow(1).height = 30;
 
-        summaryNew.mergeCells('A2:D2');
+        summaryNew.mergeCells('A2:E2');
         summaryNew.getCell('A2').value = 'Unit 2/ 28-30 Lillian Flower Place, Marrickville NSW 2204';
         summaryNew.getCell('A2').font = { size: 11, color: { argb: 'FFFFFF' } };
         summaryNew.getCell('A2').fill = companyHeaderFill;
         summaryNew.getCell('A2').alignment = { horizontal: 'center', vertical: 'middle' };
 
-        summaryNew.mergeCells('A3:D3');
+        summaryNew.mergeCells('A3:E3');
         summaryNew.getCell('A3').value = 'T: 02 8021 6707  |  M: 0421 470 043';
         summaryNew.getCell('A3').font = { size: 11, color: { argb: 'FFFFFF' } };
         summaryNew.getCell('A3').fill = companyHeaderFill;
         summaryNew.getCell('A3').alignment = { horizontal: 'center', vertical: 'middle' };
 
         // Title
-        summaryNew.mergeCells('A5:D5');
+        summaryNew.mergeCells('A5:E5');
         summaryNew.getCell('A5').value = 'STEEL WEIGHT SUMMARY';
         summaryNew.getCell('A5').font = titleFont;
         summaryNew.getCell('A5').alignment = { horizontal: 'center' };
 
-        summaryNew.mergeCells('A7:D7');
+        summaryNew.mergeCells('A7:E7');
         summaryNew.getCell('A7').value = 'Enter linear metres in each sheet. Totals update automatically.';
         summaryNew.getCell('A7').font = { italic: true };
 
-        summaryNew.mergeCells('A8:D8');
+        summaryNew.mergeCells('A8:E8');
         summaryNew.getCell('A8').value = 'Stainless Steel weight = Mild Steel × 1.02 (density difference)';
         summaryNew.getCell('A8').font = { italic: true };
 
+        // Headers including Breakdown column
+        const newSummaryHeaders = ['Category', 'Total Weight (kg)', 'Weight (tonnes)', 'Stainless (kg)', 'Breakdown'];
         const newHeaderRow = summaryNew.getRow(10);
-        summaryHeaders.forEach((h, idx) => {
+        newSummaryHeaders.forEach((h, idx) => {
             const cell = newHeaderRow.getCell(idx + 1);
             cell.value = h;
             cell.fill = idx === 3 ? ssHeaderFill : summaryHeaderFill;
@@ -2001,11 +2034,13 @@
             row.getCell(2).value = { formula: `SUM('${info.name}'!D2:D${endRow})` };
             row.getCell(3).value = { formula: `B${rowNum}/1000` };
             row.getCell(4).value = { formula: `B${rowNum}*${SS_FACTOR}` };
+            // Breakdown: TEXTJOIN formula to list all items with metres
+            row.getCell(5).value = { formula: `TEXTJOIN(", ",TRUE,IF('${info.name}'!A2:A${endRow}<>"",${info.name}&" "&'${info.name}'!A2:A${endRow}&" - "&'${info.name}'!C2:C${endRow}&"m",""))` };
 
-            row.eachCell(cell => {
-                cell.alignment = { horizontal: 'center', vertical: 'middle' };
-                cell.border = border;
-            });
+            for (let c = 1; c <= 5; c++) {
+                row.getCell(c).alignment = { horizontal: c === 5 ? 'left' : 'center', vertical: 'middle' };
+                row.getCell(c).border = border;
+            }
             row.getCell(2).numFmt = '#,##0.00';
             row.getCell(3).numFmt = '#,##0.000';
             row.getCell(4).numFmt = '#,##0.00';
@@ -2021,20 +2056,22 @@
         newTotalRow.getCell(2).value = { formula: `SUM(B${newStartDataRow}:B${newEndDataRow})` };
         newTotalRow.getCell(3).value = { formula: `SUM(C${newStartDataRow}:C${newEndDataRow})` };
         newTotalRow.getCell(4).value = { formula: `SUM(D${newStartDataRow}:D${newEndDataRow})` };
+        newTotalRow.getCell(5).value = '';
 
-        newTotalRow.eachCell(cell => {
-            cell.font = { bold: true };
-            cell.alignment = { horizontal: 'center', vertical: 'middle' };
-            cell.border = border;
-        });
+        for (let c = 1; c <= 5; c++) {
+            newTotalRow.getCell(c).font = { bold: true };
+            newTotalRow.getCell(c).alignment = { horizontal: 'center', vertical: 'middle' };
+            newTotalRow.getCell(c).border = border;
+        }
         newTotalRow.getCell(2).numFmt = '#,##0.00';
         newTotalRow.getCell(3).numFmt = '#,##0.000';
         newTotalRow.getCell(4).numFmt = '#,##0.00';
 
-        summaryNew.getColumn(1).width = 20;
-        summaryNew.getColumn(2).width = 18;
-        summaryNew.getColumn(3).width = 18;
-        summaryNew.getColumn(4).width = 18;
+        summaryNew.getColumn(1).width = 12;
+        summaryNew.getColumn(2).width = 16;
+        summaryNew.getColumn(3).width = 16;
+        summaryNew.getColumn(4).width = 16;
+        summaryNew.getColumn(5).width = 60;
         summaryNew.views = [{ state: 'frozen', ySplit: 10 }];
 
         // Generate and download
@@ -2047,7 +2084,7 @@
         a.click();
         URL.revokeObjectURL(url);
 
-        document.getElementById('igorConsole').textContent = '⚖️ Excel downloaded! J&M Art Steel header, dropdowns, colored sheets included.';
+        document.getElementById('igorConsole').textContent = '⚖️ Excel downloaded! Empty rows with dropdowns, breakdown column in Summary.';
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
