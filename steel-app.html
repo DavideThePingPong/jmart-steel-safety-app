@@ -1817,13 +1817,6 @@
                 row.getCell(2).numFmt = '0.00';
                 row.getCell(3).numFmt = '0.00';
                 row.getCell(4).numFmt = '#,##0.00';
-
-                // Add dropdown for Size column (column 1)
-                row.getCell(1).dataValidation = {
-                    type: 'list',
-                    allowBlank: true,
-                    formulae: ['"' + sizeList.join(',') + '"']
-                };
             });
 
             // Set column widths
@@ -2026,7 +2019,7 @@
         a.click();
         URL.revokeObjectURL(url);
 
-        document.getElementById('igorConsole').textContent = '⚖️ Excel downloaded! J&M header, dropdowns, colored sheets included.';
+        document.getElementById('igorConsole').textContent = '⚖️ Excel downloaded! J&M header, colored sheets, stainless column included.';
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
