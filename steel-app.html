@@ -1781,11 +1781,12 @@
         const sheetOrder = ['SHS', 'RHS', 'CHS', 'EA', 'UA', 'FB', 'RB', 'SB', 'UB', 'WB', 'UC', 'WC', 'PFC', 'TFB'];
         const sheetInfo = [];
 
-        // Create data sheets with different colors
+        // Create data sheets with different colors and dropdowns
         sheetOrder.forEach(type => {
             const typeData = STEEL_SECTIONS[type];
             const ws = workbook.addWorksheet(type);
             const entries = Object.entries(typeData.data);
+            const sizeList = entries.map(([size]) => size);
 
             // Set tab color
             ws.properties.tabColor = { argb: sheetColors[type] };
@@ -1816,6 +1817,13 @@
                 row.getCell(2).numFmt = '0.00';
                 row.getCell(3).numFmt = '0.00';
                 row.getCell(4).numFmt = '#,##0.00';
+
+                // Add dropdown for Size column (column 1)
+                row.getCell(1).dataValidation = {
+                    type: 'list',
+                    allowBlank: true,
+                    formulae: ['"' + sizeList.join(',') + '"']
+                };
             });
 
             // Set column widths
@@ -1916,21 +1924,43 @@
         const summaryNew = workbook.addWorksheet('Summary');
 
         // Re-create Summary (ExcelJS doesn't support moving sheets easily)
-        // Copy content...
+        // Company Header
+        const companyHeaderFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '1a365d' } };
+
         summaryNew.mergeCells('A1:D1');
-        summaryNew.getCell('A1').value = 'STEEL WEIGHT SUMMARY';
-        summaryNew.getCell('A1').font = titleFont;
-        summaryNew.getCell('A1').alignment = { horizontal: 'center' };
+        summaryNew.getCell('A1').value = 'J&M STEEL SOLUTIONS';
+        summaryNew.getCell('A1').font = { bold: true, size: 18, color: { argb: 'FFFFFF' } };
+        summaryNew.getCell('A1').fill = companyHeaderFill;
+        summaryNew.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
+        summaryNew.getRow(1).height = 30;
+
+        summaryNew.mergeCells('A2:D2');
+        summaryNew.getCell('A2').value = '27 Antimony St, Carole Park QLD 4300';
+        summaryNew.getCell('A2').font = { size: 11, color: { argb: 'FFFFFF' } };
+        summaryNew.getCell('A2').fill = companyHeaderFill;
+        summaryNew.getCell('A2').alignment = { horizontal: 'center', vertical: 'middle' };
 
         summaryNew.mergeCells('A3:D3');
-        summaryNew.getCell('A3').value = 'Enter linear metres in each sheet. Totals update automatically.';
-        summaryNew.getCell('A3').font = { italic: true };
+        summaryNew.getCell('A3').value = 'ABN: 39 655 343 225';
+        summaryNew.getCell('A3').font = { size: 11, color: { argb: 'FFFFFF' } };
+        summaryNew.getCell('A3').fill = companyHeaderFill;
+        summaryNew.getCell('A3').alignment = { horizontal: 'center', vertical: 'middle' };
 
-        summaryNew.mergeCells('A4:D4');
-        summaryNew.getCell('A4').value = 'Stainless Steel weight = Mild Steel × 1.02 (density difference)';
-        summaryNew.getCell('A4').font = { italic: true };
+        // Title
+        summaryNew.mergeCells('A5:D5');
+        summaryNew.getCell('A5').value = 'STEEL WEIGHT SUMMARY';
+        summaryNew.getCell('A5').font = titleFont;
+        summaryNew.getCell('A5').alignment = { horizontal: 'center' };
 
-        const newHeaderRow = summaryNew.getRow(6);
+        summaryNew.mergeCells('A7:D7');
+        summaryNew.getCell('A7').value = 'Enter linear metres in each sheet. Totals update automatically.';
+        summaryNew.getCell('A7').font = { italic: true };
+
+        summaryNew.mergeCells('A8:D8');
+        summaryNew.getCell('A8').value = 'Stainless Steel weight = Mild Steel × 1.02 (density difference)';
+        summaryNew.getCell('A8').font = { italic: true };
+
+        const newHeaderRow = summaryNew.getRow(10);
         summaryHeaders.forEach((h, idx) => {
             const cell = newHeaderRow.getCell(idx + 1);
             cell.value = h;
@@ -1940,8 +1970,9 @@
             cell.border = border;
         });
 
+        // Data rows start at row 11 (after header at row 10)
         sheetInfo.forEach((info, idx) => {
-            const rowNum = idx + 7;
+            const rowNum = idx + 11;
             const endRow = info.rows + 1;
             const row = summaryNew.getRow(rowNum);
 
@@ -1959,12 +1990,16 @@
             row.getCell(4).numFmt = '#,##0.00';
         });
 
-        const newTotalRow = summaryNew.getRow(totalRowNum);
+        // Grand total row for new summary
+        const newStartDataRow = 11;
+        const newEndDataRow = 10 + sheetInfo.length;
+        const newTotalRowNum = newEndDataRow + 2;
+        const newTotalRow = summaryNew.getRow(newTotalRowNum);
         newTotalRow.getCell(1).value = 'GRAND TOTAL';
         newTotalRow.getCell(1).font = { bold: true, size: 12 };
-        newTotalRow.getCell(2).value = { formula: `SUM(B${startDataRow}:B${endDataRow})` };
-        newTotalRow.getCell(3).value = { formula: `SUM(C${startDataRow}:C${endDataRow})` };
-        newTotalRow.getCell(4).value = { formula: `SUM(D${startDataRow}:D${endDataRow})` };
+        newTotalRow.getCell(2).value = { formula: `SUM(B${newStartDataRow}:B${newEndDataRow})` };
+        newTotalRow.getCell(3).value = { formula: `SUM(C${newStartDataRow}:C${newEndDataRow})` };
+        newTotalRow.getCell(4).value = { formula: `SUM(D${newStartDataRow}:D${newEndDataRow})` };
 
         newTotalRow.eachCell(cell => {
             cell.font = { bold: true };
@@ -1979,7 +2014,7 @@
         summaryNew.getColumn(2).width = 18;
         summaryNew.getColumn(3).width = 18;
         summaryNew.getColumn(4).width = 18;
-        summaryNew.views = [{ state: 'frozen', ySplit: 6 }];
+        summaryNew.views = [{ state: 'frozen', ySplit: 10 }];
 
         // Generate and download
         const buffer = await workbook.xlsx.writeBuffer();
@@ -1991,7 +2026,7 @@
         a.click();
         URL.revokeObjectURL(url);
 
-        document.getElementById('igorConsole').textContent = '⚖️ Excel downloaded! Different colors per sheet, yellow input cells, stainless column included.';
+        document.getElementById('igorConsole').textContent = '⚖️ Excel downloaded! J&M header, dropdowns, colored sheets included.';
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
