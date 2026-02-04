@@ -1836,10 +1836,10 @@
             ws.properties.tabColor = { argb: sheetColors[type] };
             const sheetHeaderFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: sheetColors[type] } };
 
-            // Headers with sheet-specific color
-            const headers = ['Size (mm)', 'Mass (kg/m)', 'Linear Metres', 'Total Weight (kg)'];
+            // Headers with sheet-specific color (include hidden Breakdown column E)
+            const headers = ['Size (mm)', 'Mass (kg/m)', 'Linear Metres', 'Total Weight (kg)', 'Breakdown'];
             const headerRow = ws.addRow(headers);
-            headerRow.eachCell(cell => {
+            headerRow.eachCell((cell, colNumber) => {
                 cell.fill = sheetHeaderFill;
                 cell.font = headerFont;
                 cell.alignment = { horizontal: 'center', vertical: 'middle' };
@@ -1850,11 +1850,13 @@
             for (let idx = 0; idx < NUM_EMPTY_ROWS; idx++) {
                 const rowNum = idx + 2;
                 // Mass uses VLOOKUP from hidden sheet, Weight calculates if linear metres entered
+                // Column E creates breakdown text for Summary TEXTJOIN
                 const row = ws.addRow([
                     null,
                     { formula: `IF(A${rowNum}="","",VLOOKUP(A${rowNum},${lookupRanges[type]},2,FALSE))` },
                     null,
-                    { formula: `IF(OR(A${rowNum}="",C${rowNum}=""),"",B${rowNum}*C${rowNum})` }
+                    { formula: `IF(OR(A${rowNum}="",C${rowNum}=""),"",B${rowNum}*C${rowNum})` },
+                    { formula: `IF(OR(A${rowNum}="",C${rowNum}=""),"",A${rowNum}&" - "&TEXT(C${rowNum},"0.#")&"m")` }
                 ]);
                 row.eachCell((cell, colNumber) => {
                     cell.alignment = { horizontal: 'center', vertical: 'middle' };
@@ -1878,11 +1880,13 @@
                 };
             }
 
-            // Set column widths
+            // Set column widths (Column E hidden for breakdown data)
             ws.getColumn(1).width = 25;
             ws.getColumn(2).width = 15;
             ws.getColumn(3).width = 15;
             ws.getColumn(4).width = 18;
+            ws.getColumn(5).width = 0.1; // Hide column E (breakdown helper)
+            ws.getColumn(5).hidden = true;
 
             // Freeze header
             ws.views = [{ state: 'frozen', ySplit: 1 }];
@@ -2034,8 +2038,10 @@
             row.getCell(2).value = { formula: `SUM('${info.name}'!D2:D${endRow})` };
             row.getCell(3).value = { formula: `B${rowNum}/1000` };
             row.getCell(4).value = { formula: `B${rowNum}*${SS_FACTOR}` };
-            // Breakdown: TEXTJOIN formula to list all items with metres
-            row.getCell(5).value = { formula: `TEXTJOIN(", ",TRUE,IF('${info.name}'!A2:A${endRow}<>"",'${info.name}'!A2:A${endRow}&" - "&TEXT('${info.name}'!C2:C${endRow},"0.#")&"m",""))` };
+            // Breakdown: Add a helper column E on each member sheet that concatenates size + metres
+            // Then use TEXTJOIN to combine all non-empty values from that column
+            const breakdownFormula = `_xlfn.TEXTJOIN(", ",TRUE,'${info.name}'!E2:E${endRow})`;
+            row.getCell(5).value = { formula: breakdownFormula };
 
             for (let c = 1; c <= 5; c++) {
                 row.getCell(c).alignment = { horizontal: c === 5 ? 'left' : 'center', vertical: 'middle' };
