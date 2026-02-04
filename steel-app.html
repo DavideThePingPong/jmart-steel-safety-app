@@ -1747,11 +1747,29 @@
 
         const SS_FACTOR = 1.02; // Stainless steel factor (density 8000 vs 7850 kg/m³)
 
-        // Colors for styling
-        const headerFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '2F5496' } };
+        // Different colors for each sheet type
+        const sheetColors = {
+            'SHS': '1E88E5',  // Blue
+            'RHS': '43A047',  // Green
+            'CHS': 'E53935',  // Red
+            'EA':  'FB8C00',  // Orange
+            'UA':  '8E24AA',  // Purple
+            'FB':  '00ACC1',  // Cyan
+            'RB':  '6D4C41',  // Brown
+            'SB':  '546E7A',  // Blue Grey
+            'UB':  '5E35B1',  // Deep Purple
+            'WB':  '00897B',  // Teal
+            'UC':  'D81B60',  // Pink
+            'WC':  '3949AB',  // Indigo
+            'PFC': 'F4511E',  // Deep Orange
+            'TFB': '7CB342'   // Light Green
+        };
         const headerFont = { bold: true, color: { argb: 'FFFFFF' } };
         const ssHeaderFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '4A7C59' } };
+        const summaryHeaderFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '2F5496' } };
         const titleFont = { bold: true, size: 16 };
+        const inputFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF9C4' } };  // Light yellow
+        const calcFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'E3F2FD' } };   // Light blue
         const border = {
             top: { style: 'thin' },
             left: { style: 'thin' },
@@ -1763,33 +1781,41 @@
         const sheetOrder = ['SHS', 'RHS', 'CHS', 'EA', 'UA', 'FB', 'RB', 'SB', 'UB', 'WB', 'UC', 'WC', 'PFC', 'TFB'];
         const sheetInfo = [];
 
-        // Create data sheets
+        // Create data sheets with different colors
         sheetOrder.forEach(type => {
             const typeData = STEEL_SECTIONS[type];
             const ws = workbook.addWorksheet(type);
             const entries = Object.entries(typeData.data);
 
-            // Headers
+            // Set tab color
+            ws.properties.tabColor = { argb: sheetColors[type] };
+            const sheetHeaderFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: sheetColors[type] } };
+
+            // Headers with sheet-specific color
             const headers = ['Size (mm)', 'Mass (kg/m)', 'Linear Metres', 'Total Weight (kg)'];
             const headerRow = ws.addRow(headers);
             headerRow.eachCell(cell => {
-                cell.fill = headerFill;
+                cell.fill = sheetHeaderFill;
                 cell.font = headerFont;
                 cell.alignment = { horizontal: 'center', vertical: 'middle' };
                 cell.border = border;
             });
 
-            // Data rows
+            // Data rows with input highlighting
             entries.forEach(([size, mass], idx) => {
                 const rowNum = idx + 2;
                 const row = ws.addRow([size, mass, null, { formula: `IF(C${rowNum}>0,B${rowNum}*C${rowNum},"")` }]);
-                row.eachCell(cell => {
+                row.eachCell((cell, colNumber) => {
                     cell.alignment = { horizontal: 'center', vertical: 'middle' };
                     cell.border = border;
+                    // Column 3 (Linear Metres) is input - yellow
+                    if (colNumber === 3) cell.fill = inputFill;
+                    // Column 4 (Total Weight) is calculated - light blue
+                    if (colNumber === 4) cell.fill = calcFill;
                 });
                 row.getCell(2).numFmt = '0.00';
                 row.getCell(3).numFmt = '0.00';
-                row.getCell(4).numFmt = '0.00';
+                row.getCell(4).numFmt = '#,##0.00';
             });
 
             // Set column widths
@@ -1829,7 +1855,7 @@
         summaryHeaders.forEach((h, idx) => {
             const cell = summaryHeaderRow.getCell(idx + 1);
             cell.value = h;
-            cell.fill = idx === 3 ? ssHeaderFill : headerFill;
+            cell.fill = idx === 3 ? ssHeaderFill : summaryHeaderFill;
             cell.font = headerFont;
             cell.alignment = { horizontal: 'center', vertical: 'middle' };
             cell.border = border;
@@ -1908,7 +1934,7 @@
         summaryHeaders.forEach((h, idx) => {
             const cell = newHeaderRow.getCell(idx + 1);
             cell.value = h;
-            cell.fill = idx === 3 ? ssHeaderFill : headerFill;
+            cell.fill = idx === 3 ? ssHeaderFill : summaryHeaderFill;
             cell.font = headerFont;
             cell.alignment = { horizontal: 'center', vertical: 'middle' };
             cell.border = border;
@@ -1965,7 +1991,7 @@
         a.click();
         URL.revokeObjectURL(url);
 
-        document.getElementById('igorConsole').textContent = '⚖️ Excel calculator downloaded! Blue headers, stainless steel column, all formatting included.';
+        document.getElementById('igorConsole').textContent = '⚖️ Excel downloaded! Different colors per sheet, yellow input cells, stainless column included.';
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
