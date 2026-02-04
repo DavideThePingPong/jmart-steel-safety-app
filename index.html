@@ -1791,7 +1791,51 @@
           const configSnap = await firebaseDb.ref('jmart-safety/config/appPasswordHash').once('value');
           this.APP_PASSWORD_HASH = configSnap.val();
 
-          // Check if this device is registered - use same paths as DeviceAuth
+          // MIGRATION: Check for devices in old flat structure and migrate to hierarchical
+          const oldDeviceSnap = await firebaseDb.ref('jmart-safety/devices/' + this.deviceId).once('value');
+          if (oldDeviceSnap.exists()) {
+            const oldData = oldDeviceSnap.val();
+            // Only migrate if it has status field (old format) and not in a subfolder
+            if (oldData.status && typeof oldData.status === 'string') {
+              console.log('Migrating device from old path to new hierarchical structure:', oldData.status);
+              const targetPath = 'jmart-safety/devices/' + oldData.status + '/' + this.deviceId;
+              // Copy to new path
+              await firebaseDb.ref(targetPath).set({
+                ...oldData,
+                id: this.deviceId,
+                migratedAt: new Date().toISOString(),
+                migratedFrom: 'flat-structure'
+              });
+              // Remove from old path
+              await firebaseDb.ref('jmart-safety/devices/' + this.deviceId).remove();
+              console.log('Migration complete for device:', this.deviceId);
+            }
+          }
+
+          // Also migrate any other devices in flat structure (for admin devices)
+          // This runs once to clean up all old devices
+          const allDevicesSnap = await firebaseDb.ref('jmart-safety/devices').once('value');
+          if (allDevicesSnap.exists()) {
+            const allDevices = allDevicesSnap.val();
+            for (const [key, value] of Object.entries(allDevices)) {
+              // Skip hierarchical folders
+              if (key === 'pending' || key === 'approved' || key === 'denied') continue;
+              // Skip if not an object with status
+              if (!value || typeof value !== 'object' || !value.status) continue;
+
+              console.log('Migrating device:', key, 'status:', value.status);
+              const targetPath = 'jmart-safety/devices/' + value.status + '/' + key;
+              await firebaseDb.ref(targetPath).set({
+                ...value,
+                id: key,
+                migratedAt: new Date().toISOString(),
+                migratedFrom: 'flat-structure'
+              });
+              await firebaseDb.ref('jmart-safety/devices/' + key).remove();
+            }
+          }
+
+          // Check if this device is registered - use hierarchical paths
           // Check approved devices first
           const approvedSnap = await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId).once('value');
           if (approvedSnap.exists()) {
