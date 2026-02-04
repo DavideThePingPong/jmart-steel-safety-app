@@ -1781,12 +1781,33 @@
         const sheetOrder = ['SHS', 'RHS', 'CHS', 'EA', 'UA', 'FB', 'RB', 'SB', 'UB', 'WB', 'UC', 'WC', 'PFC', 'TFB'];
         const sheetInfo = [];
 
+        // Create hidden Lists sheet for dropdown references
+        const listsSheet = workbook.addWorksheet('_Lists');
+        listsSheet.state = 'veryHidden';
+        let listCol = 1;
+        const listRanges = {};
+
+        // Populate Lists sheet with all section sizes
+        sheetOrder.forEach(type => {
+            const typeData = STEEL_SECTIONS[type];
+            const entries = Object.entries(typeData.data);
+            const sizes = entries.map(([size]) => size);
+
+            // Write sizes to column
+            sizes.forEach((size, idx) => {
+                listsSheet.getCell(idx + 1, listCol).value = size;
+            });
+
+            // Store range reference for this type
+            listRanges[type] = `_Lists!$${String.fromCharCode(64 + listCol)}$1:$${String.fromCharCode(64 + listCol)}$${sizes.length}`;
+            listCol++;
+        });
+
         // Create data sheets with different colors and dropdowns
         sheetOrder.forEach(type => {
             const typeData = STEEL_SECTIONS[type];
             const ws = workbook.addWorksheet(type);
             const entries = Object.entries(typeData.data);
-            const sizeList = entries.map(([size]) => size);
 
             // Set tab color
             ws.properties.tabColor = { argb: sheetColors[type] };
@@ -1802,7 +1823,7 @@
                 cell.border = border;
             });
 
-            // Data rows with input highlighting
+            // Data rows with input highlighting and dropdowns
             entries.forEach(([size, mass], idx) => {
                 const rowNum = idx + 2;
                 const row = ws.addRow([size, mass, null, { formula: `IF(C${rowNum}>0,B${rowNum}*C${rowNum},"")` }]);
@@ -1817,6 +1838,13 @@
                 row.getCell(2).numFmt = '0.00';
                 row.getCell(3).numFmt = '0.00';
                 row.getCell(4).numFmt = '#,##0.00';
+
+                // Add dropdown for Size column using range reference
+                row.getCell(1).dataValidation = {
+                    type: 'list',
+                    allowBlank: true,
+                    formulae: [listRanges[type]]
+                };
             });
 
             // Set column widths
@@ -1921,20 +1949,20 @@
         const companyHeaderFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '1a365d' } };
 
         summaryNew.mergeCells('A1:D1');
-        summaryNew.getCell('A1').value = 'J&M STEEL SOLUTIONS';
+        summaryNew.getCell('A1').value = 'J&M Art Steel Fabrication P/L';
         summaryNew.getCell('A1').font = { bold: true, size: 18, color: { argb: 'FFFFFF' } };
         summaryNew.getCell('A1').fill = companyHeaderFill;
         summaryNew.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
         summaryNew.getRow(1).height = 30;
 
         summaryNew.mergeCells('A2:D2');
-        summaryNew.getCell('A2').value = '27 Antimony St, Carole Park QLD 4300';
+        summaryNew.getCell('A2').value = 'Unit 2/ 28-30 Lillian Flower Place, Marrickville NSW 2204';
         summaryNew.getCell('A2').font = { size: 11, color: { argb: 'FFFFFF' } };
         summaryNew.getCell('A2').fill = companyHeaderFill;
         summaryNew.getCell('A2').alignment = { horizontal: 'center', vertical: 'middle' };
 
         summaryNew.mergeCells('A3:D3');
-        summaryNew.getCell('A3').value = 'ABN: 39 655 343 225';
+        summaryNew.getCell('A3').value = 'T: 02 8021 6707  |  M: 0421 470 043';
         summaryNew.getCell('A3').font = { size: 11, color: { argb: 'FFFFFF' } };
         summaryNew.getCell('A3').fill = companyHeaderFill;
         summaryNew.getCell('A3').alignment = { horizontal: 'center', vertical: 'middle' };
@@ -2019,7 +2047,7 @@
         a.click();
         URL.revokeObjectURL(url);
 
-        document.getElementById('igorConsole').textContent = '⚖️ Excel downloaded! J&M header, colored sheets, stainless column included.';
+        document.getElementById('igorConsole').textContent = '⚖️ Excel downloaded! J&M Art Steel header, dropdowns, colored sheets included.';
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
