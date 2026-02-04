@@ -5,6 +5,163 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>STEEL - AI Trade Documentation Suite</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔩</text></svg>">
+
+    <!-- Firebase SDK for Device Authorization (shared with Safety App) -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+
+    <script>
+    // ═══════════════════════════════════════════════════════════════════════════
+    // FIREBASE CONFIGURATION (Shared with JMart Safety App)
+    // ═══════════════════════════════════════════════════════════════════════════
+    const firebaseConfig = {
+        apiKey: "AIzaSyAECfytYqggzmQ-Kxm_vqQWlEnBJMXz5H4",
+        authDomain: "jmart-steel-safety.firebaseapp.com",
+        databaseURL: "https://jmart-steel-safety-default-rtdb.asia-southeast1.firebasedatabase.app",
+        projectId: "jmart-steel-safety",
+        storageBucket: "jmart-steel-safety.firebasestorage.app",
+        messagingSenderId: "920798274486",
+        appId: "1:920798274486:web:9d6cdd8853d82280665717"
+    };
+
+    let firebaseApp = null;
+    let firebaseDb = null;
+
+    try {
+        firebaseApp = firebase.initializeApp(firebaseConfig);
+        firebaseDb = firebase.database();
+        console.log('🔥 Firebase connected');
+    } catch (error) {
+        console.warn('Firebase error:', error);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // DEVICE AUTHORIZATION SYSTEM
+    // Same system as Safety App - approved devices can use both apps
+    // ═══════════════════════════════════════════════════════════════════════════
+    const SteelAuth = {
+        deviceId: null,
+        isApproved: false,
+        isAdmin: false,
+
+        generateDeviceId() {
+            const stored = localStorage.getItem('jmart-device-id');
+            if (stored) { this.deviceId = stored; return stored; }
+
+            const fingerprint = [
+                navigator.userAgent, navigator.language,
+                screen.width + 'x' + screen.height, screen.colorDepth,
+                new Date().getTimezoneOffset(), navigator.platform
+            ].join('|');
+
+            let hash = 0;
+            for (let i = 0; i < fingerprint.length; i++) {
+                hash = ((hash << 5) - hash) + fingerprint.charCodeAt(i);
+                hash = hash & hash;
+            }
+
+            this.deviceId = 'DEV-' + Math.abs(hash).toString(36).toUpperCase() + '-' + Date.now().toString(36).toUpperCase();
+            localStorage.setItem('jmart-device-id', this.deviceId);
+            return this.deviceId;
+        },
+
+        getDeviceInfo() {
+            const ua = navigator.userAgent;
+            let deviceType = 'Unknown';
+            if (/iPhone/i.test(ua)) deviceType = 'iPhone';
+            else if (/iPad/i.test(ua)) deviceType = 'iPad';
+            else if (/Android/i.test(ua)) deviceType = 'Android';
+            else if (/Windows/i.test(ua)) deviceType = 'Windows';
+            else if (/Mac/i.test(ua)) deviceType = 'Mac';
+
+            return { id: this.deviceId, type: deviceType, app: 'STEEL Command Center', registeredAt: new Date().toISOString() };
+        },
+
+        async init() {
+            this.generateDeviceId();
+            console.log('🔐 Device ID:', this.deviceId);
+
+            if (!firebaseDb) {
+                // Offline mode - allow access
+                this.isApproved = true;
+                this.isAdmin = true;
+                return { approved: true, offline: true };
+            }
+
+            try {
+                // Check if device is approved (same path as Safety App)
+                const snap = await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId).once('value');
+                if (snap.exists()) {
+                    const data = snap.val();
+                    this.isApproved = true;
+                    this.isAdmin = data.isAdmin || false;
+                    // Update last seen
+                    await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId + '/lastSeen').set(new Date().toISOString());
+                    await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId + '/lastApp').set('STEEL');
+                    console.log('✅ Device approved, admin:', this.isAdmin);
+                    return { approved: true, admin: this.isAdmin };
+                }
+
+                // Check if first device (auto-approve as admin)
+                const allSnap = await firebaseDb.ref('jmart-safety/devices/approved').once('value');
+                if (!allSnap.exists() || allSnap.numChildren() === 0) {
+                    await this.registerAsApproved(true);
+                    return { approved: true, admin: true, firstDevice: true };
+                }
+
+                // Register as pending if not already
+                const pendingSnap = await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).once('value');
+                if (!pendingSnap.exists()) {
+                    await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).set({
+                        ...this.getDeviceInfo(),
+                        requestedAt: new Date().toISOString(),
+                        requestedFrom: 'STEEL'
+                    });
+                }
+
+                this.isApproved = false;
+                return { approved: false, pending: true };
+
+            } catch (error) {
+                console.error('Auth error:', error);
+                // On error, allow access (don't lock out users due to network issues)
+                this.isApproved = true;
+                return { approved: true, error: error.message };
+            }
+        },
+
+        async registerAsApproved(isAdmin) {
+            if (!firebaseDb) return;
+            await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId).set({
+                ...this.getDeviceInfo(),
+                isAdmin: isAdmin,
+                approvedAt: new Date().toISOString(),
+                approvedFrom: 'STEEL'
+            });
+            this.isApproved = true;
+            this.isAdmin = isAdmin;
+        },
+
+        showPendingScreen() {
+            document.body.innerHTML = `
+                <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;text-align:center;padding:20px;background:linear-gradient(135deg,#1a1a2e,#16213e,#0f3460);color:#fff;font-family:system-ui,sans-serif;">
+                    <div style="font-size:80px;margin-bottom:20px;">🔐</div>
+                    <h1 style="font-size:2rem;margin-bottom:10px;">Device Pending Approval</h1>
+                    <p style="color:#888;margin-bottom:20px;">Your device needs to be approved to access STEEL Command Center.</p>
+                    <div style="background:rgba(255,255,255,0.1);padding:20px;border-radius:12px;margin-bottom:20px;">
+                        <p style="font-size:14px;color:#aaa;">Device ID:</p>
+                        <code style="font-size:12px;color:#667eea;">${this.deviceId}</code>
+                    </div>
+                    <p style="color:#666;font-size:14px;">Ask an admin to approve this device in the JMart Safety App.</p>
+                    <button onclick="location.reload()" style="margin-top:20px;padding:12px 24px;background:linear-gradient(135deg,#667eea,#764ba2);border:none;border-radius:8px;color:#fff;cursor:pointer;font-size:14px;">
+                        🔄 Check Again
+                    </button>
+                </div>
+            `;
+        }
+    };
+    </script>
+
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -3083,7 +3240,15 @@
     // ═══════════════════════════════════════════════════════════════════════════
     // INITIALIZATION
     // ═══════════════════════════════════════════════════════════════════════════
-    document.addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('DOMContentLoaded', async () => {
+        // Check device authorization first
+        const authResult = await SteelAuth.init();
+        if (!authResult.approved) {
+            SteelAuth.showPendingScreen();
+            return; // Don't initialize app if not approved
+        }
+
+        // Device approved - initialize app
         hobartUpdate();
         // IGOR dropdowns are already in HTML
         chuckGetLocation(); // Get weather/temp on load
@@ -3091,6 +3256,9 @@
         chuckCalculate();
         brittanyUpdateSizes(); // Set up size buttons for default type
         brittanyCalculate();
+
+        // Log access
+        console.log('🔩 STEEL Command Center loaded. Admin:', SteelAuth.isAdmin);
     });
     </script>
 </body>
