@@ -560,6 +560,217 @@
             .brittany-params { flex-direction: column; }
             .load-input-row { flex-direction: column; }
         }
+
+        /* CHUCK Timer Styles */
+        .chuck-timer-section {
+            background: linear-gradient(135deg, rgba(34,197,94,0.2) 0%, rgba(22,163,74,0.2) 100%);
+            border: 2px solid rgba(34,197,94,0.5);
+            border-radius: 12px;
+            padding: 20px;
+            margin: 15px 0;
+            text-align: center;
+        }
+        .chuck-timer-section.curing {
+            background: linear-gradient(135deg, rgba(245,158,11,0.2) 0%, rgba(217,119,6,0.2) 100%);
+            border-color: rgba(245,158,11,0.5);
+            animation: pulse-border 2s infinite;
+        }
+        @keyframes pulse-border {
+            0%, 100% { border-color: rgba(245,158,11,0.5); }
+            50% { border-color: rgba(245,158,11,1); }
+        }
+        .chuck-timer-section.ready {
+            background: linear-gradient(135deg, rgba(34,197,94,0.3) 0%, rgba(22,163,74,0.3) 100%);
+            border-color: #22c55e;
+        }
+        .timer-display {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #22c55e;
+            font-family: monospace;
+        }
+        .timer-display.curing { color: #f59e0b; }
+        .timer-label {
+            font-size: 14px;
+            color: rgba(255,255,255,0.7);
+            margin-bottom: 5px;
+        }
+        .timer-ready-at {
+            font-size: 1.2rem;
+            color: #60a5fa;
+            margin: 10px 0;
+        }
+        .timer-btn {
+            padding: 15px 40px;
+            font-size: 16px;
+            font-weight: bold;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            margin: 10px 5px;
+            transition: all 0.2s;
+        }
+        .timer-btn.start {
+            background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+            color: white;
+        }
+        .timer-btn.stop {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            color: white;
+        }
+        .timer-btn:hover { transform: scale(1.05); }
+        .timer-progress {
+            height: 8px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 4px;
+            margin-top: 15px;
+            overflow: hidden;
+        }
+        .timer-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #f59e0b, #22c55e);
+            border-radius: 4px;
+            transition: width 1s linear;
+        }
+
+        /* HOBART Tube Finder Styles */
+        .hobart-tube-finder {
+            background: rgba(168,85,247,0.1);
+            border: 1px solid rgba(168,85,247,0.3);
+            border-radius: 10px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .tube-finder-title {
+            color: #a855f7;
+            font-weight: bold;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+        .tube-finder-inputs {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 15px;
+        }
+        .tube-finder-inputs .calc-input {
+            flex: 1;
+            min-width: 100px;
+        }
+        .tube-finder-results {
+            display: none;
+        }
+        .tube-finder-results.active { display: block; }
+        .tube-match {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 15px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 8px;
+            margin-bottom: 8px;
+            border-left: 4px solid #22c55e;
+        }
+        .tube-match.warning { border-left-color: #f59e0b; }
+        .tube-match.fail { border-left-color: #ef4444; }
+        .tube-match-bolt { font-weight: bold; color: #60a5fa; }
+        .tube-match-info { font-size: 12px; color: rgba(255,255,255,0.6); }
+        .tube-match-status { font-size: 20px; }
+
+        /* HOBART Grip Visual */
+        .grip-visual {
+            background: rgba(0,0,0,0.3);
+            border-radius: 10px;
+            padding: 15px;
+            margin: 15px 0;
+            text-align: center;
+        }
+        .grip-diagram {
+            position: relative;
+            height: 60px;
+            background: linear-gradient(90deg, #3b82f6 0%, #3b82f6 100%);
+            border-radius: 5px;
+            margin: 10px 20px;
+        }
+        .grip-range {
+            position: absolute;
+            top: 0;
+            height: 100%;
+            background: rgba(34,197,94,0.5);
+            border: 2px solid #22c55e;
+            border-radius: 3px;
+        }
+        .grip-marker {
+            position: absolute;
+            top: -25px;
+            transform: translateX(-50%);
+            font-size: 11px;
+            color: #fff;
+        }
+        .grip-current {
+            position: absolute;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            width: 4px;
+            height: 80%;
+            background: #f59e0b;
+            border-radius: 2px;
+        }
+        .grip-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: rgba(255,255,255,0.6);
+            margin-top: 5px;
+        }
+
+        /* BRITTANY Report Section */
+        .brittany-report-section {
+            background: rgba(59,130,246,0.1);
+            border: 1px solid rgba(59,130,246,0.3);
+            border-radius: 10px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .report-btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            border: none;
+            border-radius: 10px;
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        .report-btn:hover { transform: scale(1.02); }
+        .utilisation-display {
+            background: rgba(0,0,0,0.3);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 15px 0;
+            text-align: center;
+        }
+        .utilisation-big {
+            font-size: 3rem;
+            font-weight: bold;
+        }
+        .utilisation-big.ok { color: #22c55e; }
+        .utilisation-big.warning { color: #f59e0b; }
+        .utilisation-big.fail { color: #ef4444; }
+        .utilisation-status {
+            font-size: 1.5rem;
+            margin-top: 10px;
+        }
+        .safety-factor {
+            font-size: 14px;
+            color: rgba(255,255,255,0.6);
+            margin-top: 5px;
+        }
     </style>
 </head>
 <body>
@@ -587,6 +798,22 @@
             </div>
         </div>
 
+        <!-- Tube Finder - Reverse Lookup -->
+        <div class="hobart-tube-finder">
+            <div class="tube-finder-title">🔍 WHAT FITS THIS TUBE?</div>
+            <div class="tube-finder-inputs">
+                <div class="calc-input">
+                    <label>Wall Thickness (mm)</label>
+                    <input type="number" id="tubeWallThickness" placeholder="e.g. 6" min="1" max="50" oninput="hobartFindFits()">
+                </div>
+                <div class="calc-input">
+                    <label>Total Clamp (mm)</label>
+                    <input type="number" id="tubeClampTotal" placeholder="e.g. 12" min="1" max="100" oninput="hobartFindFits()">
+                </div>
+            </div>
+            <div class="tube-finder-results" id="tubeFitResults"></div>
+        </div>
+
         <label>Bolt Type</label>
         <div class="btn-group" id="hobartTypeButtons">
             <button class="btn active" onclick="hobartSetType('HB', this)">HB Hex Head</button>
@@ -605,6 +832,24 @@
         </div>
 
         <div class="result-grid" id="hobartResults"></div>
+
+        <!-- Visual Grip Range -->
+        <div class="grip-visual" id="hobartGripVisual">
+            <div style="color:#f59e0b;font-weight:bold;margin-bottom:10px">📏 Grip Range Visualization</div>
+            <div class="grip-diagram" id="gripDiagram">
+                <div class="grip-range" id="gripRange"></div>
+                <div class="grip-current" id="gripCurrent" style="display:none"></div>
+            </div>
+            <div class="grip-labels">
+                <span id="gripMinLabel">0mm</span>
+                <span id="gripMaxLabel">100mm</span>
+            </div>
+            <div style="margin-top:10px">
+                <label style="font-size:12px">Your clamping thickness:</label>
+                <input type="number" id="hobartClampInput" placeholder="mm" style="width:80px;padding:5px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:5px;color:#fff;margin-left:10px" oninput="hobartUpdateGripVisual()">
+                <span id="gripStatus" style="margin-left:10px;font-weight:bold"></span>
+            </div>
+        </div>
 
         <table class="data-table" id="hobartGripTable">
             <thead>
@@ -776,6 +1021,20 @@
             <div class="cart-option"><span class="cart-size">1400ml</span><span class="cart-count" id="chuckCart1400">-</span></div>
         </div>
 
+        <!-- Cure Timer Section -->
+        <div class="chuck-timer-section" id="chuckTimerSection">
+            <div class="timer-label">⏱️ CURE TIMER</div>
+            <div class="timer-display" id="chuckTimerDisplay">--:--:--</div>
+            <div class="timer-ready-at" id="chuckReadyAt">Set anchors and start timer</div>
+            <div>
+                <button class="timer-btn start" id="chuckTimerStart" onclick="chuckStartTimer()">▶️ START TIMER</button>
+                <button class="timer-btn stop" id="chuckTimerStop" onclick="chuckStopTimer()" style="display:none">⏹️ STOP</button>
+            </div>
+            <div class="timer-progress" id="chuckTimerProgress" style="display:none">
+                <div class="timer-progress-fill" id="chuckTimerFill"></div>
+            </div>
+        </div>
+
         <div class="console" id="chuckConsole">🧪 CHUCK Ready - "Hilti chemical calculations at your service"</div>
     </div>
 
@@ -814,12 +1073,28 @@
                 <input type="number" id="brittanyQty" value="4" min="1" oninput="brittanyCalculate()">
             </div>
             <div class="calc-input">
-                <label>Concrete (MPa)</label>
+                <label>Substrate</label>
                 <select id="brittanyConcrete" onchange="brittanyCalculate()">
-                    <option value="20">20 MPa</option>
-                    <option value="25">25 MPa</option>
-                    <option value="32" selected>32 MPa</option>
-                    <option value="40">40 MPa</option>
+                    <optgroup label="Concrete">
+                        <option value="20">Concrete 20 MPa</option>
+                        <option value="25">Concrete 25 MPa</option>
+                        <option value="32" selected>Concrete 32 MPa</option>
+                        <option value="40">Concrete 40 MPa</option>
+                        <option value="50">Concrete 50 MPa</option>
+                    </optgroup>
+                    <optgroup label="Masonry">
+                        <option value="15">Solid Brick (≈15 MPa)</option>
+                        <option value="7">Clay Brick (≈7 MPa)</option>
+                        <option value="10">Concrete Block Solid (≈10 MPa)</option>
+                        <option value="4">Concrete Block Hollow (≈4 MPa)</option>
+                        <option value="3">AAC/Hebel Block (≈3 MPa)</option>
+                    </optgroup>
+                    <optgroup label="Natural Stone">
+                        <option value="60">Granite (≈60 MPa)</option>
+                        <option value="35">Sandstone (≈35 MPa)</option>
+                        <option value="25">Limestone (≈25 MPa)</option>
+                        <option value="50">Bluestone (≈50 MPa)</option>
+                    </optgroup>
                 </select>
             </div>
         </div>
@@ -867,6 +1142,21 @@
                 <div class="load-bar"><div class="load-fill" id="brittanyLoadFill"></div></div>
                 <div class="load-status" id="brittanyLoadStatus"></div>
             </div>
+        </div>
+
+        <!-- Quick Utilisation Display -->
+        <div class="utilisation-display" id="brittanyUtilDisplay" style="display:none">
+            <div class="timer-label">WILL IT HOLD?</div>
+            <div class="utilisation-big" id="brittanyUtilPercent">--%</div>
+            <div class="utilisation-status" id="brittanyUtilStatus">Enter a load to check</div>
+            <div class="safety-factor" id="brittanySafetyFactor"></div>
+        </div>
+
+        <!-- Report Generator -->
+        <div class="brittany-report-section">
+            <button class="report-btn" onclick="brittanyGenerateReport()">
+                📄 GENERATE ENGINEER REPORT
+            </button>
         </div>
 
         <div class="console" id="brittanyConsole">💪 BRITTANY Ready - "I'll tell you if it'll hold"</div>
@@ -1124,6 +1414,143 @@
         ).join('');
 
         document.getElementById('hobartConsole').textContent = `🔩 ${hobartType} ${hobartSize}: Drill ${drill.clearance_hole}mm hole, torque to ${data.torque_nm}Nm`;
+
+        // Update grip visual
+        hobartUpdateGripVisual();
+    }
+
+    // Find what bolts fit a given tube thickness
+    function hobartFindFits() {
+        const wallThickness = parseFloat(document.getElementById('tubeWallThickness').value) || 0;
+        const clampTotal = parseFloat(document.getElementById('tubeClampTotal').value) || 0;
+        const resultsDiv = document.getElementById('tubeFitResults');
+
+        if (!wallThickness && !clampTotal) {
+            resultsDiv.classList.remove('active');
+            return;
+        }
+
+        const totalClamp = clampTotal || (wallThickness * 2); // Default to 2x wall if no total given
+        const results = [];
+
+        // Check all bolt types and sizes
+        const boltTypes = [
+            { key: 'HB', name: 'HB Hex Head', data: HOLLO_BOLT_DATA.HEXAGONAL_HEAD },
+            { key: 'HBCSK', name: 'HBCSK Countersunk', data: HOLLO_BOLT_DATA.COUNTERSUNK_HEAD },
+            { key: 'HBFF', name: 'HBFF Flush Fit', data: HOLLO_BOLT_DATA.FLUSH_FIT_HEAD },
+            { key: 'LB', name: 'LB LindiBolt', data: HOLLO_BOLT_DATA.LINDIBOLT }
+        ];
+
+        boltTypes.forEach(type => {
+            Object.entries(type.data).forEach(([size, data]) => {
+                data.clamping_ranges.forEach((range, idx) => {
+                    const [min, max] = range.split('-').map(Number);
+                    let status = 'fail';
+                    let statusIcon = '❌';
+                    let info = '';
+
+                    if (totalClamp >= min && totalClamp <= max) {
+                        const midPoint = (min + max) / 2;
+                        if (totalClamp >= min + 3 && totalClamp <= max - 3) {
+                            status = 'ok';
+                            statusIcon = '✅';
+                            info = 'Perfect fit';
+                        } else {
+                            status = 'warning';
+                            statusIcon = '⚠️';
+                            info = totalClamp < midPoint ? 'Near minimum' : 'Near maximum';
+                        }
+
+                        results.push({
+                            bolt: `${type.key} ${size}`,
+                            code: data.product_codes_with_sizes[idx].split(' ')[0],
+                            range: `${min}-${max}mm`,
+                            status,
+                            statusIcon,
+                            info,
+                            torque: data.torque_nm
+                        });
+                    }
+                });
+            });
+        });
+
+        if (results.length === 0) {
+            resultsDiv.innerHTML = '<div style="color:#ef4444;padding:10px;">❌ No Hollo-Bolts fit this clamping thickness</div>';
+        } else {
+            resultsDiv.innerHTML = results.map(r => `
+                <div class="tube-match ${r.status}">
+                    <div>
+                        <div class="tube-match-bolt">${r.bolt} (${r.code})</div>
+                        <div class="tube-match-info">Grip: ${r.range} | Torque: ${r.torque}Nm | ${r.info}</div>
+                    </div>
+                    <div class="tube-match-status">${r.statusIcon}</div>
+                </div>
+            `).join('');
+        }
+
+        resultsDiv.classList.add('active');
+    }
+
+    // Update grip range visual
+    function hobartUpdateGripVisual() {
+        let dataSource;
+        if (hobartType === 'HB') dataSource = HOLLO_BOLT_DATA.HEXAGONAL_HEAD;
+        else if (hobartType === 'HBCSK') dataSource = HOLLO_BOLT_DATA.COUNTERSUNK_HEAD;
+        else if (hobartType === 'HBFF') dataSource = HOLLO_BOLT_DATA.FLUSH_FIT_HEAD;
+        else dataSource = HOLLO_BOLT_DATA.LINDIBOLT;
+
+        const data = dataSource[hobartSize];
+        if (!data) return;
+
+        // Get all grip ranges for this bolt
+        const allRanges = data.clamping_ranges.map(r => r.split('-').map(Number));
+        const overallMin = Math.min(...allRanges.map(r => r[0]));
+        const overallMax = Math.max(...allRanges.map(r => r[1]));
+
+        // Update labels
+        document.getElementById('gripMinLabel').textContent = `${overallMin}mm`;
+        document.getElementById('gripMaxLabel').textContent = `${overallMax}mm`;
+
+        // Draw range on diagram (first range for simplicity)
+        const firstRange = allRanges[0];
+        const diagram = document.getElementById('gripDiagram');
+        const rangeDiv = document.getElementById('gripRange');
+
+        const rangeWidth = diagram.offsetWidth;
+        const leftPercent = ((firstRange[0] - overallMin) / (overallMax - overallMin)) * 100;
+        const widthPercent = ((firstRange[1] - firstRange[0]) / (overallMax - overallMin)) * 100;
+
+        rangeDiv.style.left = `${leftPercent}%`;
+        rangeDiv.style.width = `${widthPercent}%`;
+
+        // Check user input
+        const userClamp = parseFloat(document.getElementById('hobartClampInput').value);
+        const currentMarker = document.getElementById('gripCurrent');
+        const statusSpan = document.getElementById('gripStatus');
+
+        if (userClamp) {
+            currentMarker.style.display = 'block';
+            const pos = ((userClamp - overallMin) / (overallMax - overallMin)) * 100;
+            currentMarker.style.left = `${Math.min(100, Math.max(0, pos))}%`;
+
+            // Check if in range
+            let inRange = false;
+            allRanges.forEach(range => {
+                if (userClamp >= range[0] && userClamp <= range[1]) inRange = true;
+            });
+
+            if (inRange) {
+                statusSpan.innerHTML = '✅ <span style="color:#22c55e">IN RANGE</span>';
+            } else if (userClamp < overallMin) {
+                statusSpan.innerHTML = '❌ <span style="color:#ef4444">TOO THIN</span>';
+            } else {
+                statusSpan.innerHTML = '❌ <span style="color:#ef4444">TOO THICK</span>';
+            }
+        } else {
+            currentMarker.style.display = 'none';
+            statusSpan.textContent = '';
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -1750,26 +2177,48 @@
             embedFactor = Math.max(0.5, embed / minEmbed);
         }
 
-        // Concrete factor
-        const concFactors = {20: 0.74, 25: 0.86, 32: 1.0, 40: 1.13, 50: 1.27};
-        const concFactor = concFactors[concrete] || 1.0;
+        // Substrate factor - calculate based on MPa value relative to 32MPa baseline
+        // Formula: sqrt(actual MPa / 32) gives reasonable scaling
+        const concFactor = Math.sqrt(concrete / 32);
+
+        // Get substrate name for display
+        const substrateSelect = document.getElementById('brittanyConcrete');
+        const substrateName = substrateSelect.options[substrateSelect.selectedIndex].text;
+        const isWeakSubstrate = concrete < 10;
+        const isMasonry = concrete <= 15 && !substrateName.includes('Concrete');
 
         // Overhead/cracked factor (50% reduction as shown in checkbox label)
         const overheadFactor = overhead ? 0.5 : 1.0;
 
         // Calculate
-        const tensionPerKg = Math.round(tensionKn * concFactor * overheadFactor * edgeFactor * embedFactor * 102);
-        const shearPerKg = Math.round(shearKn * concFactor * overheadFactor * edgeFactor * spacingFactor * 102);
+        let tensionPerKg = Math.round(tensionKn * concFactor * overheadFactor * edgeFactor * embedFactor * 102);
+        let shearPerKg = Math.round(shearKn * concFactor * overheadFactor * edgeFactor * spacingFactor * 102);
+
+        // Additional reduction for masonry - mechanical anchors less reliable
+        if (isMasonry && (brittanyType === 'dynabolt' || brittanyType === 'trubolt' || brittanyType === 'hilti_hsl' || brittanyType === 'dropin')) {
+            tensionPerKg = Math.round(tensionPerKg * 0.5);
+            shearPerKg = Math.round(shearPerKg * 0.5);
+        }
+
         brittanyTotalTension = tensionPerKg * qty;
         brittanyTotalShear = shearPerKg * qty;
 
+        // Substrate warning for display
+        let substrateWarning = '';
+        if (isWeakSubstrate) {
+            substrateWarning = '<div style="background:#ef4444;color:white;padding:8px;border-radius:6px;margin-bottom:10px;font-weight:bold">⚠️ WEAK SUBSTRATE - Consider chemical anchors only!</div>';
+        } else if (isMasonry) {
+            substrateWarning = '<div style="background:#f59e0b;color:white;padding:8px;border-radius:6px;margin-bottom:10px">⚠️ MASONRY - Use chemical anchors for best results</div>';
+        }
+
         document.getElementById('brittanyResults').innerHTML = `
+            ${substrateWarning}
             <div class="result-card"><div class="label">Tension (each)</div><div class="value">${tensionPerKg}<span class="unit">kg</span></div></div>
             <div class="result-card"><div class="label">Shear (each)</div><div class="value">${shearPerKg}<span class="unit">kg</span></div></div>
             <div class="result-card"><div class="label">Total Tension</div><div class="value" style="color:#22c55e">${brittanyTotalTension.toLocaleString()}<span class="unit">kg</span></div></div>
             <div class="result-card"><div class="label">Total Shear</div><div class="value" style="color:#22c55e">${brittanyTotalShear.toLocaleString()}<span class="unit">kg</span></div></div>
             <div class="result-card"><div class="label">Hole Size</div><div class="value">${holeSize}<span class="unit">mm</span></div></div>
-            <div class="result-card"><div class="label">Product</div><div class="value" style="font-size:0.9rem">${fixing.name}</div></div>
+            <div class="result-card"><div class="label">Substrate</div><div class="value" style="font-size:0.8rem">${substrateName}</div></div>
         `;
 
         // Show warnings for reduced factors
@@ -1777,6 +2226,7 @@
         if (edgeFactor < 1.0) warnings.push(`Edge: ${Math.round(edgeFactor*100)}%`);
         if (spacingFactor < 1.0) warnings.push(`Spacing: ${Math.round(spacingFactor*100)}%`);
         if (embedFactor !== 1.0 && brittanyType === 'chemset') warnings.push(`Embed: ${Math.round(embedFactor*100)}%`);
+        if (isMasonry && brittanyType !== 'chemset') warnings.push('Masonry: 50%');
 
         let consoleMsg = `💪 ${qty}× ${fixing.name} ${brittanySize}: Holds ${brittanyTotalTension.toLocaleString()}kg tension, ${brittanyTotalShear.toLocaleString()}kg shear`;
         if (warnings.length > 0) consoleMsg += ` (Reduced: ${warnings.join(', ')})`;
@@ -1790,9 +2240,11 @@
         const loadInput = document.getElementById('brittanyLoad').value;
         const loadType = document.getElementById('brittanyLoadType').value;
         const resultDiv = document.getElementById('brittanyLoadResult');
+        const utilDisplay = document.getElementById('brittanyUtilDisplay');
 
         if (!loadInput) {
             resultDiv.style.display = 'none';
+            utilDisplay.style.display = 'none';
             return;
         }
 
@@ -1802,24 +2254,313 @@
         const percent = Math.min(utilisation * 100, 150);
 
         resultDiv.style.display = 'block';
+        utilDisplay.style.display = 'block';
+
         const fill = document.getElementById('brittanyLoadFill');
         const status = document.getElementById('brittanyLoadStatus');
+        const utilPercent = document.getElementById('brittanyUtilPercent');
+        const utilStatus = document.getElementById('brittanyUtilStatus');
+        const safetyFactor = document.getElementById('brittanySafetyFactor');
 
         fill.style.width = `${Math.min(percent, 100)}%`;
+        utilPercent.textContent = `${Math.round(utilisation * 100)}%`;
+
+        const sf = 1 / utilisation;
+        safetyFactor.textContent = `Safety Factor: ${sf.toFixed(1)}×`;
 
         if (utilisation <= 0.8) {
             fill.style.background = '#22c55e';
             status.textContent = `✅ OK - ${Math.round(utilisation * 100)}% utilised`;
             status.style.color = '#22c55e';
+            utilPercent.className = 'utilisation-big ok';
+            utilStatus.textContent = '✅ YES - SAFE TO USE';
+            utilStatus.style.color = '#22c55e';
         } else if (utilisation <= 1.0) {
             fill.style.background = '#f59e0b';
             status.textContent = `⚠️ OK - ${Math.round(utilisation * 100)}% utilised (close to limit)`;
             status.style.color = '#f59e0b';
+            utilPercent.className = 'utilisation-big warning';
+            utilStatus.textContent = '⚠️ MARGINAL - Consider larger size';
+            utilStatus.style.color = '#f59e0b';
         } else {
             fill.style.background = '#ef4444';
             status.textContent = `❌ FAIL - ${Math.round(utilisation * 100)}% (exceeds capacity!)`;
             status.style.color = '#ef4444';
+            utilPercent.className = 'utilisation-big fail';
+            utilStatus.textContent = '❌ NO - WILL FAIL!';
+            utilStatus.style.color = '#ef4444';
         }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CHUCK TIMER FUNCTIONS
+    // ═══════════════════════════════════════════════════════════════════════════
+    let chuckTimerInterval = null;
+    let chuckTimerEndTime = null;
+    let chuckCureMinutes = 60;
+
+    function chuckStartTimer() {
+        // Get current cure time
+        const temp = chuckCurrentTemp || 20;
+        const cureData = getCureTimeLocal(chuckType, temp);
+        chuckCureMinutes = cureData.cureMin || 60;
+
+        // Calculate end time
+        const now = new Date();
+        chuckTimerEndTime = new Date(now.getTime() + chuckCureMinutes * 60 * 1000);
+
+        // Update UI
+        document.getElementById('chuckTimerStart').style.display = 'none';
+        document.getElementById('chuckTimerStop').style.display = 'inline-block';
+        document.getElementById('chuckTimerProgress').style.display = 'block';
+        document.getElementById('chuckTimerSection').classList.add('curing');
+
+        // Show ready time
+        const readyTime = chuckTimerEndTime.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
+        document.getElementById('chuckReadyAt').textContent = `🎯 Ready at: ${readyTime}`;
+
+        // Request notification permission
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
+
+        // Start countdown
+        chuckTimerInterval = setInterval(chuckUpdateTimer, 1000);
+        chuckUpdateTimer();
+
+        document.getElementById('chuckConsole').textContent = `⏱️ Timer started - Curing ${HILTI_DATA[chuckType].name} at ${temp}°C`;
+    }
+
+    function chuckStopTimer() {
+        if (chuckTimerInterval) {
+            clearInterval(chuckTimerInterval);
+            chuckTimerInterval = null;
+        }
+
+        document.getElementById('chuckTimerStart').style.display = 'inline-block';
+        document.getElementById('chuckTimerStop').style.display = 'none';
+        document.getElementById('chuckTimerProgress').style.display = 'none';
+        document.getElementById('chuckTimerSection').classList.remove('curing');
+        document.getElementById('chuckTimerDisplay').textContent = '--:--:--';
+        document.getElementById('chuckReadyAt').textContent = 'Set anchors and start timer';
+        document.getElementById('chuckTimerFill').style.width = '0%';
+
+        document.getElementById('chuckConsole').textContent = '🧪 Timer stopped';
+    }
+
+    function chuckUpdateTimer() {
+        const now = new Date();
+        const remaining = chuckTimerEndTime - now;
+
+        if (remaining <= 0) {
+            // Timer complete!
+            clearInterval(chuckTimerInterval);
+            chuckTimerInterval = null;
+
+            document.getElementById('chuckTimerDisplay').textContent = '✅ READY!';
+            document.getElementById('chuckTimerDisplay').style.color = '#22c55e';
+            document.getElementById('chuckReadyAt').textContent = '🎉 Anchors fully cured!';
+            document.getElementById('chuckTimerFill').style.width = '100%';
+            document.getElementById('chuckTimerFill').style.background = '#22c55e';
+            document.getElementById('chuckTimerSection').classList.remove('curing');
+            document.getElementById('chuckTimerSection').style.borderColor = '#22c55e';
+
+            // Send notification
+            if ('Notification' in window && Notification.permission === 'granted') {
+                new Notification('⚡ CHUCK says: Anchors Ready!', {
+                    body: `${HILTI_DATA[chuckType].name} cure complete. Safe to load!`,
+                    icon: '🔩',
+                    requireInteraction: true
+                });
+            }
+
+            // Play sound alert (simple beep)
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                oscillator.frequency.value = 800;
+                oscillator.type = 'sine';
+                gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                oscillator.start();
+                setTimeout(() => { oscillator.stop(); audioCtx.close(); }, 300);
+            } catch(e) {}
+
+            document.getElementById('chuckConsole').textContent = '✅ CURE COMPLETE! Anchors ready to load!';
+            return;
+        }
+
+        // Calculate time remaining
+        const hours = Math.floor(remaining / 3600000);
+        const mins = Math.floor((remaining % 3600000) / 60000);
+        const secs = Math.floor((remaining % 60000) / 1000);
+
+        document.getElementById('chuckTimerDisplay').textContent =
+            `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        document.getElementById('chuckTimerDisplay').style.color = '#f59e0b';
+
+        // Update progress bar
+        const totalMs = chuckCureMinutes * 60 * 1000;
+        const elapsed = totalMs - remaining;
+        const progress = (elapsed / totalMs) * 100;
+        document.getElementById('chuckTimerFill').style.width = `${progress}%`;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // BRITTANY REPORT GENERATOR
+    // ═══════════════════════════════════════════════════════════════════════════
+    function brittanyGenerateReport() {
+        const qty = parseInt(document.getElementById('brittanyQty').value) || 1;
+        const concrete = parseInt(document.getElementById('brittanyConcrete').value);
+        const substrateSelect = document.getElementById('brittanyConcrete');
+        const substrateName = substrateSelect.options[substrateSelect.selectedIndex].text;
+        const overhead = document.getElementById('brittanyOverhead').checked;
+        const embed = parseInt(document.getElementById('brittanyEmbed').value) || 0;
+        const edge = parseInt(document.getElementById('brittanyEdge').value) || 0;
+        const spacing = parseInt(document.getElementById('brittanySpacing').value) || 0;
+        const load = document.getElementById('brittanyLoad').value;
+        const loadType = document.getElementById('brittanyLoadType').value;
+
+        const fixing = FIXING_DATA[brittanyType];
+        const sizeData = fixing.sizes[brittanySize];
+        if (!sizeData) return;
+
+        const [tensionKn, shearKn, minEmbed, minEdge, minSpacing, holeSize] = sizeData;
+
+        // Generate report content
+        const date = new Date().toLocaleDateString('en-AU', {
+            year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
+        });
+
+        let utilisation = '';
+        let safetyFactor = '';
+        if (load) {
+            const loadVal = parseInt(load);
+            const capacity = loadType === 'tension' ? brittanyTotalTension : brittanyTotalShear;
+            const util = (loadVal / capacity) * 100;
+            const sf = capacity / loadVal;
+            utilisation = `${util.toFixed(1)}%`;
+            safetyFactor = `${sf.toFixed(2)}`;
+        }
+
+        const reportHTML = `
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Anchor Capacity Report - ${brittanySize} ${fixing.name}</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; }
+        .header { border-bottom: 3px solid #333; padding-bottom: 20px; margin-bottom: 30px; }
+        .header h1 { margin: 0; color: #333; }
+        .header p { color: #666; margin: 5px 0 0 0; }
+        .section { margin-bottom: 25px; }
+        .section h2 { color: #2563eb; border-bottom: 1px solid #ddd; padding-bottom: 5px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { padding: 10px; text-align: left; border: 1px solid #ddd; }
+        th { background: #f5f5f5; }
+        .capacity { font-size: 1.2em; font-weight: bold; color: #22c55e; }
+        .warning { color: #f59e0b; }
+        .fail { color: #ef4444; font-weight: bold; }
+        .pass { color: #22c55e; font-weight: bold; }
+        .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; font-size: 0.9em; color: #666; }
+        .stamp { background: #f0f9ff; border: 2px solid #2563eb; padding: 15px; margin-top: 20px; }
+        @media print { body { padding: 20px; } }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>⚓ ANCHOR CAPACITY CALCULATION</h1>
+        <p>Generated by BRITTANY - J Mart Steel Documentation Suite</p>
+        <p>Date: ${date}</p>
+    </div>
+
+    <div class="section">
+        <h2>Anchor Details</h2>
+        <table>
+            <tr><th>Fixing Type</th><td>${fixing.name}</td></tr>
+            <tr><th>Size</th><td>${brittanySize}</td></tr>
+            <tr><th>Quantity</th><td>${qty}</td></tr>
+            <tr><th>Hole Size Required</th><td>${holeSize}mm</td></tr>
+        </table>
+    </div>
+
+    <div class="section">
+        <h2>Installation Parameters</h2>
+        <table>
+            <tr><th>Substrate</th><td>${substrateName}</td></tr>
+            <tr><th>Embedment Depth</th><td>${embed || minEmbed}mm (min: ${minEmbed}mm)</td></tr>
+            <tr><th>Edge Distance</th><td>${edge || minEdge}mm (min: ${minEdge}mm)</td></tr>
+            <tr><th>Anchor Spacing</th><td>${spacing || minSpacing}mm (min: ${minSpacing}mm)</td></tr>
+            <tr><th>Overhead Installation</th><td>${overhead ? 'Yes (50% reduction applied)' : 'No'}</td></tr>
+        </table>
+    </div>
+
+    <div class="section">
+        <h2>Design Capacities</h2>
+        <table>
+            <tr>
+                <th>Load Type</th>
+                <th>Per Anchor</th>
+                <th>Total (${qty}×)</th>
+            </tr>
+            <tr>
+                <td>Tension</td>
+                <td>${(brittanyTotalTension/qty).toLocaleString()} kg</td>
+                <td class="capacity">${brittanyTotalTension.toLocaleString()} kg</td>
+            </tr>
+            <tr>
+                <td>Shear</td>
+                <td>${(brittanyTotalShear/qty).toLocaleString()} kg</td>
+                <td class="capacity">${brittanyTotalShear.toLocaleString()} kg</td>
+            </tr>
+        </table>
+    </div>
+
+    ${load ? `
+    <div class="section">
+        <h2>Load Check</h2>
+        <table>
+            <tr><th>Applied Load</th><td>${parseInt(load).toLocaleString()} kg (${loadType})</td></tr>
+            <tr><th>Available Capacity</th><td>${(loadType === 'tension' ? brittanyTotalTension : brittanyTotalShear).toLocaleString()} kg</td></tr>
+            <tr><th>Utilisation</th><td class="${parseFloat(utilisation) > 100 ? 'fail' : parseFloat(utilisation) > 80 ? 'warning' : 'pass'}">${utilisation}</td></tr>
+            <tr><th>Safety Factor</th><td class="${parseFloat(safetyFactor) < 1 ? 'fail' : parseFloat(safetyFactor) < 1.25 ? 'warning' : 'pass'}">${safetyFactor}</td></tr>
+            <tr><th>Result</th><td class="${parseFloat(utilisation) > 100 ? 'fail' : 'pass'}">${parseFloat(utilisation) > 100 ? '❌ FAILS - Exceeds Capacity' : '✅ PASSES - Within Capacity'}</td></tr>
+        </table>
+    </div>
+    ` : ''}
+
+    <div class="stamp">
+        <strong>⚠️ IMPORTANT NOTES:</strong>
+        <ul>
+            <li>Capacities based on manufacturer data, adjusted for substrate: ${substrateName}</li>
+            <li>Reduction factors applied for edge/spacing/embedment as applicable</li>
+            <li>All installations must comply with AS 5216 and manufacturer specifications</li>
+            <li>Verify site conditions match design assumptions</li>
+            <li>This calculation is for reference only - verify with structural engineer</li>
+        </ul>
+    </div>
+
+    <div class="footer">
+        <p>Report generated using BRITTANY Anchor Calculator | J Mart Steel</p>
+        <p>For structural applications, always consult a qualified engineer</p>
+    </div>
+</body>
+</html>`;
+
+        // Create and download the report
+        const blob = new Blob([reportHTML], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Anchor_Report_${brittanySize}_${fixing.name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.html`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        document.getElementById('brittanyConsole').textContent = '📄 Report downloaded! Open in browser to print as PDF';
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
