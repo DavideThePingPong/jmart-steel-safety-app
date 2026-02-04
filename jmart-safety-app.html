@@ -3,20 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>JMart Steel Safety</title>
+  <title>J&M Artsteel Safety</title>
 
   <!-- PWA Meta Tags -->
-  <meta name="application-name" content="JMart Safety">
+  <meta name="application-name" content="J&M Artsteel Safety">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="JMart Safety">
+  <meta name="apple-mobile-web-app-title" content="J&M Artsteel Safety">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#ea580c">
   <meta name="msapplication-TileColor" content="#ea580c">
   <meta name="msapplication-tap-highlight" content="no">
 
   <!-- App Description for SEO/Sharing -->
-  <meta name="description" content="JMart Steel Safety Management App - Pre-Start Checklists, Site Inspections, ITP Forms, Toolbox Talks, and Incident Reports">
+  <meta name="description" content="J&M Artsteel Safety Management App - Pre-Start Checklists, Site Inspections, ITP Forms, Toolbox Talks, and Incident Reports">
 
   <!-- Favicon and App Icons (Base64 embedded) -->
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23ea580c'/><text x='50' y='65' font-size='50' text-anchor='middle' fill='white'>🛡️</text></svg>">
@@ -191,6 +191,38 @@
         if (!firebaseDb) return { approved: false };
 
         try {
+          // MIGRATION: Check for device in old flat structure and migrate
+          const oldDeviceSnap = await firebaseDb.ref('jmart-safety/devices/' + this.deviceId).once('value');
+          if (oldDeviceSnap.exists()) {
+            const oldData = oldDeviceSnap.val();
+            // Only migrate if it has status field (old format)
+            if (oldData.status && typeof oldData.status === 'string') {
+              console.log('🔄 Migrating device from old path:', oldData.status);
+              const targetPath = 'jmart-safety/devices/' + oldData.status + '/' + this.deviceId;
+              await firebaseDb.ref(targetPath).set({
+                ...oldData,
+                id: this.deviceId,
+                migratedAt: new Date().toISOString()
+              });
+              await firebaseDb.ref('jmart-safety/devices/' + this.deviceId).remove();
+              console.log('✅ Migration complete for device:', this.deviceId);
+            }
+          }
+
+          // Also migrate ALL devices in old flat structure (admin cleanup)
+          const allDevicesSnap = await firebaseDb.ref('jmart-safety/devices').once('value');
+          if (allDevicesSnap.exists()) {
+            const allDevices = allDevicesSnap.val();
+            for (const [key, value] of Object.entries(allDevices)) {
+              if (key === 'pending' || key === 'approved' || key === 'denied') continue;
+              if (!value || typeof value !== 'object' || !value.status) continue;
+              console.log('🔄 Migrating device:', key);
+              const targetPath = 'jmart-safety/devices/' + value.status + '/' + key;
+              await firebaseDb.ref(targetPath).set({ ...value, id: key, migratedAt: new Date().toISOString() });
+              await firebaseDb.ref('jmart-safety/devices/' + key).remove();
+            }
+          }
+
           // Check approved devices
           const approvedSnap = await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId).once('value');
           if (approvedSnap.exists()) {
@@ -3253,7 +3285,7 @@
           // Footer text
           doc.setFontSize(8);
           doc.setTextColor(...this.colors.gray);
-          doc.text('JMart Steel Safety App', margin, pageHeight - 8);
+          doc.text('J&M Artsteel Safety App', margin, pageHeight - 8);
           doc.text('Page ' + i + ' of ' + totalPages, pageWidth / 2, pageHeight - 8, { align: 'center' });
           doc.text('Generated: ' + new Date().toLocaleString('en-AU'), pageWidth - margin, pageHeight - 8, { align: 'right' });
         }
@@ -3901,7 +3933,7 @@
                 <div className="w-20 h-20 bg-orange-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
                   <span className="text-4xl">🛡️</span>
                 </div>
-                <h1 className="text-2xl font-bold text-gray-800">JMart Steel Safety</h1>
+                <h1 className="text-2xl font-bold text-gray-800">J&M Artsteel Safety</h1>
                 <p className="text-gray-500 mt-2">First Time Setup</p>
               </div>
 
@@ -4002,7 +4034,7 @@
               <div className="w-20 h-20 bg-orange-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
                 <span className="text-4xl">🛡️</span>
               </div>
-              <h1 className="text-2xl font-bold text-gray-800">JMart Steel Safety</h1>
+              <h1 className="text-2xl font-bold text-gray-800">J&M Artsteel Safety</h1>
               <p className="text-gray-500 mt-2">Enter password to access</p>
             </div>
 
@@ -4177,7 +4209,7 @@
                   setNewDeviceNotification(data);
                   DeviceAuth.showBrowserNotification(
                     'New Device Request',
-                    `${data.type} (${data.browser}) wants to access JMart Safety`
+                    `${data.type} (${data.browser}) wants to access J&M Artsteel Safety`
                   );
                   // Auto-dismiss after 10 seconds
                   setTimeout(() => setNewDeviceNotification(null), 10000);
@@ -4744,7 +4776,7 @@
           <div className="min-h-screen bg-gray-100 flex items-center justify-center">
             <div className="text-center">
               <div className="text-6xl mb-4">🛡️</div>
-              <h2 className="text-xl font-bold text-gray-800">JMart Steel Safety</h2>
+              <h2 className="text-xl font-bold text-gray-800">J&M Artsteel Safety</h2>
               <p className="text-gray-600 mt-2">Verifying device authorization...</p>
               <div className="mt-4">
                 <div className="animate-spin inline-block w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full"></div>
@@ -4769,7 +4801,7 @@
                 {deviceAuthStatus === 'pending' ? (
                   <>
                     <p className="text-gray-600 text-center">
-                      This device is not yet authorized to access JMart Steel Safety.
+                      This device is not yet authorized to access J&M Artsteel Safety.
                     </p>
                     <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                       <p className="text-yellow-800 font-medium text-center">Waiting for Admin Approval</p>
@@ -5127,7 +5159,7 @@
               <div className="flex items-center gap-3">
                 <span className="text-2xl">📲</span>
                 <div>
-                  <p className="font-semibold text-sm">Install JMart Safety</p>
+                  <p className="font-semibold text-sm">Install J&M Artsteel Safety</p>
                   <p className="text-xs opacity-80">Quick access from home screen</p>
                 </div>
               </div>
@@ -5143,7 +5175,7 @@
             <div className="flex items-center gap-2">
               <span className="text-2xl">🛡️</span>
               <div>
-                <h1 className="font-bold text-lg leading-tight">JMart Steel</h1>
+                <h1 className="font-bold text-lg leading-tight">J&M Artsteel</h1>
                 <p className="text-xs text-orange-200">
                   {!isOnline ? '📴 Offline Mode' :
                    syncStatus === 'error' ? '⚠️ Sync Error' :
@@ -5170,7 +5202,7 @@
               <div className="fixed inset-0 bg-black bg-opacity-50" onClick={() => setMenuOpen(false)}></div>
               <div className="relative w-72 bg-white shadow-xl">
                 <div className="p-4 bg-orange-600 text-white">
-                  <p className="font-semibold">JMart Steel</p>
+                  <p className="font-semibold">J&M Artsteel</p>
                   <p className="text-sm text-orange-200">NSW Operations</p>
                 </div>
                 <nav className="p-2">
@@ -6255,7 +6287,7 @@
           doc.setFontSize(8);
           doc.setTextColor(...medGray);
           doc.setFont(undefined, 'normal');
-          doc.text('General Manager  •  JMart Steel', sigRightCol, sigY + 38, { align: 'center' });
+          doc.text('General Manager  •  J&M Artsteel', sigRightCol, sigY + 38, { align: 'center' });
 
           // === FOOTER ===
           // Gold line above footer
@@ -6268,7 +6300,7 @@
           doc.setFont(undefined, 'normal');
           doc.text('Certificate ID: ' + certId, pageWidth / 2, pageHeight - 22, { align: 'center' });
           doc.text('This certificate confirms completion of safety training in accordance with Work Health & Safety requirements.', pageWidth / 2, pageHeight - 17, { align: 'center' });
-          doc.text('Valid for 12 months from date of issue.  •  JMart Steel Pty Ltd  •  ABN XX XXX XXX XXX', pageWidth / 2, pageHeight - 12, { align: 'center' });
+          doc.text('Valid for 12 months from date of issue.  •  J&M Artsteel Pty Ltd  •  ABN XX XXX XXX XXX', pageWidth / 2, pageHeight - 12, { align: 'center' });
 
           // Save the PDF
           const fileName = 'JMart-Certificate-' + selectedCourse.id + '-' + workerName.replace(/\s+/g, '-') + '.pdf';
@@ -6290,7 +6322,7 @@
             {showQRCode && (
               <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowQRCode(false)}>
                 <div className="bg-white rounded-xl p-6 max-w-sm text-center" onClick={e => e.stopPropagation()}>
-                  <h3 className="font-bold text-lg mb-3">📱 Share JMart Safety App</h3>
+                  <h3 className="font-bold text-lg mb-3">📱 Share J&M Artsteel Safety App</h3>
                   <p className="text-sm text-gray-600 mb-4">Workers can scan this QR code to install the Safety App on their phone</p>
                   <div className="bg-gray-100 p-4 rounded-lg mb-4">
                     <img src={'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(getAppUrl())} alt="QR Code" className="mx-auto" />
@@ -9049,7 +9081,7 @@
             />
           )}
           <div className="bg-white rounded-xl shadow-sm p-4">
-            <p className="text-sm text-gray-600">JMart Steel Safety App v1.0</p>
+            <p className="text-sm text-gray-600">J&M Artsteel Safety App v1.0</p>
             <p className="text-sm text-gray-600">NSW WHS Act 2011 Compliant</p>
           </div>
         </div>
@@ -9568,7 +9600,7 @@
   <!-- Loading Screen -->
   <script>
     // Show loading spinner while React loads
-    document.getElementById('root').innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:#f3f4f6;"><div class="spinner"></div><p style="margin-top:16px;color:#6b7280;font-family:system-ui;">Loading JMart Safety...</p></div>';
+    document.getElementById('root').innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:#f3f4f6;"><div class="spinner"></div><p style="margin-top:16px;color:#6b7280;font-family:system-ui;">Loading J&M Artsteel Safety...</p></div>';
   </script>
 
   <!-- Service Worker Registration & Caching -->
