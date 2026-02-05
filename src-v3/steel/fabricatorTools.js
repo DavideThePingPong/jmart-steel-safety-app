@@ -51,16 +51,37 @@ export function createFabricatorTools(options = {}) {
    * @returns {Object} - Required sling capacities
    */
   function calculateSlingRequirement(loadWeight, slingAngle = 60, numLegs = 2, safetyFactor = 1.0) {
+    // Critical input validation
+    if (typeof loadWeight !== 'number' || isNaN(loadWeight)) {
+      return { success: false, error: 'Load weight must be a valid number' };
+    }
+
     if (loadWeight <= 0) {
       return { success: false, error: 'Load weight must be positive' };
     }
 
+    if (loadWeight > 500000) {
+      return { success: false, error: '⛔ Load exceeds 500 tonnes - requires engineered lifting study' };
+    }
+
+    if (typeof slingAngle !== 'number' || isNaN(slingAngle)) {
+      return { success: false, error: 'Sling angle must be a valid number' };
+    }
+
     if (slingAngle < 30) {
-      return { success: false, error: 'Sling angle too shallow (minimum 30°). Increase headroom or shorten slings.' };
+      return { success: false, error: '⛔ Sling angle too shallow (minimum 30°). Increase headroom or shorten slings.' };
     }
 
     if (slingAngle > 90) {
       return { success: false, error: 'Sling angle cannot exceed 90°' };
+    }
+
+    if (![1, 2, 4].includes(numLegs)) {
+      return { success: false, error: 'Number of legs must be 1, 2, or 4' };
+    }
+
+    if (safetyFactor < 1.0) {
+      return { success: false, error: '⛔ Safety factor cannot be less than 1.0' };
     }
 
     const loadTonnes = loadWeight / 1000;
@@ -183,6 +204,19 @@ export function createFabricatorTools(options = {}) {
    * @returns {Object} - Consumables required
    */
   function calculateFilletWeldConsumables(legSize, weldLength, consumableType = 'E4816', doubleSided = false) {
+    // Input validation
+    if (typeof legSize !== 'number' || isNaN(legSize) || legSize <= 0) {
+      return { success: false, error: 'Leg size must be a positive number (mm)' };
+    }
+
+    if (typeof weldLength !== 'number' || isNaN(weldLength) || weldLength <= 0) {
+      return { success: false, error: 'Weld length must be a positive number (mm)' };
+    }
+
+    if (weldLength > 100000) {  // 100m sanity check
+      return { success: false, error: 'Weld length exceeds 100m - verify input is in mm' };
+    }
+
     const volumePerMm = FILLET_WELD_VOLUME[legSize];
     if (!volumePerMm) {
       return { success: false, error: `Invalid leg size ${legSize}mm. Valid: ${Object.keys(FILLET_WELD_VOLUME).join(', ')}` };
@@ -243,6 +277,19 @@ export function createFabricatorTools(options = {}) {
    * @returns {Object} - Consumables required
    */
   function calculateButtWeldConsumables(plateThickness, weldLength, consumableType = 'E4816') {
+    // Input validation
+    if (typeof plateThickness !== 'number' || isNaN(plateThickness) || plateThickness <= 0) {
+      return { success: false, error: 'Plate thickness must be a positive number (mm)' };
+    }
+
+    if (typeof weldLength !== 'number' || isNaN(weldLength) || weldLength <= 0) {
+      return { success: false, error: 'Weld length must be a positive number (mm)' };
+    }
+
+    if (weldLength > 100000) {
+      return { success: false, error: 'Weld length exceeds 100m - verify input is in mm' };
+    }
+
     const volumePerMm = BUTT_WELD_VOLUME[plateThickness];
     if (!volumePerMm) {
       const validThicknesses = Object.keys(BUTT_WELD_VOLUME).join(', ');
@@ -369,9 +416,11 @@ export function createFabricatorTools(options = {}) {
       case 'UC':
       case 'WB':
       case 'WC': {
-        // I-sections: approximate using mass-based formula
-        // Surface area ≈ 0.7 * mass^0.5 m²/m (empirical)
-        surfaceAreaPerM = 0.7 * Math.sqrt(massPerM);
+        // I-sections: parse nominal depth from size (e.g., "310UB40" → 310)
+        const nominalDepth = parseInt(size) / 1000; // Convert to metres
+        // Approximate perimeter: 4*flange_width + 2*web ≈ 4*(depth/2) + 2*depth = 4*depth
+        // Refined empirical formula based on actual section properties
+        surfaceAreaPerM = nominalDepth * 4.2; // ~4.2x depth gives good approximation
         break;
       }
       case 'PFC': {
@@ -421,6 +470,33 @@ export function createFabricatorTools(options = {}) {
     // Validate input
     if (!Array.isArray(requiredLengths) || requiredLengths.length === 0) {
       return { success: false, error: 'Required lengths must be a non-empty array' };
+    }
+
+    if (typeof stockLength !== 'number' || isNaN(stockLength) || stockLength <= 0) {
+      return { success: false, error: 'Stock length must be a positive number (metres)' };
+    }
+
+    if (stockLength > 18) {
+      return { success: false, error: 'Stock length exceeds 18m maximum transport length' };
+    }
+
+    if (typeof sawKerf !== 'number' || isNaN(sawKerf) || sawKerf < 0) {
+      return { success: false, error: 'Saw kerf must be a non-negative number (mm)' };
+    }
+
+    if (sawKerf > 10) {
+      return { success: false, error: 'Saw kerf exceeds 10mm - check input' };
+    }
+
+    // Validate each length entry
+    for (let i = 0; i < requiredLengths.length; i++) {
+      const item = requiredLengths[i];
+      if (typeof item.length !== 'number' || isNaN(item.length) || item.length <= 0) {
+        return { success: false, error: `Item ${i + 1}: length must be a positive number` };
+      }
+      if (item.quantity !== undefined && (!Number.isInteger(item.quantity) || item.quantity < 1)) {
+        return { success: false, error: `Item ${i + 1}: quantity must be a positive integer` };
+      }
     }
 
     const kerfM = sawKerf / 1000;

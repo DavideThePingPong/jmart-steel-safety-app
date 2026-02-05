@@ -153,7 +153,7 @@ export function createSteelCalculator(options = {}) {
     if (!result.success) return result;
 
     const member = {
-      id: `member-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+      id: `member-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
       ...input,
       weight: result.totalWeight,
       addedAt: new Date().toISOString()
@@ -295,7 +295,11 @@ export function createSteelCalculator(options = {}) {
 
             const drilling = HOLLO_BOLT_DATA.DRILLING_DATA[size] || {};
             const midPoint = (min + max) / 2;
-            const fitQuality = 100 - Math.abs(clampingThickness - midPoint) / (max - min) * 100;
+            const rangeHalf = (max - min) / 2;
+            // fitQuality: 100% at midpoint, 0% at range edges
+            const fitQuality = Math.max(0, Math.min(100,
+              100 - (Math.abs(clampingThickness - midPoint) / rangeHalf) * 100
+            ));
 
             results.push({
               boltType: key,

@@ -156,11 +156,20 @@ export function formatCureTime(minutes) {
 
   if (minutes < 1440) {
     const hours = minutes / 60;
-    return hours === Math.floor(hours) ? `${hours}h` : `${hours.toFixed(1)}h`;
+    // Avoid trailing zeros: "1.0h" → "1h", "1.5h" stays "1.5h"
+    if (hours === Math.floor(hours)) {
+      return `${hours}h`;
+    }
+    const formatted = hours.toFixed(1);
+    return formatted.endsWith('.0') ? `${Math.floor(hours)}h` : `${formatted}h`;
   }
 
   const days = minutes / 1440;
-  return days === Math.floor(days) ? `${days} days` : `${days.toFixed(1)} days`;
+  if (days === Math.floor(days)) {
+    return days === 1 ? '1 day' : `${days} days`;
+  }
+  const formatted = days.toFixed(1);
+  return formatted.endsWith('.0') ? `${Math.floor(days)} days` : `${formatted} days`;
 }
 
 /**

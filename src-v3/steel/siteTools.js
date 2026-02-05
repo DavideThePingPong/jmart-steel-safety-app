@@ -23,7 +23,8 @@ const BOLT_TORQUE = {
     M16: { snug: 110, full: 200 },
     M20: { snug: 220, full: 390 },
     M24: { snug: 380, full: 680 },
-    M30: { snug: 750, full: 1350 }
+    M30: { snug: 750, full: 1350 },
+    M36: { snug: 1300, full: 2350 }
   },
   // Grade 8.8 (property class 8.8) - high tensile
   '8.8': {
@@ -40,7 +41,8 @@ const BOLT_TORQUE = {
     M16: { snug: 290, full: 580 },
     M20: { snug: 570, full: 1140 },
     M24: { snug: 980, full: 1960 },
-    M30: { snug: 1950, full: 3900 }
+    M30: { snug: 1950, full: 3900 },
+    M36: { snug: 3400, full: 6800 }
   }
 };
 
@@ -458,14 +460,16 @@ function boltCount(load, boltSize = 'M20', loadType = 'shear', grade = '8.8') {
       M16: { shear: 54.8, tension: 91.6 },
       M20: { shear: 86.1, tension: 143 },
       M24: { shear: 124, tension: 206 },
-      M30: { shear: 194, tension: 323 }
+      M30: { shear: 194, tension: 323 },
+      M36: { shear: 280, tension: 466 }
     },
     '10.9': {
       M12: { shear: 37.7, tension: 61.2 },
       M16: { shear: 67.5, tension: 113 },
       M20: { shear: 106, tension: 176 },
       M24: { shear: 153, tension: 254 },
-      M30: { shear: 239, tension: 398 }
+      M30: { shear: 239, tension: 398 },
+      M36: { shear: 345, tension: 573 }
     }
   };
 
@@ -507,9 +511,29 @@ function validateLift(loadWeight, craneCapacity, slingAngle = 60) {
   const errors = [];
   const warnings = [];
 
+  // Input type validation
+  if (typeof loadWeight !== 'number' || isNaN(loadWeight)) {
+    errors.push('⛔ Load weight must be a valid number');
+    return { safe: false, status: '⛔ INVALID INPUT', errors, warnings: [] };
+  }
+
+  if (typeof craneCapacity !== 'number' || isNaN(craneCapacity)) {
+    errors.push('⛔ Crane capacity must be a valid number');
+    return { safe: false, status: '⛔ INVALID INPUT', errors, warnings: [] };
+  }
+
+  if (typeof slingAngle !== 'number' || isNaN(slingAngle)) {
+    errors.push('⛔ Sling angle must be a valid number');
+    return { safe: false, status: '⛔ INVALID INPUT', errors, warnings: [] };
+  }
+
   // Load checks
   if (loadWeight <= 0) {
     errors.push('Load weight must be positive');
+  }
+
+  if (craneCapacity <= 0) {
+    errors.push('Crane capacity must be positive');
   }
 
   if (loadWeight > craneCapacity) {
