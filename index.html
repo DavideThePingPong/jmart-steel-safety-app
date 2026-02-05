@@ -89,6 +89,7 @@
       deviceInfo: null,
       isApproved: false,
       isAdmin: false,
+      canViewDevices: false,
       pendingDevices: [],
       approvedDevices: [],
       statusListeners: [],
@@ -229,13 +230,14 @@
             const data = approvedSnap.val();
             this.isApproved = true;
             this.isAdmin = data.isAdmin || false;
+            this.canViewDevices = data.canViewDevices || false;
 
             // Update last seen
             await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId + '/lastSeen').set(new Date().toISOString());
 
             this.notifyStatusListeners();
-            console.log('Device approved, admin:', this.isAdmin);
-            return { approved: true, admin: this.isAdmin };
+            console.log('Device approved, admin:', this.isAdmin, 'canViewDevices:', this.canViewDevices);
+            return { approved: true, admin: this.isAdmin, canViewDevices: this.canViewDevices };
           }
 
           // Check if any devices exist (first device becomes admin)
@@ -4181,6 +4183,7 @@
       // Device Authorization State
       const [deviceAuthStatus, setDeviceAuthStatus] = useState('checking'); // 'checking', 'approved', 'pending', 'denied'
       const [isDeviceAdmin, setIsDeviceAdmin] = useState(false);
+      const [canViewDevices, setCanViewDevices] = useState(false);
       const [pendingDevices, setPendingDevices] = useState([]);
       const [approvedDevices, setApprovedDevices] = useState([]);
       const [newDeviceNotification, setNewDeviceNotification] = useState(null);
@@ -4193,17 +4196,13 @@
           if (result.approved) {
             setDeviceAuthStatus('approved');
             setIsDeviceAdmin(result.admin);
+            setCanViewDevices(result.canViewDevices || result.admin); // Admins can always view
 
-            // If admin, listen for pending devices and show notifications
+            // If admin, enable notifications for new device requests
             if (result.admin) {
               DeviceAuth.requestNotificationPermission();
 
-              // Listen for pending device requests
-              DeviceAuth.listenForPendingDevices((devices) => {
-                setPendingDevices(devices);
-              });
-
-              // Listen for new device notifications
+              // Listen for new device notifications (admin only)
               DeviceAuth.onNotification((type, data) => {
                 if (type === 'new_device') {
                   setNewDeviceNotification(data);
@@ -4217,10 +4216,18 @@
               });
             }
 
-            // Listen for approved devices (for settings display)
-            DeviceAuth.listenForApprovedDevices((devices) => {
-              setApprovedDevices(devices);
-            });
+            // If admin or can view devices, listen for device lists
+            if (result.admin || result.canViewDevices) {
+              // Listen for pending device requests
+              DeviceAuth.listenForPendingDevices((devices) => {
+                setPendingDevices(devices);
+              });
+
+              // Listen for approved devices (for settings display)
+              DeviceAuth.listenForApprovedDevices((devices) => {
+                setApprovedDevices(devices);
+              });
+            }
 
             // Listen for own device being revoked
             DeviceAuth.listenForOwnDeviceStatus((status) => {
@@ -5228,7 +5235,7 @@
             {currentView === 'incidents' && <IncidentView onSubmit={(data) => addForm('incident', data)} onUpdate={updateForm} editingForm={editingForm?.type === 'incident' ? editingForm : null} />}
             {currentView === 'toolbox' && <ToolboxView onSubmit={(data) => addForm('toolbox', data)} onUpdate={updateForm} editingForm={editingForm?.type === 'toolbox' ? editingForm : null} sites={sites} />}
             {currentView === 'emergency' && <EmergencyView />}
-            {currentView === 'settings' && <SettingsView sites={sites} onUpdateSites={setSites} signatures={savedSignatures} onUpdateSignatures={updateSignatures} isAdmin={isAdmin} isDeviceAdmin={isDeviceAdmin} pendingDevices={pendingDevices} approvedDevices={approvedDevices} />}
+            {currentView === 'settings' && <SettingsView sites={sites} onUpdateSites={setSites} signatures={savedSignatures} onUpdateSignatures={updateSignatures} isAdmin={isAdmin} isDeviceAdmin={isDeviceAdmin} canViewDevices={canViewDevices} pendingDevices={pendingDevices} approvedDevices={approvedDevices} />}
             {currentView === 'recordings' && <RecordingsView forms={forms} sites={sites} />}
           </main>
 
@@ -8608,7 +8615,7 @@
     }
 
     // Settings View
-    function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSignatures, isAdmin = false, isDeviceAdmin = false, pendingDevices = [], approvedDevices = [] }) {
+    function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSignatures, isAdmin = false, isDeviceAdmin = false, canViewDevices = false, pendingDevices = [], approvedDevices = [] }) {
       const [newSite, setNewSite] = useState('');
       const [showAddSite, setShowAddSite] = useState(false);
       const [driveConnected, setDriveConnected] = useState(GoogleDriveSync.isConnected());
@@ -8623,16 +8630,16 @@
       const defaultSites = ['Site 1 - Sydney CBD', 'Site 2 - Parramatta', 'Site 3 - North Sydney'];
       const currentSites = sites.length > 0 ? sites : defaultSites;
 
-      // Listen to device changes if admin
+      // Listen to device changes if admin or viewer
       useEffect(() => {
-        if (isAdmin && isFirebaseConfigured) {
+        if ((isAdmin || canViewDevices) && isFirebaseConfigured) {
           const unsubscribe = DeviceAuthManager.listenToDevices((deviceData) => {
             setDevices(deviceData);
             setPendingCount(deviceData.pending.length);
           });
           return () => unsubscribe();
         }
-      }, [isAdmin]);
+      }, [isAdmin, canViewDevices]);
 
       const handleApproveDevice = async (deviceId) => {
         setDeviceActionLoading(deviceId);
@@ -8864,20 +8871,21 @@
             </div>
           </div>
 
-          {/* Device Management Section - Admin Only */}
-          {isAdmin && isFirebaseConfigured && (
+          {/* Device Management Section - Admin or Viewer */}
+          {(isAdmin || canViewDevices) && isFirebaseConfigured && (
             <div className="bg-white rounded-xl shadow-sm p-4">
               <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                <span className="text-2xl">📱</span> Device Management
-                {pendingCount > 0 && (
+                <span className="text-2xl">📱</span> Connected Devices
+                {isAdmin && pendingCount > 0 && (
                   <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">{pendingCount} pending</span>
                 )}
+                {!isAdmin && <span className="text-xs text-gray-400">(View only)</span>}
               </h3>
 
-              {/* Pending Devices */}
+              {/* Pending Devices - Admin can approve/deny, Viewers can only see */}
               {devices.pending.length > 0 && (
                 <div className="mb-4">
-                  <p className="text-sm font-medium text-yellow-700 mb-2">⏳ Pending Approval</p>
+                  <p className="text-sm font-medium text-yellow-700 mb-2">⏳ Pending Approval ({devices.pending.length})</p>
                   <div className="space-y-2">
                     {devices.pending.map(device => (
                       <div key={device.id} className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
@@ -8888,20 +8896,22 @@
                               Requested: {new Date(device.registeredAt).toLocaleDateString('en-AU')}
                             </p>
                           </div>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => handleApproveDevice(device.id)}
-                              className="bg-green-600 text-white px-3 py-1 rounded-lg text-sm font-medium"
-                            >
-                              ✓ Approve
-                            </button>
-                            <button
-                              onClick={() => handleDenyDevice(device.id)}
-                              className="bg-red-600 text-white px-3 py-1 rounded-lg text-sm font-medium"
-                            >
-                              ✕ Deny
-                            </button>
-                          </div>
+                          {isAdmin && (
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => handleApproveDevice(device.id)}
+                                className="bg-green-600 text-white px-3 py-1 rounded-lg text-sm font-medium"
+                              >
+                                ✓ Approve
+                              </button>
+                              <button
+                                onClick={() => handleDenyDevice(device.id)}
+                                className="bg-red-600 text-white px-3 py-1 rounded-lg text-sm font-medium"
+                              >
+                                ✕ Deny
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -8923,12 +8933,13 @@
                             <p className="font-medium text-gray-800 flex items-center gap-2">
                               {device.name || 'Unknown Device'}
                               {device.isAdmin && <span className="text-xs bg-orange-500 text-white px-2 py-0.5 rounded">Admin</span>}
+                              {device.canViewDevices && !device.isAdmin && <span className="text-xs bg-blue-500 text-white px-2 py-0.5 rounded">Viewer</span>}
                             </p>
                             <p className="text-xs text-gray-500">
                               Last seen: {device.lastSeen ? new Date(device.lastSeen).toLocaleString('en-AU') : 'Never'}
                             </p>
                           </div>
-                          {!device.isAdmin && (
+                          {isAdmin && !device.isAdmin && (
                             <button
                               onClick={() => handleRemoveDevice(device.id)}
                               className="text-red-500 text-sm"
