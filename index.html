@@ -90,6 +90,7 @@
       isApproved: false,
       isAdmin: false,
       canViewDevices: false,
+      canRevokeDevices: false,
       pendingDevices: [],
       approvedDevices: [],
       statusListeners: [],
@@ -231,13 +232,14 @@
             this.isApproved = true;
             this.isAdmin = data.isAdmin || false;
             this.canViewDevices = data.canViewDevices || false;
+            this.canRevokeDevices = data.canRevokeDevices || false;
 
             // Update last seen
             await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId + '/lastSeen').set(new Date().toISOString());
 
             this.notifyStatusListeners();
-            console.log('Device approved, admin:', this.isAdmin, 'canViewDevices:', this.canViewDevices);
-            return { approved: true, admin: this.isAdmin, canViewDevices: this.canViewDevices };
+            console.log('Device approved, admin:', this.isAdmin, 'canViewDevices:', this.canViewDevices, 'canRevokeDevices:', this.canRevokeDevices);
+            return { approved: true, admin: this.isAdmin, canViewDevices: this.canViewDevices, canRevokeDevices: this.canRevokeDevices };
           }
 
           // Check if any devices exist (first device becomes admin)
@@ -370,10 +372,10 @@
         }
       },
 
-      // Revoke an approved device (admin only)
+      // Revoke an approved device (admin or devices with canRevokeDevices permission)
       revokeDevice: async function(deviceId) {
-        if (!this.isAdmin || !firebaseDb) {
-          console.error('Only admins can revoke devices');
+        if ((!this.isAdmin && !this.canRevokeDevices) || !firebaseDb) {
+          console.error('Only admins or devices with revoke permission can revoke devices');
           return false;
         }
 
@@ -4184,6 +4186,7 @@
       const [deviceAuthStatus, setDeviceAuthStatus] = useState('checking'); // 'checking', 'approved', 'pending', 'denied'
       const [isDeviceAdmin, setIsDeviceAdmin] = useState(false);
       const [canViewDevices, setCanViewDevices] = useState(false);
+      const [canRevokeDevices, setCanRevokeDevices] = useState(false);
       const [pendingDevices, setPendingDevices] = useState([]);
       const [approvedDevices, setApprovedDevices] = useState([]);
       const [newDeviceNotification, setNewDeviceNotification] = useState(null);
@@ -4197,6 +4200,7 @@
             setDeviceAuthStatus('approved');
             setIsDeviceAdmin(result.admin);
             setCanViewDevices(result.canViewDevices || result.admin); // Admins can always view
+            setCanRevokeDevices(result.canRevokeDevices || result.admin); // Admins can always revoke
 
             // If admin, enable notifications for new device requests
             if (result.admin) {
@@ -4216,8 +4220,8 @@
               });
             }
 
-            // If admin or can view devices, listen for device lists
-            if (result.admin || result.canViewDevices) {
+            // If admin or can view/revoke devices, listen for device lists
+            if (result.admin || result.canViewDevices || result.canRevokeDevices) {
               // Listen for pending device requests
               DeviceAuth.listenForPendingDevices((devices) => {
                 setPendingDevices(devices);
@@ -5235,7 +5239,7 @@
             {currentView === 'incidents' && <IncidentView onSubmit={(data) => addForm('incident', data)} onUpdate={updateForm} editingForm={editingForm?.type === 'incident' ? editingForm : null} />}
             {currentView === 'toolbox' && <ToolboxView onSubmit={(data) => addForm('toolbox', data)} onUpdate={updateForm} editingForm={editingForm?.type === 'toolbox' ? editingForm : null} sites={sites} />}
             {currentView === 'emergency' && <EmergencyView />}
-            {currentView === 'settings' && <SettingsView sites={sites} onUpdateSites={setSites} signatures={savedSignatures} onUpdateSignatures={updateSignatures} isAdmin={isAdmin} isDeviceAdmin={isDeviceAdmin} canViewDevices={canViewDevices} pendingDevices={pendingDevices} approvedDevices={approvedDevices} />}
+            {currentView === 'settings' && <SettingsView sites={sites} onUpdateSites={setSites} signatures={savedSignatures} onUpdateSignatures={updateSignatures} isAdmin={isAdmin} isDeviceAdmin={isDeviceAdmin} canViewDevices={canViewDevices} canRevokeDevices={canRevokeDevices} pendingDevices={pendingDevices} approvedDevices={approvedDevices} />}
             {currentView === 'recordings' && <RecordingsView forms={forms} sites={sites} />}
           </main>
 
@@ -8615,7 +8619,7 @@
     }
 
     // Settings View
-    function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSignatures, isAdmin = false, isDeviceAdmin = false, canViewDevices = false, pendingDevices = [], approvedDevices = [] }) {
+    function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSignatures, isAdmin = false, isDeviceAdmin = false, canViewDevices = false, canRevokeDevices = false, pendingDevices = [], approvedDevices = [] }) {
       const [newSite, setNewSite] = useState('');
       const [showAddSite, setShowAddSite] = useState(false);
       const [driveConnected, setDriveConnected] = useState(GoogleDriveSync.isConnected());
@@ -8630,16 +8634,16 @@
       const defaultSites = ['Site 1 - Sydney CBD', 'Site 2 - Parramatta', 'Site 3 - North Sydney'];
       const currentSites = sites.length > 0 ? sites : defaultSites;
 
-      // Listen to device changes if admin or viewer
+      // Listen to device changes if admin, viewer, or has revoke permission
       useEffect(() => {
-        if ((isAdmin || canViewDevices) && isFirebaseConfigured) {
+        if ((isAdmin || canViewDevices || canRevokeDevices) && isFirebaseConfigured) {
           const unsubscribe = DeviceAuthManager.listenToDevices((deviceData) => {
             setDevices(deviceData);
             setPendingCount(deviceData.pending.length);
           });
           return () => unsubscribe();
         }
-      }, [isAdmin, canViewDevices]);
+      }, [isAdmin, canViewDevices, canRevokeDevices]);
 
       const handleApproveDevice = async (deviceId) => {
         setDeviceActionLoading(deviceId);
@@ -8837,7 +8841,7 @@
                             Last seen: {device.lastSeen ? new Date(device.lastSeen).toLocaleString('en-AU') : 'Invalid Date'}
                           </p>
                         </div>
-                        {device.id !== DeviceAuth.deviceId && (
+                        {device.id !== DeviceAuth.deviceId && (isAdmin || canRevokeDevices) && (
                           <button
                             onClick={() => handleRevokeDevice(device.id)}
                             disabled={deviceActionLoading === device.id}
@@ -8871,15 +8875,15 @@
             </div>
           </div>
 
-          {/* Device Management Section - Admin or Viewer */}
-          {(isAdmin || canViewDevices) && isFirebaseConfigured && (
+          {/* Device Management Section - Admin, Viewer, or has Revoke permission */}
+          {(isAdmin || canViewDevices || canRevokeDevices) && isFirebaseConfigured && (
             <div className="bg-white rounded-xl shadow-sm p-4">
               <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
                 <span className="text-2xl">📱</span> Connected Devices
                 {isAdmin && pendingCount > 0 && (
                   <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">{pendingCount} pending</span>
                 )}
-                {!isAdmin && <span className="text-xs text-gray-400">(View only)</span>}
+                {!isAdmin && !canRevokeDevices && <span className="text-xs text-gray-400">(View only)</span>}
               </h3>
 
               {/* Pending Devices - Admin can approve/deny, Viewers can only see */}
