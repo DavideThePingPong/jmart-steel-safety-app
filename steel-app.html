@@ -1310,6 +1310,219 @@
             color: rgba(255,255,255,0.6);
             margin-top: 5px;
         }
+
+        /* HANNA Receipt Scanner Styles */
+        .hanna-upload-zone {
+            border: 3px dashed #4ade80;
+            border-radius: 16px;
+            padding: 40px 20px;
+            text-align: center;
+            background: linear-gradient(135deg, rgba(74, 222, 128, 0.1), rgba(34, 197, 94, 0.05));
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 20px;
+        }
+        .hanna-upload-zone:hover, .hanna-upload-zone.dragover {
+            border-color: #22c55e;
+            background: linear-gradient(135deg, rgba(74, 222, 128, 0.2), rgba(34, 197, 94, 0.1));
+            transform: scale(1.02);
+        }
+        .hanna-upload-zone .upload-icon {
+            font-size: 4rem;
+            margin-bottom: 10px;
+        }
+        .hanna-upload-zone .upload-text {
+            font-size: 1.2rem;
+            color: #22c55e;
+            font-weight: 600;
+        }
+        .hanna-upload-zone .upload-hint {
+            font-size: 0.9rem;
+            color: #6b7280;
+            margin-top: 8px;
+        }
+        .hanna-receipt-preview {
+            display: none;
+            background: #1f2937;
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .hanna-receipt-preview.show { display: block; }
+        .hanna-receipt-preview img {
+            max-width: 100%;
+            max-height: 200px;
+            border-radius: 8px;
+            object-fit: contain;
+        }
+        .hanna-result-card {
+            background: linear-gradient(135deg, #065f46, #047857);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 15px;
+            display: none;
+        }
+        .hanna-result-card.show { display: block; }
+        .hanna-store-name {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 5px;
+        }
+        .hanna-date {
+            font-size: 0.9rem;
+            color: rgba(255,255,255,0.7);
+            margin-bottom: 15px;
+        }
+        .hanna-total {
+            font-size: 2.5rem;
+            font-weight: 800;
+            color: #4ade80;
+            text-align: center;
+            padding: 15px 0;
+        }
+        .hanna-gst {
+            text-align: center;
+            color: rgba(255,255,255,0.7);
+            font-size: 1rem;
+            margin-bottom: 15px;
+        }
+        .hanna-items {
+            background: rgba(0,0,0,0.2);
+            border-radius: 8px;
+            padding: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .hanna-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            font-size: 0.9rem;
+        }
+        .hanna-item:last-child { border-bottom: none; }
+        .hanna-item-name { color: #fff; flex: 1; }
+        .hanna-item-qty { color: rgba(255,255,255,0.6); font-size: 0.85rem; margin: 0 10px; }
+        .hanna-item-price { color: #4ade80; font-weight: 600; margin-left: 10px; }
+        .hanna-job-select {
+            margin-top: 15px;
+            padding: 15px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 8px;
+        }
+        .hanna-job-select label {
+            color: rgba(255,255,255,0.8);
+            font-size: 0.9rem;
+            margin-bottom: 8px;
+            display: block;
+        }
+        .hanna-job-select select {
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            border: 2px solid #4ade80;
+            background: #1f2937;
+            color: #fff;
+            font-size: 1rem;
+        }
+        .hanna-save-btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #22c55e, #16a34a);
+            border: none;
+            border-radius: 12px;
+            color: #fff;
+            font-size: 1.1rem;
+            font-weight: 700;
+            cursor: pointer;
+            margin-top: 15px;
+            transition: all 0.3s ease;
+        }
+        .hanna-save-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(34, 197, 94, 0.4);
+        }
+        .hanna-save-btn:disabled {
+            background: #4b5563;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .hanna-stats {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .hanna-stat {
+            background: #1f2937;
+            border-radius: 12px;
+            padding: 15px;
+            text-align: center;
+        }
+        .hanna-stat-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #4ade80;
+        }
+        .hanna-stat-label {
+            font-size: 0.8rem;
+            color: #9ca3af;
+            margin-top: 5px;
+        }
+        .hanna-recent {
+            background: #1f2937;
+            border-radius: 12px;
+            padding: 15px;
+        }
+        .hanna-recent-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .hanna-recent-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 8px;
+            margin-bottom: 8px;
+        }
+        .hanna-recent-store {
+            font-weight: 600;
+            color: #fff;
+        }
+        .hanna-recent-amount {
+            color: #4ade80;
+            font-weight: 700;
+        }
+        .hanna-recent-date {
+            font-size: 0.75rem;
+            color: #6b7280;
+        }
+        .hanna-scanning {
+            display: none;
+            text-align: center;
+            padding: 40px;
+        }
+        .hanna-scanning.show { display: block; }
+        .hanna-scanning .spinner {
+            width: 60px;
+            height: 60px;
+            border: 4px solid rgba(74, 222, 128, 0.2);
+            border-top-color: #4ade80;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
@@ -1324,6 +1537,7 @@
         <button class="nav-tab" onclick="showSection('igor')">⚖️ IGOR</button>
         <button class="nav-tab" onclick="showSection('chuck')">🧪 CHUCK</button>
         <button class="nav-tab" onclick="showSection('brittany')">💪 BRITTANY</button>
+        <button class="nav-tab" onclick="showSection('hanna')">🧾 HANNA</button>
         <button class="nav-tab offline" onclick="showSection('ai-agents')">🤖 AI Agents</button>
     </div>
 
@@ -1840,6 +2054,116 @@
         </div>
 
         <div class="console" id="brittanyConsole">💪 BRITTANY Ready - "I'll tell you if it'll hold"</div>
+    </div>
+
+    <!-- HANNA Section -->
+    <div id="hanna" class="agent-section">
+        <div class="agent-header">
+            <div class="agent-icon">🧾</div>
+            <div class="agent-title">
+                <h2>HANNA - Receipt Scanner</h2>
+                <p>AI-powered receipt scanning for expense tracking</p>
+            </div>
+        </div>
+
+        <!-- Upload Zone -->
+        <div class="hanna-upload-zone" id="hannaUploadZone" onclick="document.getElementById('hannaFileInput').click()">
+            <div class="hanna-upload-icon">📸</div>
+            <div class="hanna-upload-text">Tap to take photo or upload receipt</div>
+            <div class="hanna-upload-hint">Supports JPG, PNG, PDF</div>
+            <input type="file" id="hannaFileInput" accept="image/*,application/pdf" capture="environment" style="display:none" onchange="hannaFileSelected(event)">
+        </div>
+
+        <!-- Preview Area -->
+        <div class="hanna-preview" id="hannaPreview" style="display:none">
+            <img id="hannaPreviewImage" src="" alt="Receipt preview">
+            <button class="hanna-preview-remove" onclick="hannaClearPreview()">✕</button>
+        </div>
+
+        <!-- Scanning Animation -->
+        <div class="hanna-scanning" id="hannaScanning" style="display:none">
+            <div class="hanna-scan-animation"></div>
+            <div class="hanna-scan-text">Scanning receipt...</div>
+        </div>
+
+        <!-- Results Card -->
+        <div class="hanna-result-card" id="hannaResult" style="display:none">
+            <div class="hanna-result-header">
+                <span class="hanna-store-name" id="hannaStoreName">-</span>
+                <span class="hanna-receipt-date" id="hannaReceiptDate">-</span>
+            </div>
+
+            <div class="hanna-totals">
+                <div class="hanna-total-row">
+                    <span>Subtotal</span>
+                    <span id="hannaSubtotal">$0.00</span>
+                </div>
+                <div class="hanna-total-row gst">
+                    <span>GST (10%)</span>
+                    <span id="hannaGST">$0.00</span>
+                </div>
+                <div class="hanna-total-row total">
+                    <span>TOTAL</span>
+                    <span id="hannaTotal">$0.00</span>
+                </div>
+            </div>
+
+            <div class="hanna-items-section">
+                <h4>Items Detected</h4>
+                <div class="hanna-items-list" id="hannaItemsList">
+                    <!-- Items populated by JS -->
+                </div>
+            </div>
+
+            <!-- Job Assignment -->
+            <div class="hanna-job-section">
+                <label>Assign to Job</label>
+                <select id="hannaJobSelect">
+                    <option value="">-- Select Job --</option>
+                    <option value="general">General Expenses</option>
+                    <option value="workshop">Workshop Supplies</option>
+                </select>
+                <input type="text" id="hannaNewJob" placeholder="Or enter new job name..." style="margin-top:8px">
+            </div>
+
+            <!-- Notes -->
+            <div class="hanna-notes-section">
+                <label>Notes (optional)</label>
+                <textarea id="hannaNotes" placeholder="Add any notes about this receipt..."></textarea>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="hanna-actions">
+                <button class="btn" onclick="hannaClearAll()">Clear</button>
+                <button class="btn primary" onclick="hannaSaveReceipt()">💾 Save Receipt</button>
+            </div>
+        </div>
+
+        <!-- Recent Receipts -->
+        <div class="hanna-recent-section">
+            <h4>📋 Recent Receipts</h4>
+            <div class="hanna-recent-list" id="hannaRecentList">
+                <div class="hanna-empty-state">No receipts scanned yet</div>
+            </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="hanna-stats" id="hannaStats">
+            <div class="hanna-stat">
+                <div class="hanna-stat-value" id="hannaStatTotal">0</div>
+                <div class="hanna-stat-label">Total Scanned</div>
+            </div>
+            <div class="hanna-stat">
+                <div class="hanna-stat-value" id="hannaStatMonth">$0</div>
+                <div class="hanna-stat-label">This Month</div>
+            </div>
+            <div class="hanna-stat">
+                <div class="hanna-stat-value" id="hannaStatGST">$0</div>
+                <div class="hanna-stat-label">GST Claimable</div>
+            </div>
+        </div>
+
+        <div class="console" id="hannaConsole">🧾 HANNA Ready - "I'll scan your receipts in a flash"</div>
     </div>
 
     <!-- AI Agents Section -->
@@ -4689,6 +5013,207 @@
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // HANNA - Receipt Scanner Functions
+    // ═══════════════════════════════════════════════════════════════════════════
+    let hannaCurrentFile = null;
+    let hannaCurrentResult = null;
+    let hannaReceipts = JSON.parse(localStorage.getItem('hannaReceipts') || '[]');
+
+    function hannaFileSelected(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        hannaCurrentFile = file;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            document.getElementById('hannaPreviewImage').src = e.target.result;
+            document.getElementById('hannaPreview').style.display = 'block';
+            document.getElementById('hannaUploadZone').style.display = 'none';
+            document.getElementById('hannaConsole').textContent = `📷 Image loaded: ${file.name}`;
+
+            // Auto-scan after upload
+            hannaScanReceipt();
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function hannaClearPreview() {
+        document.getElementById('hannaPreview').style.display = 'none';
+        document.getElementById('hannaUploadZone').style.display = 'flex';
+        document.getElementById('hannaFileInput').value = '';
+        hannaCurrentFile = null;
+        document.getElementById('hannaConsole').textContent = '🧾 HANNA Ready - "I\'ll scan your receipts in a flash"';
+    }
+
+    function hannaClearAll() {
+        hannaClearPreview();
+        document.getElementById('hannaResult').style.display = 'none';
+        document.getElementById('hannaJobSelect').value = '';
+        document.getElementById('hannaNewJob').value = '';
+        document.getElementById('hannaNotes').value = '';
+        hannaCurrentResult = null;
+    }
+
+    async function hannaScanReceipt() {
+        if (!hannaCurrentFile) {
+            document.getElementById('hannaConsole').textContent = '⚠️ Please upload a receipt first';
+            return;
+        }
+
+        // Show scanning animation
+        document.getElementById('hannaScanning').style.display = 'flex';
+        document.getElementById('hannaConsole').textContent = '🔍 Scanning receipt with AI...';
+
+        try {
+            // Convert to base64
+            const base64 = await new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result.split(',')[1]);
+                reader.readAsDataURL(hannaCurrentFile);
+            });
+
+            // Call HANNA API endpoint
+            const response = await fetch('/api/hanna/scan', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    image_base64: base64,
+                    filename: hannaCurrentFile.name
+                })
+            });
+
+            if (!response.ok) throw new Error('Scan failed');
+
+            const result = await response.json();
+            hannaCurrentResult = result;
+            hannaDisplayResult(result);
+
+        } catch (error) {
+            console.error('Scan error:', error);
+            // Fallback: simulate offline scanning with demo data
+            hannaSimulateScan();
+        } finally {
+            document.getElementById('hannaScanning').style.display = 'none';
+        }
+    }
+
+    function hannaSimulateScan() {
+        // Demo data for offline use
+        const demoResult = {
+            store_name: 'Bunnings Warehouse',
+            date: new Date().toLocaleDateString('en-AU'),
+            subtotal: 127.27,
+            gst: 12.73,
+            total: 140.00,
+            items: [
+                { name: 'M16 Galvanised Bolt Pack', qty: 2, price: 24.50 },
+                { name: 'Chemical Anchor HY200', qty: 1, price: 89.00 },
+                { name: 'Safety Glasses', qty: 1, price: 14.00 }
+            ],
+            confidence: 0.85
+        };
+
+        hannaCurrentResult = demoResult;
+        hannaDisplayResult(demoResult);
+        document.getElementById('hannaConsole').textContent = '⚠️ Offline mode - showing demo data. Connect to STEEL server for real scanning.';
+    }
+
+    function hannaDisplayResult(result) {
+        document.getElementById('hannaStoreName').textContent = result.store_name || 'Unknown Store';
+        document.getElementById('hannaReceiptDate').textContent = result.date || '-';
+        document.getElementById('hannaSubtotal').textContent = `$${(result.subtotal || 0).toFixed(2)}`;
+        document.getElementById('hannaGST').textContent = `$${(result.gst || 0).toFixed(2)}`;
+        document.getElementById('hannaTotal').textContent = `$${(result.total || 0).toFixed(2)}`;
+
+        // Display items
+        const itemsList = document.getElementById('hannaItemsList');
+        if (result.items && result.items.length > 0) {
+            itemsList.innerHTML = result.items.map(item => `
+                <div class="hanna-item">
+                    <span class="hanna-item-name">${item.name}</span>
+                    <span class="hanna-item-qty">x${item.qty || 1}</span>
+                    <span class="hanna-item-price">$${(item.price || 0).toFixed(2)}</span>
+                </div>
+            `).join('');
+        } else {
+            itemsList.innerHTML = '<div class="hanna-empty-state">No items detected</div>';
+        }
+
+        document.getElementById('hannaResult').style.display = 'block';
+        document.getElementById('hannaConsole').textContent = `✅ Receipt scanned! Store: ${result.store_name}, Total: $${result.total?.toFixed(2) || '0.00'}`;
+    }
+
+    function hannaSaveReceipt() {
+        if (!hannaCurrentResult) {
+            document.getElementById('hannaConsole').textContent = '⚠️ No receipt to save';
+            return;
+        }
+
+        const job = document.getElementById('hannaJobSelect').value ||
+                    document.getElementById('hannaNewJob').value ||
+                    'Uncategorized';
+        const notes = document.getElementById('hannaNotes').value;
+
+        const receipt = {
+            id: Date.now(),
+            ...hannaCurrentResult,
+            job: job,
+            notes: notes,
+            saved_at: new Date().toISOString()
+        };
+
+        // Save to local storage
+        hannaReceipts.unshift(receipt);
+        if (hannaReceipts.length > 100) hannaReceipts = hannaReceipts.slice(0, 100); // Keep last 100
+        localStorage.setItem('hannaReceipts', JSON.stringify(hannaReceipts));
+
+        // Update UI
+        hannaUpdateRecentList();
+        hannaUpdateStats();
+        hannaClearAll();
+
+        document.getElementById('hannaConsole').textContent = `💾 Receipt saved to "${job}"! Total: $${receipt.total?.toFixed(2) || '0.00'}`;
+    }
+
+    function hannaUpdateRecentList() {
+        const list = document.getElementById('hannaRecentList');
+        if (hannaReceipts.length === 0) {
+            list.innerHTML = '<div class="hanna-empty-state">No receipts scanned yet</div>';
+            return;
+        }
+
+        list.innerHTML = hannaReceipts.slice(0, 5).map(r => `
+            <div class="hanna-recent-item">
+                <div class="hanna-recent-store">${r.store_name || 'Unknown'}</div>
+                <div class="hanna-recent-job">${r.job || '-'}</div>
+                <div class="hanna-recent-total">$${(r.total || 0).toFixed(2)}</div>
+            </div>
+        `).join('');
+    }
+
+    function hannaUpdateStats() {
+        document.getElementById('hannaStatTotal').textContent = hannaReceipts.length;
+
+        // This month's spending
+        const now = new Date();
+        const thisMonth = hannaReceipts.filter(r => {
+            const d = new Date(r.saved_at);
+            return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+        });
+        const monthTotal = thisMonth.reduce((sum, r) => sum + (r.total || 0), 0);
+        document.getElementById('hannaStatMonth').textContent = `$${monthTotal.toFixed(0)}`;
+
+        // GST claimable
+        const gstTotal = hannaReceipts.reduce((sum, r) => sum + (r.gst || 0), 0);
+        document.getElementById('hannaStatGST').textContent = `$${gstTotal.toFixed(0)}`;
+    }
+
+    function hannaInit() {
+        hannaUpdateRecentList();
+        hannaUpdateStats();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // INITIALIZATION
     // ═══════════════════════════════════════════════════════════════════════════
     document.addEventListener('DOMContentLoaded', async () => {
@@ -4707,6 +5232,7 @@
         chuckCalculate();
         brittanyUpdateSizes(); // Set up size buttons for default type
         brittanyCalculate();
+        hannaInit(); // Initialize HANNA receipt scanner
 
         // Log access
         console.log('🔩 STEEL Command Center loaded. Admin:', SteelAuth.isAdmin);
