@@ -1555,13 +1555,9 @@
         <div class="hobart-tube-finder">
             <div class="tube-finder-title">🔍 WHAT FITS THIS TUBE?</div>
             <div class="tube-finder-inputs">
-                <div class="calc-input">
+                <div class="calc-input" style="max-width:300px;margin:0 auto;">
                     <label>Wall Thickness (mm)</label>
                     <input type="number" id="tubeWallThickness" placeholder="e.g. 6" min="1" max="50" oninput="hobartFindFits()">
-                </div>
-                <div class="calc-input">
-                    <label>Total Clamp (mm)</label>
-                    <input type="number" id="tubeClampTotal" placeholder="e.g. 12" min="1" max="100" oninput="hobartFindFits()">
                 </div>
             </div>
             <div class="tube-finder-results" id="tubeFitResults"></div>
@@ -2429,15 +2425,14 @@
     // Find what bolts fit a given tube thickness
     function hobartFindFits() {
         const wallThickness = parseFloat(document.getElementById('tubeWallThickness').value) || 0;
-        const clampTotal = parseFloat(document.getElementById('tubeClampTotal').value) || 0;
         const resultsDiv = document.getElementById('tubeFitResults');
 
-        if (!wallThickness && !clampTotal) {
+        if (!wallThickness) {
             resultsDiv.classList.remove('active');
             return;
         }
 
-        const totalClamp = clampTotal || (wallThickness * 2); // Default to 2x wall if no total given
+        const totalClamp = wallThickness * 2; // Through-bolt clamps 2x wall thickness
         const results = [];
 
         // Check all bolt types and sizes
