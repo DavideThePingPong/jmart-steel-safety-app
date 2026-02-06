@@ -142,6 +142,72 @@
             this.isAdmin = isAdmin;
         },
 
+        async renameDevice(targetDeviceId, newName) {
+            if (!firebaseDb || !this.isAdmin) return false;
+            if (!newName || !newName.trim()) return false;
+            try {
+                const approvedRef = firebaseDb.ref('jmart-safety/devices/approved/' + targetDeviceId);
+                const approvedSnap = await approvedRef.once('value');
+                if (approvedSnap.exists()) {
+                    await approvedRef.child('name').set(newName.trim());
+                    return true;
+                }
+                const pendingRef = firebaseDb.ref('jmart-safety/devices/pending/' + targetDeviceId);
+                const pendingSnap = await pendingRef.once('value');
+                if (pendingSnap.exists()) {
+                    await pendingRef.child('name').set(newName.trim());
+                    return true;
+                }
+                return false;
+            } catch (error) {
+                console.error('Error renaming device:', error);
+                return false;
+            }
+        },
+
+        async approveDevice(deviceId) {
+            if (!firebaseDb || !this.isAdmin) return false;
+            try {
+                const pendingRef = firebaseDb.ref('jmart-safety/devices/pending/' + deviceId);
+                const snap = await pendingRef.once('value');
+                if (!snap.exists()) return false;
+                const deviceData = snap.val();
+                await firebaseDb.ref('jmart-safety/devices/approved/' + deviceId).set({
+                    ...deviceData,
+                    isAdmin: false,
+                    approvedAt: new Date().toISOString(),
+                    approvedBy: 'Admin (STEEL)'
+                });
+                await pendingRef.remove();
+                return true;
+            } catch (error) {
+                console.error('Error approving device:', error);
+                return false;
+            }
+        },
+
+        async denyDevice(deviceId) {
+            if (!firebaseDb || !this.isAdmin) return false;
+            try {
+                await firebaseDb.ref('jmart-safety/devices/pending/' + deviceId).remove();
+                return true;
+            } catch (error) {
+                console.error('Error denying device:', error);
+                return false;
+            }
+        },
+
+        async removeDevice(deviceId) {
+            if (!firebaseDb || !this.isAdmin) return false;
+            try {
+                await firebaseDb.ref('jmart-safety/devices/approved/' + deviceId).remove();
+                return true;
+            } catch (error) {
+                console.error('Error removing device:', error);
+                return false;
+            }
+        },
+
         showPendingScreen() {
             document.body.innerHTML = `
                 <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;text-align:center;padding:20px;background:linear-gradient(135deg,#1a1a2e,#16213e,#0f3460);color:#fff;font-family:system-ui,sans-serif;">
@@ -1539,6 +1605,7 @@
         <button class="nav-tab" onclick="showSection('brittany')">💪 BRITTANY</button>
         <button class="nav-tab" onclick="showSection('hanna')">🧾 HANNA</button>
         <button class="nav-tab offline" onclick="showSection('ai-agents')">🤖 AI Agents</button>
+        <button class="nav-tab" onclick="showSection('settings')">⚙️</button>
     </div>
 
     <!-- HOBART Section -->
@@ -2193,6 +2260,41 @@
         <div class="console">🤖 To use AI agents, run: python steel/api.py</div>
     </div>
 
+    <!-- Settings Section -->
+    <div id="settings" class="agent-section">
+        <div class="agent-header">
+            <div class="agent-icon">⚙️</div>
+            <div class="agent-title">
+                <h2>Settings</h2>
+                <p>Device management and app preferences</p>
+            </div>
+        </div>
+
+        <!-- This Device Name -->
+        <div class="calc-card">
+            <h3>📱 This Device</h3>
+            <div style="display:flex;gap:10px;align-items:center;margin-top:10px;">
+                <input type="text" id="thisDeviceName" placeholder="Enter device name" style="flex:1;padding:10px 14px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;font-size:14px;">
+                <button onclick="saveThisDeviceName()" style="padding:10px 20px;background:linear-gradient(135deg,#4CAF50,#45a049);border:none;border-radius:8px;color:#fff;cursor:pointer;font-weight:600;">Save</button>
+            </div>
+            <p style="margin-top:8px;font-size:12px;color:#667eea;" id="settingsDeviceId"></p>
+        </div>
+
+        <!-- Approved Devices -->
+        <div class="calc-card">
+            <h3>✅ Approved Devices</h3>
+            <div id="approvedDevicesList" style="margin-top:10px;"></div>
+        </div>
+
+        <!-- Pending Devices -->
+        <div class="calc-card">
+            <h3>⏳ Pending Approval</h3>
+            <div id="pendingDevicesList" style="margin-top:10px;"></div>
+        </div>
+
+        <div class="console" id="settingsConsole">⚙️ Settings loaded</div>
+    </div>
+
     <!-- Status Badge -->
     <div class="status-badge offline" id="statusBadge">
         <div class="status-dot"></div>
@@ -2343,6 +2445,10 @@
         document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
         document.getElementById(id).classList.add('active');
         event.target.classList.add('active');
+        // Load settings data when settings tab is opened
+        if (id === 'settings') {
+            loadSettingsData();
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -5206,6 +5312,170 @@
     function hannaInit() {
         hannaUpdateRecentList();
         hannaUpdateStats();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SETTINGS & DEVICE MANAGEMENT
+    // ═══════════════════════════════════════════════════════════════════════════
+    let editingDeviceId = null;
+
+    function loadSettingsData() {
+        if (!firebaseDb) return;
+
+        // Show this device info
+        document.getElementById('settingsDeviceId').textContent = 'Device ID: ' + SteelAuth.deviceId;
+
+        // Load this device name
+        firebaseDb.ref('jmart-safety/devices/approved/' + SteelAuth.deviceId + '/name').once('value', snap => {
+            document.getElementById('thisDeviceName').value = snap.val() || '';
+        });
+
+        // Listen for approved devices
+        firebaseDb.ref('jmart-safety/devices/approved').on('value', snap => {
+            const container = document.getElementById('approvedDevicesList');
+            if (!snap.exists()) { container.innerHTML = '<p style="color:#888;font-size:14px;">No approved devices</p>'; return; }
+            let html = '';
+            snap.forEach(child => {
+                const d = child.val();
+                const id = child.key;
+                const isThis = id === SteelAuth.deviceId;
+                const name = d.name || d.type || 'Unknown Device';
+                const date = d.approvedAt ? new Date(d.approvedAt).toLocaleDateString('en-AU') : '';
+
+                html += '<div style="padding:12px;border-radius:8px;margin-bottom:8px;' + (isThis ? 'background:rgba(102,126,234,0.15);border:1px solid rgba(102,126,234,0.3);' : 'background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);') + '">';
+                html += '<div style="display:flex;align-items:center;justify-content:between;">';
+                html += '<div style="flex:1;min-width:0;">';
+
+                if (editingDeviceId === id) {
+                    html += '<div style="display:flex;align-items:center;gap:8px;">';
+                    html += '<input type="text" id="renameInput-' + id + '" value="' + (name).replace(/"/g, '&quot;') + '" maxlength="30" style="flex:1;padding:6px 10px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.3);border-radius:6px;color:#fff;font-size:14px;" onkeydown="if(event.key===\'Enter\')handleSaveRename(\'' + id + '\');if(event.key===\'Escape\')cancelRename();">';
+                    html += '<button onclick="handleSaveRename(\'' + id + '\')" style="padding:4px 10px;background:#4CAF50;border:none;border-radius:6px;color:#fff;cursor:pointer;font-size:14px;">&#10003;</button>';
+                    html += '<button onclick="cancelRename()" style="padding:4px 10px;background:transparent;border:1px solid rgba(255,255,255,0.2);border-radius:6px;color:#888;cursor:pointer;font-size:14px;">&#10005;</button>';
+                    html += '</div>';
+                } else {
+                    html += '<div style="display:flex;align-items:center;gap:8px;">';
+                    html += '<strong style="color:#fff;">' + name + '</strong>';
+                    if (isThis) html += '<span style="color:#667eea;font-size:12px;">(This device)</span>';
+                    if (d.isAdmin) html += '<span style="background:#e65100;color:#fff;font-size:10px;padding:2px 8px;border-radius:4px;">Admin</span>';
+                    if (SteelAuth.isAdmin) {
+                        html += '<button onclick="startRename(\'' + id + '\')" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px 4px;" title="Rename device">&#9998;</button>';
+                    }
+                    html += '</div>';
+                }
+
+                html += '<p style="font-size:11px;color:#888;margin-top:4px;">' + id + '</p>';
+                html += '</div>';
+                html += '<div style="display:flex;align-items:center;gap:10px;">';
+                html += '<span style="font-size:12px;color:#888;">' + date + '</span>';
+                if (SteelAuth.isAdmin && !isThis && !d.isAdmin) {
+                    html += '<button onclick="handleRemoveDevice(\'' + id + '\')" style="background:none;border:none;cursor:pointer;font-size:16px;" title="Remove device">&#128465;</button>';
+                }
+                html += '</div>';
+                html += '</div></div>';
+            });
+            container.innerHTML = html;
+
+            // Auto-focus rename input if editing
+            if (editingDeviceId) {
+                const input = document.getElementById('renameInput-' + editingDeviceId);
+                if (input) { input.focus(); input.select(); }
+            }
+        });
+
+        // Listen for pending devices
+        firebaseDb.ref('jmart-safety/devices/pending').on('value', snap => {
+            const container = document.getElementById('pendingDevicesList');
+            if (!snap.exists() || snap.numChildren() === 0) { container.innerHTML = '<p style="color:#888;font-size:14px;">No pending devices</p>'; return; }
+            let html = '';
+            snap.forEach(child => {
+                const d = child.val();
+                const id = child.key;
+                const name = d.name || d.type || 'Unknown Device';
+                const date = d.requestedAt ? new Date(d.requestedAt).toLocaleDateString('en-AU') : '';
+
+                html += '<div style="padding:12px;border-radius:8px;margin-bottom:8px;background:rgba(255,193,7,0.1);border:1px solid rgba(255,193,7,0.3);">';
+                html += '<div style="display:flex;align-items:center;justify-content:between;">';
+                html += '<div style="flex:1;">';
+
+                if (editingDeviceId === id) {
+                    html += '<div style="display:flex;align-items:center;gap:8px;">';
+                    html += '<input type="text" id="renameInput-' + id + '" value="' + (name).replace(/"/g, '&quot;') + '" maxlength="30" style="flex:1;padding:6px 10px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.3);border-radius:6px;color:#fff;font-size:14px;" onkeydown="if(event.key===\'Enter\')handleSaveRename(\'' + id + '\');if(event.key===\'Escape\')cancelRename();">';
+                    html += '<button onclick="handleSaveRename(\'' + id + '\')" style="padding:4px 10px;background:#4CAF50;border:none;border-radius:6px;color:#fff;cursor:pointer;">&#10003;</button>';
+                    html += '<button onclick="cancelRename()" style="padding:4px 10px;background:transparent;border:1px solid rgba(255,255,255,0.2);border-radius:6px;color:#888;cursor:pointer;">&#10005;</button>';
+                    html += '</div>';
+                } else {
+                    html += '<div style="display:flex;align-items:center;gap:8px;">';
+                    html += '<strong style="color:#fff;">' + name + '</strong>';
+                    if (SteelAuth.isAdmin) {
+                        html += '<button onclick="startRename(\'' + id + '\')" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px 4px;" title="Rename device">&#9998;</button>';
+                    }
+                    html += '</div>';
+                }
+
+                html += '<p style="font-size:11px;color:#888;margin-top:4px;">Requested: ' + date + '</p>';
+                html += '</div>';
+                if (SteelAuth.isAdmin) {
+                    html += '<div style="display:flex;gap:8px;">';
+                    html += '<button onclick="handleApproveDevice(\'' + id + '\')" style="padding:6px 14px;background:#4CAF50;border:none;border-radius:6px;color:#fff;cursor:pointer;font-size:13px;font-weight:600;">Approve</button>';
+                    html += '<button onclick="handleDenyDevice(\'' + id + '\')" style="padding:6px 14px;background:#f44336;border:none;border-radius:6px;color:#fff;cursor:pointer;font-size:13px;font-weight:600;">Deny</button>';
+                    html += '</div>';
+                }
+                html += '</div></div>';
+            });
+            container.innerHTML = html;
+        });
+    }
+
+    async function saveThisDeviceName() {
+        const name = document.getElementById('thisDeviceName').value.trim();
+        if (!name) { alert('Please enter a device name'); return; }
+        if (!firebaseDb) return;
+        try {
+            await firebaseDb.ref('jmart-safety/devices/approved/' + SteelAuth.deviceId + '/name').set(name);
+            document.getElementById('settingsConsole').textContent = '✅ Device name saved: ' + name;
+        } catch (error) {
+            alert('Failed to save device name');
+        }
+    }
+
+    function startRename(deviceId) {
+        editingDeviceId = deviceId;
+        loadSettingsData();
+    }
+
+    function cancelRename() {
+        editingDeviceId = null;
+        loadSettingsData();
+    }
+
+    async function handleSaveRename(deviceId) {
+        const input = document.getElementById('renameInput-' + deviceId);
+        if (!input) return;
+        const newName = input.value.trim();
+        if (!newName) { alert('Device name cannot be empty'); return; }
+        const success = await SteelAuth.renameDevice(deviceId, newName);
+        editingDeviceId = null;
+        if (!success) {
+            alert('Failed to rename device');
+        }
+    }
+
+    async function handleApproveDevice(deviceId) {
+        if (!confirm('Approve this device?')) return;
+        const success = await SteelAuth.approveDevice(deviceId);
+        if (!success) alert('Failed to approve device');
+    }
+
+    async function handleDenyDevice(deviceId) {
+        if (!confirm('Deny and remove this device request?')) return;
+        const success = await SteelAuth.denyDevice(deviceId);
+        if (!success) alert('Failed to deny device');
+    }
+
+    async function handleRemoveDevice(deviceId) {
+        if (!confirm('Remove this device? It will need to be re-approved.')) return;
+        const success = await SteelAuth.removeDevice(deviceId);
+        if (!success) alert('Failed to remove device');
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
