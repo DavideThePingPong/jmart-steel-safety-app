@@ -8,6 +8,7 @@
 
     <!-- Firebase SDK for Device Authorization (shared with Safety App) -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
 
     <script>
@@ -26,11 +27,18 @@
 
     let firebaseApp = null;
     let firebaseDb = null;
+    let firebaseAuthUid = null;
 
     try {
         firebaseApp = firebase.initializeApp(firebaseConfig);
         firebaseDb = firebase.database();
-        console.log('🔥 Firebase connected');
+        // Sign in anonymously so security rules can use auth.uid
+        firebase.auth().signInAnonymously().then(cred => {
+            firebaseAuthUid = cred.user.uid;
+            console.log('🔥 Firebase connected, auth uid:', firebaseAuthUid);
+        }).catch(err => {
+            console.warn('Anonymous auth failed (app still works):', err.message);
+        });
     } catch (error) {
         console.warn('Firebase error:', error);
     }
@@ -95,9 +103,10 @@
                     const data = snap.val();
                     this.isApproved = true;
                     this.isAdmin = data.isAdmin || false;
-                    // Update last seen
-                    await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId + '/lastSeen').set(new Date().toISOString());
-                    await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId + '/lastApp').set('STEEL');
+                    // Update last seen and auth UID (links Firebase Auth to device)
+                    const updates = { lastSeen: new Date().toISOString(), lastApp: 'STEEL' };
+                    if (firebaseAuthUid) updates.authUid = firebaseAuthUid;
+                    await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId).update(updates);
                     console.log('✅ Device approved, admin:', this.isAdmin);
                     return { approved: true, admin: this.isAdmin };
                 }
@@ -114,6 +123,7 @@
                 if (!pendingSnap.exists()) {
                     await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).set({
                         ...this.getDeviceInfo(),
+                        authUid: firebaseAuthUid || null,
                         requestedAt: new Date().toISOString(),
                         requestedFrom: 'STEEL'
                     });
@@ -134,6 +144,7 @@
             if (!firebaseDb) return;
             await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId).set({
                 ...this.getDeviceInfo(),
+                authUid: firebaseAuthUid || null,
                 isAdmin: isAdmin,
                 approvedAt: new Date().toISOString(),
                 approvedFrom: 'STEEL'

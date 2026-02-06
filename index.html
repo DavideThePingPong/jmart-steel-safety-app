@@ -33,8 +33,9 @@
   <script src="https://unpkg.com/lucide@latest"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
-  <!-- Firebase SDK for Cloud Sync (Database only - photos use Google Drive) -->
+  <!-- Firebase SDK for Cloud Sync (Database + Auth + photos via Google Drive) -->
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
 
   <!-- Google API for Drive Integration -->
@@ -64,11 +65,19 @@
     // Initialize Firebase only if configured
     let firebaseApp = null;
     let firebaseDb = null;
+    let firebaseAuthUid = null;
 
     if (isFirebaseConfigured) {
       try {
         firebaseApp = firebase.initializeApp(firebaseConfig);
         firebaseDb = firebase.database();
+        // Sign in anonymously so security rules can use auth.uid
+        firebase.auth().signInAnonymously().then(cred => {
+          firebaseAuthUid = cred.user.uid;
+          console.log('Firebase connected, auth uid:', firebaseAuthUid);
+        }).catch(err => {
+          console.warn('Anonymous auth failed (app still works):', err.message);
+        });
         console.log('Firebase connected successfully!');
       } catch (error) {
         console.error('Firebase initialization error:', error);
@@ -234,8 +243,10 @@
             this.canViewDevices = data.canViewDevices || false;
             this.canRevokeDevices = data.canRevokeDevices || false;
 
-            // Update last seen
-            await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId + '/lastSeen').set(new Date().toISOString());
+            // Update last seen and auth UID (links Firebase Auth to device)
+            const updates = { lastSeen: new Date().toISOString() };
+            if (firebaseAuthUid) updates.authUid = firebaseAuthUid;
+            await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId).update(updates);
 
             this.notifyStatusListeners();
             console.log('Device approved, admin:', this.isAdmin, 'canViewDevices:', this.canViewDevices, 'canRevokeDevices:', this.canRevokeDevices);
@@ -274,6 +285,7 @@
 
         const deviceData = {
           ...this.deviceInfo,
+          authUid: firebaseAuthUid || null,
           requestedAt: new Date().toISOString(),
           status: 'pending'
         };
@@ -291,6 +303,7 @@
 
         const deviceData = {
           ...this.deviceInfo,
+          authUid: firebaseAuthUid || null,
           isAdmin: isAdmin,
           approvedAt: new Date().toISOString(),
           approvedBy: isAdmin ? 'SYSTEM (First Device)' : 'Admin',
@@ -6353,7 +6366,7 @@
       };
 
       // Get QR Code URL for sharing - always use the GitHub Pages URL
-      const getAppUrl = () => 'https://davidethepingpong.github.io/jmart-steel-safety-app/jmart-safety-app.html';
+      const getAppUrl = () => 'https://davidethepingpong.github.io/jmart-steel-safety-app/index.html';
 
       // Course List View
       if (!selectedCourse) {
