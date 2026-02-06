@@ -1,0 +1,44 @@
+{
+  "database": {
+    "rules": "firebase.rules.json"
+  },
+  "hosting": {
+    "public": ".",
+    "ignore": [
+      "firebase.json",
+      "firebase.rules.json",
+      "**/.*",
+      "**/node_modules/**",
+      "CRITICAL-SAFETY-REVIEW.md",
+      "TEST-COVERAGE-ANALYSIS.md",
+      "DOCUMENTATION.md",
+      "package.json",
+      "package-lock.json",
+      "babel.config.js",
+      "jest.config.js",
+      "JMart-Codebase-Analysis-Report.docx",
+      "**/src/**",
+      "**/src-v3/**",
+      "**/tests/**"
+    ],
+    "headers": [
+      {
+        "source": "**",
+        "headers": [
+          {
+            "key": "X-Content-Type-Options",
+            "value": "nosniff"
+          },
+          {
+            "key": "X-Frame-Options",
+            "value": "DENY"
+          },
+          {
+            "key": "Referrer-Policy",
+            "value": "strict-origin-when-cross-origin"
+          }
+        ]
+      }
+    ]
+  }
+}

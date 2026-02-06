@@ -5319,6 +5319,14 @@
     // ═══════════════════════════════════════════════════════════════════════════
     let editingDeviceId = null;
 
+    // Helper: safely create a styled element with text content (XSS-safe)
+    function el(tag, styles, textContent) {
+        const e = document.createElement(tag);
+        if (styles) e.setAttribute('style', styles);
+        if (textContent !== undefined) e.textContent = textContent;
+        return e;
+    }
+
     function loadSettingsData() {
         if (!firebaseDb) return;
 
@@ -5333,8 +5341,11 @@
         // Listen for approved devices
         firebaseDb.ref('jmart-safety/devices/approved').on('value', snap => {
             const container = document.getElementById('approvedDevicesList');
-            if (!snap.exists()) { container.innerHTML = '<p style="color:#888;font-size:14px;">No approved devices</p>'; return; }
-            let html = '';
+            container.textContent = '';
+            if (!snap.exists()) {
+                container.appendChild(el('p', 'color:#888;font-size:14px;', 'No approved devices'));
+                return;
+            }
             snap.forEach(child => {
                 const d = child.val();
                 const id = child.key;
@@ -5342,38 +5353,54 @@
                 const name = d.name || d.type || 'Unknown Device';
                 const date = d.approvedAt ? new Date(d.approvedAt).toLocaleDateString('en-AU') : '';
 
-                html += '<div style="padding:12px;border-radius:8px;margin-bottom:8px;' + (isThis ? 'background:rgba(102,126,234,0.15);border:1px solid rgba(102,126,234,0.3);' : 'background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);') + '">';
-                html += '<div style="display:flex;align-items:center;justify-content:between;">';
-                html += '<div style="flex:1;min-width:0;">';
+                const card = el('div', 'padding:12px;border-radius:8px;margin-bottom:8px;' + (isThis ? 'background:rgba(102,126,234,0.15);border:1px solid rgba(102,126,234,0.3);' : 'background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);'));
+                const row = el('div', 'display:flex;align-items:center;justify-content:space-between;');
+                const info = el('div', 'flex:1;min-width:0;');
 
                 if (editingDeviceId === id) {
-                    html += '<div style="display:flex;align-items:center;gap:8px;">';
-                    html += '<input type="text" id="renameInput-' + id + '" value="' + (name).replace(/"/g, '&quot;') + '" maxlength="30" style="flex:1;padding:6px 10px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.3);border-radius:6px;color:#fff;font-size:14px;" onkeydown="if(event.key===\'Enter\')handleSaveRename(\'' + id + '\');if(event.key===\'Escape\')cancelRename();">';
-                    html += '<button onclick="handleSaveRename(\'' + id + '\')" style="padding:4px 10px;background:#4CAF50;border:none;border-radius:6px;color:#fff;cursor:pointer;font-size:14px;">&#10003;</button>';
-                    html += '<button onclick="cancelRename()" style="padding:4px 10px;background:transparent;border:1px solid rgba(255,255,255,0.2);border-radius:6px;color:#888;cursor:pointer;font-size:14px;">&#10005;</button>';
-                    html += '</div>';
+                    const editRow = el('div', 'display:flex;align-items:center;gap:8px;');
+                    const input = el('input', 'flex:1;padding:6px 10px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.3);border-radius:6px;color:#fff;font-size:14px;');
+                    input.type = 'text'; input.id = 'renameInput-' + id; input.value = name; input.maxLength = 30;
+                    input.addEventListener('keydown', function(e) { if (e.key === 'Enter') handleSaveRename(id); if (e.key === 'Escape') cancelRename(); });
+                    const saveBtn = el('button', 'padding:4px 10px;background:#4CAF50;border:none;border-radius:6px;color:#fff;cursor:pointer;font-size:14px;', '\u2713');
+                    saveBtn.addEventListener('click', function() { handleSaveRename(id); });
+                    const cancelBtn = el('button', 'padding:4px 10px;background:transparent;border:1px solid rgba(255,255,255,0.2);border-radius:6px;color:#888;cursor:pointer;font-size:14px;', '\u2717');
+                    cancelBtn.addEventListener('click', function() { cancelRename(); });
+                    editRow.appendChild(input); editRow.appendChild(saveBtn); editRow.appendChild(cancelBtn);
+                    info.appendChild(editRow);
                 } else {
-                    html += '<div style="display:flex;align-items:center;gap:8px;">';
-                    html += '<strong style="color:#fff;">' + name + '</strong>';
-                    if (isThis) html += '<span style="color:#667eea;font-size:12px;">(This device)</span>';
-                    if (d.isAdmin) html += '<span style="background:#e65100;color:#fff;font-size:10px;padding:2px 8px;border-radius:4px;">Admin</span>';
-                    if (SteelAuth.isAdmin) {
-                        html += '<button onclick="startRename(\'' + id + '\')" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px 4px;" title="Rename device">&#9998;</button>';
+                    const nameRow = el('div', 'display:flex;align-items:center;gap:8px;');
+                    const nameEl = el('strong', 'color:#fff;', name);
+                    nameRow.appendChild(nameEl);
+                    if (isThis) { nameRow.appendChild(el('span', 'color:#667eea;font-size:12px;', '(This device)')); }
+                    if (d.isAdmin) {
+                        const badge = el('span', 'background:#e65100;color:#fff;font-size:10px;padding:2px 8px;border-radius:4px;', 'Admin');
+                        nameRow.appendChild(badge);
                     }
-                    html += '</div>';
+                    if (SteelAuth.isAdmin) {
+                        const renameBtn = el('button', 'background:none;border:none;cursor:pointer;font-size:14px;padding:2px 4px;', '\u270E');
+                        renameBtn.title = 'Rename device';
+                        renameBtn.addEventListener('click', function() { startRename(id); });
+                        nameRow.appendChild(renameBtn);
+                    }
+                    info.appendChild(nameRow);
                 }
 
-                html += '<p style="font-size:11px;color:#888;margin-top:4px;">' + id + '</p>';
-                html += '</div>';
-                html += '<div style="display:flex;align-items:center;gap:10px;">';
-                html += '<span style="font-size:12px;color:#888;">' + date + '</span>';
+                info.appendChild(el('p', 'font-size:11px;color:#888;margin-top:4px;', id));
+                row.appendChild(info);
+
+                const actions = el('div', 'display:flex;align-items:center;gap:10px;');
+                actions.appendChild(el('span', 'font-size:12px;color:#888;', date));
                 if (SteelAuth.isAdmin && !isThis && !d.isAdmin) {
-                    html += '<button onclick="handleRemoveDevice(\'' + id + '\')" style="background:none;border:none;cursor:pointer;font-size:16px;" title="Remove device">&#128465;</button>';
+                    const removeBtn = el('button', 'background:none;border:none;cursor:pointer;font-size:16px;', '\uD83D\uDDD1');
+                    removeBtn.title = 'Remove device';
+                    removeBtn.addEventListener('click', function() { handleRemoveDevice(id); });
+                    actions.appendChild(removeBtn);
                 }
-                html += '</div>';
-                html += '</div></div>';
+                row.appendChild(actions);
+                card.appendChild(row);
+                container.appendChild(card);
             });
-            container.innerHTML = html;
 
             // Auto-focus rename input if editing
             if (editingDeviceId) {
@@ -5385,44 +5412,59 @@
         // Listen for pending devices
         firebaseDb.ref('jmart-safety/devices/pending').on('value', snap => {
             const container = document.getElementById('pendingDevicesList');
-            if (!snap.exists() || snap.numChildren() === 0) { container.innerHTML = '<p style="color:#888;font-size:14px;">No pending devices</p>'; return; }
-            let html = '';
+            container.textContent = '';
+            if (!snap.exists() || snap.numChildren() === 0) {
+                container.appendChild(el('p', 'color:#888;font-size:14px;', 'No pending devices'));
+                return;
+            }
             snap.forEach(child => {
                 const d = child.val();
                 const id = child.key;
                 const name = d.name || d.type || 'Unknown Device';
                 const date = d.requestedAt ? new Date(d.requestedAt).toLocaleDateString('en-AU') : '';
 
-                html += '<div style="padding:12px;border-radius:8px;margin-bottom:8px;background:rgba(255,193,7,0.1);border:1px solid rgba(255,193,7,0.3);">';
-                html += '<div style="display:flex;align-items:center;justify-content:between;">';
-                html += '<div style="flex:1;">';
+                const card = el('div', 'padding:12px;border-radius:8px;margin-bottom:8px;background:rgba(255,193,7,0.1);border:1px solid rgba(255,193,7,0.3);');
+                const row = el('div', 'display:flex;align-items:center;justify-content:space-between;');
+                const info = el('div', 'flex:1;');
 
                 if (editingDeviceId === id) {
-                    html += '<div style="display:flex;align-items:center;gap:8px;">';
-                    html += '<input type="text" id="renameInput-' + id + '" value="' + (name).replace(/"/g, '&quot;') + '" maxlength="30" style="flex:1;padding:6px 10px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.3);border-radius:6px;color:#fff;font-size:14px;" onkeydown="if(event.key===\'Enter\')handleSaveRename(\'' + id + '\');if(event.key===\'Escape\')cancelRename();">';
-                    html += '<button onclick="handleSaveRename(\'' + id + '\')" style="padding:4px 10px;background:#4CAF50;border:none;border-radius:6px;color:#fff;cursor:pointer;">&#10003;</button>';
-                    html += '<button onclick="cancelRename()" style="padding:4px 10px;background:transparent;border:1px solid rgba(255,255,255,0.2);border-radius:6px;color:#888;cursor:pointer;">&#10005;</button>';
-                    html += '</div>';
+                    const editRow = el('div', 'display:flex;align-items:center;gap:8px;');
+                    const input = el('input', 'flex:1;padding:6px 10px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.3);border-radius:6px;color:#fff;font-size:14px;');
+                    input.type = 'text'; input.id = 'renameInput-' + id; input.value = name; input.maxLength = 30;
+                    input.addEventListener('keydown', function(e) { if (e.key === 'Enter') handleSaveRename(id); if (e.key === 'Escape') cancelRename(); });
+                    const saveBtn = el('button', 'padding:4px 10px;background:#4CAF50;border:none;border-radius:6px;color:#fff;cursor:pointer;', '\u2713');
+                    saveBtn.addEventListener('click', function() { handleSaveRename(id); });
+                    const cancelBtn = el('button', 'padding:4px 10px;background:transparent;border:1px solid rgba(255,255,255,0.2);border-radius:6px;color:#888;cursor:pointer;', '\u2717');
+                    cancelBtn.addEventListener('click', function() { cancelRename(); });
+                    editRow.appendChild(input); editRow.appendChild(saveBtn); editRow.appendChild(cancelBtn);
+                    info.appendChild(editRow);
                 } else {
-                    html += '<div style="display:flex;align-items:center;gap:8px;">';
-                    html += '<strong style="color:#fff;">' + name + '</strong>';
+                    const nameRow = el('div', 'display:flex;align-items:center;gap:8px;');
+                    nameRow.appendChild(el('strong', 'color:#fff;', name));
                     if (SteelAuth.isAdmin) {
-                        html += '<button onclick="startRename(\'' + id + '\')" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px 4px;" title="Rename device">&#9998;</button>';
+                        const renameBtn = el('button', 'background:none;border:none;cursor:pointer;font-size:14px;padding:2px 4px;', '\u270E');
+                        renameBtn.title = 'Rename device';
+                        renameBtn.addEventListener('click', function() { startRename(id); });
+                        nameRow.appendChild(renameBtn);
                     }
-                    html += '</div>';
+                    info.appendChild(nameRow);
                 }
 
-                html += '<p style="font-size:11px;color:#888;margin-top:4px;">Requested: ' + date + '</p>';
-                html += '</div>';
+                info.appendChild(el('p', 'font-size:11px;color:#888;margin-top:4px;', 'Requested: ' + date));
+                row.appendChild(info);
+
                 if (SteelAuth.isAdmin) {
-                    html += '<div style="display:flex;gap:8px;">';
-                    html += '<button onclick="handleApproveDevice(\'' + id + '\')" style="padding:6px 14px;background:#4CAF50;border:none;border-radius:6px;color:#fff;cursor:pointer;font-size:13px;font-weight:600;">Approve</button>';
-                    html += '<button onclick="handleDenyDevice(\'' + id + '\')" style="padding:6px 14px;background:#f44336;border:none;border-radius:6px;color:#fff;cursor:pointer;font-size:13px;font-weight:600;">Deny</button>';
-                    html += '</div>';
+                    const btnGroup = el('div', 'display:flex;gap:8px;');
+                    const approveBtn = el('button', 'padding:6px 14px;background:#4CAF50;border:none;border-radius:6px;color:#fff;cursor:pointer;font-size:13px;font-weight:600;', 'Approve');
+                    approveBtn.addEventListener('click', function() { handleApproveDevice(id); });
+                    const denyBtn = el('button', 'padding:6px 14px;background:#f44336;border:none;border-radius:6px;color:#fff;cursor:pointer;font-size:13px;font-weight:600;', 'Deny');
+                    denyBtn.addEventListener('click', function() { handleDenyDevice(id); });
+                    btnGroup.appendChild(approveBtn); btnGroup.appendChild(denyBtn);
+                    row.appendChild(btnGroup);
                 }
-                html += '</div></div>';
+                card.appendChild(row);
+                container.appendChild(card);
             });
-            container.innerHTML = html;
         });
     }
 
