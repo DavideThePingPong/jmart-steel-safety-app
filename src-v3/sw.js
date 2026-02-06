@@ -44,9 +44,10 @@ const CDN_RESOURCES = [
   // PDF generation
   'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
 
-  // Firebase (if used)
-  'https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js',
-  'https://www.gstatic.com/firebasejs/10.7.0/firebase-database-compat.js',
+  // Firebase
+  'https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js',
+  'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js',
+  'https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js',
 
   // Google Identity Services
   'https://accounts.google.com/gsi/client'

@@ -18,7 +18,10 @@
       "jest.config.js",
       "JMart-Codebase-Analysis-Report.docx",
       "**/src/**",
-      "**/src-v3/**",
+      "**/src-v3/services/**",
+      "**/src-v3/steel/**",
+      "**/src-v3/index.js",
+      "**/src-v3/README.md",
       "**/tests/**"
     ],
     "headers": [

@@ -9690,71 +9690,42 @@
     document.getElementById('root').innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:#f3f4f6;"><div class="spinner"></div><p style="margin-top:16px;color:#6b7280;font-family:system-ui;">Loading J&M Artsteel Safety...</p></div>';
   </script>
 
-  <!-- Service Worker Registration & Caching -->
+  <!-- Service Worker Registration (v3 - external file with stale-while-revalidate, background sync) -->
   <script>
-    // Register service worker for offline caching (if supported)
     if ('serviceWorker' in navigator) {
-      // Create inline service worker
-      const swCode = `
-        const CACHE_NAME = 'jmart-safety-v2';
-        const urlsToCache = [
-          './',
-          'https://cdn.tailwindcss.com',
-          'https://unpkg.com/react@18/umd/react.production.min.js',
-          'https://unpkg.com/react-dom@18/umd/react-dom.production.min.js',
-          'https://unpkg.com/@babel/standalone/babel.min.js',
-          'https://unpkg.com/lucide@latest',
-          'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'
-        ];
+      navigator.serviceWorker.register('./src-v3/sw.js')
+        .then(reg => {
+          console.log('✅ SW v3 registered, scope:', reg.scope);
+          // Listen for updates
+          reg.addEventListener('updatefound', () => {
+            const newWorker = reg.installing;
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                console.log('🔄 New SW available — will activate on next reload');
+              }
+            });
+          });
+        })
+        .catch(err => console.log('SW registration skipped:', err.message));
 
-        self.addEventListener('install', event => {
-          self.skipWaiting(); // Activate new SW immediately
-          event.waitUntil(
-            caches.open(CACHE_NAME).then(cache => cache.addAll(urlsToCache))
-          );
-        });
-
-        self.addEventListener('activate', event => {
-          // Clean up old caches
-          event.waitUntil(
-            caches.keys().then(cacheNames => {
-              return Promise.all(
-                cacheNames.filter(name => name !== CACHE_NAME).map(name => caches.delete(name))
-              );
-            })
-          );
-        });
-
-        self.addEventListener('fetch', event => {
-          event.respondWith(
-            caches.match(event.request).then(response => {
-              if (response) return response;
-              return fetch(event.request).then(fetchResponse => {
-                // Cache successful responses for offline use
-                if (fetchResponse && fetchResponse.status === 200) {
-                  const responseClone = fetchResponse.clone();
-                  caches.open(CACHE_NAME).then(cache => {
-                    cache.put(event.request, responseClone);
-                  });
-                }
-                return fetchResponse;
-              }).catch(() => {
-                // Return offline fallback for navigation requests
-                if (event.request.mode === 'navigate') {
-                  return caches.match('./');
-                }
-                return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
-              });
-            })
-          );
-        });
-      `;
-
-      const blob = new Blob([swCode], { type: 'application/javascript' });
-      const swUrl = URL.createObjectURL(blob);
-
-      navigator.serviceWorker.register(swUrl).catch(err => {
-        console.log('SW registration skipped:', err.message);
+      // Handle messages FROM the service worker (background sync triggers)
+      navigator.serviceWorker.addEventListener('message', event => {
+        if (event.data?.type === 'PROCESS_SYNC_QUEUE') {
+          console.log('📡 SW requested form sync');
+          // Trigger Firebase sync if available
+          if (window.firebaseDb && typeof window.processSyncQueue === 'function') {
+            window.processSyncQueue();
+          }
+        }
+        if (event.data?.type === 'PROCESS_DRIVE_QUEUE') {
+          console.log('📡 SW requested Drive sync');
+          if (typeof window.processDriveQueue === 'function') {
+            window.processDriveQueue();
+          }
+        }
+        if (event.data?.type === 'CACHE_STATUS') {
+          console.log('📦 Cache status:', event.data);
+        }
       });
     }
 
