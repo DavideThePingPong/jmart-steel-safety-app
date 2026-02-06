@@ -9881,7 +9881,7 @@
   <!-- Service Worker Registration (v3 - external file with stale-while-revalidate, background sync) -->
   <script>
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./src-v3/sw.js', { scope: '/' })
+      navigator.serviceWorker.register('./sw.js')
         .then(reg => {
           console.log('✅ SW v3 registered, scope:', reg.scope);
           // Listen for updates
