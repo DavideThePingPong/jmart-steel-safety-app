@@ -3454,6 +3454,90 @@
 </head>
 <body>
   <div id="root"></div>
+  <!-- Form Validation Service v3 (WHS compliance, adapted from src-v3/services/formValidation.js) -->
+  <script>
+    window.formValidator = (function() {
+      // Validate a value is present
+      function isPresent(val) {
+        if (val === undefined || val === null || val === '') return false;
+        if (Array.isArray(val) && val.length === 0) return false;
+        return true;
+      }
+
+      // Validate date is not in future
+      function dateNotFuture(dateStr) {
+        if (!dateStr) return null;
+        const d = new Date(dateStr);
+        const today = new Date(); today.setHours(23,59,59,999);
+        if (d > today) return 'Date cannot be in the future';
+        return null;
+      }
+
+      // Toolbox talk validation
+      function validateToolbox(form) {
+        const errors = [];
+        if (!isPresent(form.siteConducted)) errors.push('Site/Location is required');
+        if (!isPresent(form.preparedBy)) errors.push('Presented By is required');
+        if (!isPresent(form.topics || form.selectedTopics)) errors.push('At least one topic must be selected');
+        const signedCount = form.signatures ? Object.values(form.signatures).filter(s => s !== null).length : 0;
+        if (signedCount === 0) errors.push('At least one attendee must sign on');
+        return errors;
+      }
+
+      // Inspection validation
+      function validateInspection(form) {
+        const errors = [];
+        if (!isPresent(form.siteConducted)) errors.push('Site/Location is required');
+        if (!isPresent(form.preparedBy)) errors.push('Prepared By is required');
+        if (!isPresent(form.completedBy)) errors.push('Completed By is required');
+        // Check at least some inspection items answered
+        if (form.inspectionItems) {
+          const answered = Object.values(form.inspectionItems).filter(v => v !== null && v !== undefined).length;
+          const total = Object.keys(form.inspectionItems).length;
+          if (answered < total) errors.push('All ' + total + ' inspection items must be completed (' + answered + ' done)');
+        }
+        return errors;
+      }
+
+      // ITP (Glass) validation
+      function validateITP(form) {
+        const errors = [];
+        if (!isPresent(form.siteConducted)) errors.push('Site/Location is required');
+        if (!isPresent(form.preparedBy)) errors.push('Prepared By is required');
+        if (!isPresent(form.builderSignoffName)) errors.push('Builder name is required');
+        if (!isPresent(form.builderSignature)) errors.push('Builder signature is required');
+        return errors;
+      }
+
+      // Steel ITP validation
+      function validateSteelITP(form) {
+        const errors = [];
+        if (!isPresent(form.siteConducted)) errors.push('Site/Location is required');
+        if (!isPresent(form.preparedBy)) errors.push('Prepared By is required');
+        if (!isPresent(form.managerName)) errors.push('Manager name is required');
+        if (!isPresent(form.managerSignature)) errors.push('Manager signature is required');
+        return errors;
+      }
+
+      // Check if incident is notifiable (WHS Act 2011)
+      function isNotifiableIncident(incident) {
+        const notifiable = ['death','serious injury','dangerous incident','hospitalization','amputation','serious burns','spinal injury','loss of consciousness'];
+        const text = ((incident.incidentType || '') + ' ' + (incident.severity || '') + ' ' + (incident.description || '')).toLowerCase();
+        return notifiable.some(t => text.includes(t));
+      }
+
+      return {
+        validateToolbox: validateToolbox,
+        validateInspection: validateInspection,
+        validateITP: validateITP,
+        validateSteelITP: validateSteelITP,
+        isNotifiableIncident: isNotifiableIncident,
+        isPresent: isPresent,
+        dateNotFuture: dateNotFuture
+      };
+    })();
+  </script>
+
   <script type="text/babel">
     const { useState, useRef, useEffect, useMemo } = React;
     const {
@@ -7527,6 +7611,7 @@
       const [correctiveAction, setCorrectiveAction] = useState('');
       const [feedbackResponses, setFeedbackResponses] = useState('');
       const [signatures, setSignatures] = useState({ 'Jeff Fu': null, 'Scott Seeho': null, 'Davide Casolini': null, 'Zonggang Jiang': null, 'Leon Yu': null, 'Wang Jia': null, 'Gen Bao': null });
+      const [validationErrors, setValidationErrors] = useState([]);
 
       const todayDate = new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
       const teamMembers = ['Jeff Fu', 'Scott Seeho', 'Davide Casolini', 'Zonggang Jiang', 'Leon Yu', 'Wang Jia', 'Gen Bao'];
@@ -7576,6 +7661,14 @@
       };
 
       const handleSubmit = () => {
+        const errors = window.formValidator.validateToolbox({
+          siteConducted, preparedBy, topics: selectedTopics, signatures
+        });
+        if (errors.length > 0) {
+          setValidationErrors(errors);
+          return;
+        }
+        setValidationErrors([]);
         onSubmit({
           siteConducted, builder, address, preparedBy,
           topics: selectedTopics, otherTopic, correctiveAction, feedbackResponses,
@@ -7743,6 +7836,13 @@
                 <p className="text-blue-800 font-medium">{signedCount} of {teamMembers.length} attendees signed</p>
               </div>
 
+              {validationErrors.length > 0 && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                  <p className="text-red-800 font-semibold mb-2">Please fix the following:</p>
+                  {validationErrors.map((e, i) => <p key={i} className="text-red-700 text-sm">• {e}</p>)}
+                </div>
+              )}
+
               <div className="flex gap-3">
                 <button onClick={() => setStep(1)} className="flex-1 border border-gray-300 text-gray-700 py-4 rounded-xl font-semibold">← Back</button>
                 <button onClick={handleSubmit} disabled={signedCount === 0} className="flex-1 bg-green-600 text-white py-4 rounded-xl font-semibold disabled:bg-gray-300">
@@ -7766,6 +7866,7 @@
       const [completedBy, setCompletedBy] = useState('');
       const [completedBySignature, setCompletedBySignature] = useState(null);
       const [signingInspector, setSigningInspector] = useState(false);
+      const [validationErrors, setValidationErrors] = useState([]);
 
       // Inspection items with Yes/No/N/A
       const [inspectionItems, setInspectionItems] = useState({
@@ -7827,6 +7928,14 @@
       const allAnswered = Object.values(inspectionItems).every(v => v !== null);
 
       const handleSubmit = () => {
+        const errors = window.formValidator.validateInspection({
+          siteConducted, preparedBy, completedBy, inspectionItems
+        });
+        if (errors.length > 0) {
+          setValidationErrors(errors);
+          return;
+        }
+        setValidationErrors([]);
         onSubmit({
           siteConducted, preparedBy, location, completedBy, completedBySignature, inspectionItems,
           date: new Date().toISOString()
@@ -7960,6 +8069,13 @@
             )}
           </div>
 
+          {validationErrors.length > 0 && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+              <p className="text-red-800 font-semibold mb-2">Please fix the following:</p>
+              {validationErrors.map((e, i) => <p key={i} className="text-red-700 text-sm">• {e}</p>)}
+            </div>
+          )}
+
           <button onClick={handleSubmit}
             disabled={!siteConducted || !preparedBy || !location || !allAnswered || !completedBy || !completedBySignature}
             className="w-full bg-green-600 text-white py-4 rounded-xl font-semibold disabled:bg-gray-300">
@@ -7974,6 +8090,7 @@
       const [page, setPage] = useState(1);
       const [submitted, setSubmitted] = useState(false);
       const [signingPerson, setSigningPerson] = useState(null);
+      const [validationErrors, setValidationErrors] = useState([]);
 
       // Page 1 - Title Page
       const [siteConducted, setSiteConducted] = useState('');
@@ -8086,6 +8203,14 @@
       );
 
       const handleSubmit = () => {
+        const errors = window.formValidator.validateITP({
+          siteConducted, preparedBy, builderSignoffName, builderSignature
+        });
+        if (errors.length > 0) {
+          setValidationErrors(errors);
+          return;
+        }
+        setValidationErrors([]);
         onSubmit({
           siteConducted, conductedOn, preparedBy, location,
           preConstructionMeeting, highRiskWorkshop, shopdrawingsApproved, allItemsSignedOff,
@@ -8295,6 +8420,13 @@
                   className="w-full border border-gray-300 rounded-lg p-3 text-sm min-h-[100px]" placeholder="Tap to edit" />
               </div>
 
+              {validationErrors.length > 0 && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                  <p className="text-red-800 font-semibold mb-2">Please fix the following:</p>
+                  {validationErrors.map((e, i) => <p key={i} className="text-red-700 text-sm">• {e}</p>)}
+                </div>
+              )}
+
               <div className="flex justify-between">
                 <button onClick={() => setPage(2)} className="border border-gray-300 text-gray-700 px-6 py-3 rounded-lg font-medium">
                   ← Back Page 2/3
@@ -8318,6 +8450,7 @@
       const [builderSignature, setBuilderSignature] = useState(null);
       const [signingManager, setSigningManager] = useState(false);
       const [signingBuilder, setSigningBuilder] = useState(false);
+      const [validationErrors, setValidationErrors] = useState([]);
 
       // Form state
       const [siteConducted, setSiteConducted] = useState('');
@@ -8401,6 +8534,14 @@
       );
 
       const handleSubmit = () => {
+        const errors = window.formValidator.validateSteelITP({
+          siteConducted, preparedBy, managerName, managerSignature
+        });
+        if (errors.length > 0) {
+          setValidationErrors(errors);
+          return;
+        }
+        setValidationErrors([]);
         const data = {
           siteConducted, preparedBy, location, jobStructure,
           preConstMeeting, highRiskWorkshop, shopdrawingsApproved, allItemsSignedOff,
@@ -8611,6 +8752,13 @@
           )}
 
           {/* Navigation */}
+          {validationErrors.length > 0 && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+              <p className="text-red-800 font-semibold mb-2">Please fix the following:</p>
+              {validationErrors.map((e, i) => <p key={i} className="text-red-700 text-sm">• {e}</p>)}
+            </div>
+          )}
+
           <div className="flex gap-3">
             {step > 1 && (
               <button onClick={() => setStep(step - 1)} className="flex-1 bg-gray-200 p-4 rounded-xl font-semibold">
