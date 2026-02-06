@@ -1493,12 +1493,25 @@
         }
       },
 
-      // Execute a single sync operation
+      // Execute a single sync operation (v3: supports granular update/delete)
       executeSync: async function(item) {
         if (!firebaseDb || !isFirebaseConfigured) {
           throw new Error('Firebase not configured');
         }
 
+        // v3 granular operations (path-based)
+        if (item.path && item.operation) {
+          const ref = firebaseDb.ref(item.path);
+          switch (item.operation) {
+            case 'set': await ref.set(item.data); break;
+            case 'update': await ref.update(item.data); break;
+            case 'delete': await ref.remove(); break;
+            default: throw new Error(`Unknown operation: ${item.operation}`);
+          }
+          return;
+        }
+
+        // Legacy bulk operations (fallback)
         switch (item.type) {
           case 'forms':
             await firebaseDb.ref('jmart-safety/forms').set(item.data);
@@ -1517,15 +1530,27 @@
         }
       },
 
-      // Sync forms to Firebase with retry support
+      // Sync forms to Firebase - v3: granular per-form update() instead of full set()
       syncForms: async function(forms) {
         if (!firebaseDb || !isFirebaseConfigured) {
           this.addToQueue('forms', forms);
           return { success: false, queued: true };
         }
         try {
-          await firebaseDb.ref('jmart-safety/forms').set(forms);
-          console.log('Forms synced to Firebase');
+          const deviceId = localStorage.getItem('jmart-device-id') || 'unknown';
+          const updates = {};
+          const formsArray = Array.isArray(forms) ? forms : Object.values(forms || {});
+          formsArray.forEach(form => {
+            const key = form.id || `form-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+            updates[key] = {
+              ...form,
+              _lastModified: Date.now(),
+              _modifiedBy: deviceId
+            };
+          });
+          // Single atomic update of all forms (granular keys, no full overwrite)
+          await firebaseDb.ref('jmart-safety/forms').update(updates);
+          console.log('Forms synced to Firebase (granular):', formsArray.length, 'forms');
           return { success: true };
         } catch (error) {
           console.error('Error syncing forms, adding to retry queue:', error);
@@ -1535,15 +1560,21 @@
         }
       },
 
-      // Sync sites to Firebase with retry support
+      // Sync sites to Firebase - v3: granular per-site update()
       syncSites: async function(sites) {
         if (!firebaseDb || !isFirebaseConfigured) {
           this.addToQueue('sites', sites);
           return { success: false, queued: true };
         }
         try {
-          await firebaseDb.ref('jmart-safety/sites').set(sites);
-          console.log('Sites synced to Firebase');
+          const sitesArray = Array.isArray(sites) ? sites : Object.values(sites || {});
+          const updates = {};
+          sitesArray.forEach((site, i) => {
+            const key = site.id || `site-${i}`;
+            updates[key] = { ...site, _lastModified: Date.now() };
+          });
+          await firebaseDb.ref('jmart-safety/sites').update(updates);
+          console.log('Sites synced to Firebase (granular):', sitesArray.length, 'sites');
           return { success: true };
         } catch (error) {
           console.error('Error syncing sites, adding to retry queue:', error);
@@ -1552,15 +1583,21 @@
         }
       },
 
-      // Sync training records to Firebase with retry support
+      // Sync training records to Firebase - v3: granular per-record update()
       syncTraining: async function(training) {
         if (!firebaseDb || !isFirebaseConfigured) {
           this.addToQueue('training', training);
           return { success: false, queued: true };
         }
         try {
-          await firebaseDb.ref('jmart-safety/training').set(training);
-          console.log('Training synced to Firebase');
+          const trainingArray = Array.isArray(training) ? training : Object.values(training || {});
+          const updates = {};
+          trainingArray.forEach((record, i) => {
+            const key = record.id || `training-${i}`;
+            updates[key] = { ...record, _lastModified: Date.now() };
+          });
+          await firebaseDb.ref('jmart-safety/training').update(updates);
+          console.log('Training synced to Firebase (granular):', trainingArray.length, 'records');
           return { success: true };
         } catch (error) {
           console.error('Error syncing training, adding to retry queue:', error);
@@ -1629,6 +1666,9 @@
 
     // Initialize sync queue on load
     FirebaseSync.init();
+
+    // Expose processQueue for SW background sync triggers
+    window.processSyncQueue = () => FirebaseSync.processQueue();
 
     // Process queue when coming back online
     window.addEventListener('online', () => {
