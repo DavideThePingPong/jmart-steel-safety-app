@@ -52,6 +52,22 @@
         }
       },
 
+      // Victor - MSDS products (synced across all approved devices)
+      "victor": {
+        "products": {
+          ".read": true,
+          ".write": true
+        }
+      },
+
+      // Frank - SWMS history (synced across all approved devices)
+      "frank": {
+        "history": {
+          ".read": true,
+          ".write": true
+        }
+      },
+
       // Audit log - append only, no deletes, no updates
       // Added: string length limits on action field, timestamp must be a number
       "auditLog": {

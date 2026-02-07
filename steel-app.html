@@ -5690,12 +5690,40 @@
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // VICTOR - MSDS FINDER
+    // VICTOR - MSDS FINDER (Firebase-synced across all devices)
     // ═══════════════════════════════════════════════════════════════════════════
-    let victorProducts = JSON.parse(localStorage.getItem('victor-products') || '[]');
+    let victorProducts = [];
+    let victorFirebaseListenerActive = false;
 
     function victorSaveProducts() {
+        // Save to Firebase (syncs to all devices)
+        if (firebaseDb) {
+            try {
+                firebaseDb.ref('jmart-safety/victor/products').set(victorProducts);
+            } catch (e) { console.warn('Victor Firebase save failed:', e.message); }
+        }
+        // Also keep localStorage as fallback
         localStorage.setItem('victor-products', JSON.stringify(victorProducts));
+    }
+
+    function victorStartSync() {
+        if (!firebaseDb || victorFirebaseListenerActive) return;
+        victorFirebaseListenerActive = true;
+        firebaseDb.ref('jmart-safety/victor/products').on('value', (snap) => {
+            const data = snap.val();
+            if (data && Array.isArray(data)) {
+                victorProducts = data;
+                localStorage.setItem('victor-products', JSON.stringify(data));
+            } else if (data === null) {
+                // No data in Firebase yet, push localStorage data up
+                const local = JSON.parse(localStorage.getItem('victor-products') || '[]');
+                if (local.length > 0) {
+                    victorProducts = local;
+                    firebaseDb.ref('jmart-safety/victor/products').set(local);
+                }
+            }
+            victorRenderProducts();
+        });
     }
 
     function victorRenderProducts() {
@@ -5848,12 +5876,39 @@
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // FRANK - SWMS GENERATOR
+    // FRANK - SWMS GENERATOR (Firebase-synced across all devices)
     // ═══════════════════════════════════════════════════════════════════════════
-    let frankHistory = JSON.parse(localStorage.getItem('frank-history') || '[]');
+    let frankHistory = [];
+    let frankFirebaseListenerActive = false;
 
     function frankSaveHistory() {
+        // Save to Firebase (syncs to all devices)
+        if (firebaseDb) {
+            try {
+                firebaseDb.ref('jmart-safety/frank/history').set(frankHistory);
+            } catch (e) { console.warn('Frank Firebase save failed:', e.message); }
+        }
+        // Also keep localStorage as fallback
         localStorage.setItem('frank-history', JSON.stringify(frankHistory));
+    }
+
+    function frankStartSync() {
+        if (!firebaseDb || frankFirebaseListenerActive) return;
+        frankFirebaseListenerActive = true;
+        firebaseDb.ref('jmart-safety/frank/history').on('value', (snap) => {
+            const data = snap.val();
+            if (data && Array.isArray(data)) {
+                frankHistory = data;
+                localStorage.setItem('frank-history', JSON.stringify(data));
+            } else if (data === null) {
+                const local = JSON.parse(localStorage.getItem('frank-history') || '[]');
+                if (local.length > 0) {
+                    frankHistory = local;
+                    firebaseDb.ref('jmart-safety/frank/history').set(local);
+                }
+            }
+            frankRenderHistory();
+        });
     }
 
     function frankRenderHistory() {
@@ -6121,9 +6176,14 @@
         brittanyUpdateSizes(); // Set up size buttons for default type
         brittanyCalculate();
         hannaInit(); // Initialize HANNA receipt scanner
-        victorRenderProducts(); // Load Victor tracked products
-        frankRenderHistory(); // Load Frank SWMS history
         loadApiKeyStatus(); // Show API key status in settings
+
+        // Start Firebase sync for Victor & Frank (real-time across all devices)
+        victorStartSync();
+        frankStartSync();
+        // Fallback render from localStorage if Firebase hasn't loaded yet
+        if (!victorFirebaseListenerActive) { victorProducts = JSON.parse(localStorage.getItem('victor-products') || '[]'); victorRenderProducts(); }
+        if (!frankFirebaseListenerActive) { frankHistory = JSON.parse(localStorage.getItem('frank-history') || '[]'); frankRenderHistory(); }
 
         // Log access
         console.log('🔩 STEEL Command Center loaded. Admin:', SteelAuth.isAdmin);
