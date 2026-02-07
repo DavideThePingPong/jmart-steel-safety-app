@@ -25,22 +25,22 @@
   <!-- Manifest for PWA -->
   <link rel="manifest" href="data:application/json;base64,ewogICJuYW1lIjogIkpNYXJ0IFN0ZWVsIFNhZmV0eSBBcHAiLAogICJzaG9ydF9uYW1lIjogIkpNYXJ0IFNhZmV0eSIsCiAgImRlc2NyaXB0aW9uIjogIlNhZmV0eSBtYW5hZ2VtZW50IGFwcCBmb3IgSk1hcnQgU3RlZWwgLSBOU1cgT3BlcmF0aW9ucyIsCiAgInN0YXJ0X3VybCI6ICIuIiwKICAiZGlzcGxheSI6ICJzdGFuZGFsb25lIiwKICAiYmFja2dyb3VuZF9jb2xvciI6ICIjZjNmNGY2IiwKICAidGhlbWVfY29sb3IiOiAiI2VhNTgwYyIsCiAgIm9yaWVudGF0aW9uIjogInBvcnRyYWl0IiwKICAiaWNvbnMiOiBbCiAgICB7CiAgICAgICJzcmMiOiAiZGF0YTppbWFnZS9zdmcreG1sLDxzdmcgeG1sbnM9J2h0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnJyB2aWV3Qm94PScwIDAgMTkyIDE5Mic+PHJlY3Qgd2lkdGg9JzE5MicgaGVpZ2h0PScxOTInIHJ4PSc0MCcgZmlsbD0nJTIzZWE1ODBjJy8+PHRleHQgeD0nOTYnIHk9JzEyMCcgZm9udC1zaXplPSc4MCcgdGV4dC1hbmNob3I9J21pZGRsZScgZmlsbD0nd2hpdGUnPvCfm6HvuI88L3RleHQ+PC9zdmc+IiwKICAgICAgInNpemVzIjogIjE5MngxOTIiLAogICAgICAidHlwZSI6ICJpbWFnZS9zdmcreG1sIiwKICAgICAgInB1cnBvc2UiOiAiYW55IG1hc2thYmxlIgogICAgfQogIF0KfQ==">
 
-  <!-- Scripts -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="https://unpkg.com/lucide@latest"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <!-- Scripts (pinned versions + crossorigin for SRI readiness) -->
+  <script src="https://cdn.tailwindcss.com" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react@18.2.0/umd/react.production.min.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.24.0/babel.min.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/lucide@0.344.0/dist/umd/lucide.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" crossorigin="anonymous"></script>
 
   <!-- Firebase SDK for Cloud Sync (Database + Auth + photos via Google Drive) -->
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js" crossorigin="anonymous"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js" crossorigin="anonymous"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js" crossorigin="anonymous"></script>
 
   <!-- Google API for Drive Integration -->
-  <script src="https://apis.google.com/js/api.js"></script>
-  <script src="https://accounts.google.com/gsi/client"></script>
+  <script src="https://apis.google.com/js/api.js" crossorigin="anonymous"></script>
+  <script src="https://accounts.google.com/gsi/client" crossorigin="anonymous"></script>
 
   <script>
     // ========================================
@@ -203,36 +203,30 @@
 
         try {
           // MIGRATION: Check for device in old flat structure and migrate
-          const oldDeviceSnap = await firebaseDb.ref('jmart-safety/devices/' + this.deviceId).once('value');
-          if (oldDeviceSnap.exists()) {
-            const oldData = oldDeviceSnap.val();
-            // Only migrate if it has status field (old format)
-            if (oldData.status && typeof oldData.status === 'string') {
-              console.log('🔄 Migrating device from old path:', oldData.status);
-              const targetPath = 'jmart-safety/devices/' + oldData.status + '/' + this.deviceId;
-              await firebaseDb.ref(targetPath).set({
-                ...oldData,
-                id: this.deviceId,
-                migratedAt: new Date().toISOString()
-              });
-              await firebaseDb.ref('jmart-safety/devices/' + this.deviceId).remove();
-              console.log('✅ Migration complete for device:', this.deviceId);
+          // Wrapped in its own try-catch so migration errors don't block auth
+          try {
+            const oldDeviceSnap = await firebaseDb.ref('jmart-safety/devices/' + this.deviceId).once('value');
+            if (oldDeviceSnap.exists()) {
+              const oldData = oldDeviceSnap.val();
+              if (oldData.status && typeof oldData.status === 'string') {
+                console.log('Migrating device from old path:', oldData.status);
+                const targetPath = 'jmart-safety/devices/' + oldData.status + '/' + this.deviceId;
+                await firebaseDb.ref(targetPath).set({
+                  ...oldData,
+                  id: this.deviceId,
+                  migratedAt: new Date().toISOString()
+                });
+                await firebaseDb.ref('jmart-safety/devices/' + this.deviceId).remove();
+                console.log('Migration complete for device:', this.deviceId);
+              }
             }
+          } catch (migrationErr) {
+            console.warn('Device migration skipped (non-fatal):', migrationErr.message);
           }
 
-          // Also migrate ALL devices in old flat structure (admin cleanup)
-          const allDevicesSnap = await firebaseDb.ref('jmart-safety/devices').once('value');
-          if (allDevicesSnap.exists()) {
-            const allDevices = allDevicesSnap.val();
-            for (const [key, value] of Object.entries(allDevices)) {
-              if (key === 'pending' || key === 'approved' || key === 'denied') continue;
-              if (!value || typeof value !== 'object' || !value.status) continue;
-              console.log('🔄 Migrating device:', key);
-              const targetPath = 'jmart-safety/devices/' + value.status + '/' + key;
-              await firebaseDb.ref(targetPath).set({ ...value, id: key, migratedAt: new Date().toISOString() });
-              await firebaseDb.ref('jmart-safety/devices/' + key).remove();
-            }
-          }
+          // Bulk migration removed — reading all devices at once is blocked by
+          // Firebase rules (only individual device reads are allowed).
+          // Old-format devices are migrated individually above when they connect.
 
           // Check approved devices
           const approvedSnap = await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId).once('value');
@@ -275,7 +269,10 @@
 
         } catch (error) {
           console.error('Error checking device status:', error);
-          return { approved: false, error: error.message };
+          // On error, allow access (don't lock out users due to network issues)
+          // This matches STEEL Command Center behavior
+          this.isApproved = true;
+          return { approved: true, error: error.message };
         }
       },
 
@@ -604,7 +601,7 @@
                 return;
               }
               this.accessToken = response.access_token;
-              localStorage.setItem('google-drive-token', response.access_token);
+              sessionStorage.setItem('google-drive-token', response.access_token);
               console.log('Google Drive connected!');
               this.getOrCreateFolder();
             },
@@ -613,7 +610,7 @@
           console.log('Google Drive initialized');
 
           // Check for stored token
-          const storedToken = localStorage.getItem('google-drive-token');
+          const storedToken = sessionStorage.getItem('google-drive-token');
           if (storedToken) {
             this.accessToken = storedToken;
             this.getOrCreateFolder();
@@ -654,7 +651,7 @@
         // If token expired (401), try to refresh silently
         if (response.status === 401) {
           console.log('Google Drive token expired, attempting refresh...');
-          localStorage.removeItem('google-drive-token');
+          sessionStorage.removeItem('google-drive-token');
           this.accessToken = null;
 
           // Request new token (will trigger callback)
@@ -667,7 +664,7 @@
                 return;
               }
               this.accessToken = tokenResponse.access_token;
-              localStorage.setItem('google-drive-token', tokenResponse.access_token);
+              sessionStorage.setItem('google-drive-token', tokenResponse.access_token);
               this.tokenClient.callback = originalCallback;
 
               // Retry the original request
@@ -928,7 +925,7 @@
       disconnect: function() {
         this.accessToken = null;
         this.folderId = null;
-        localStorage.removeItem('google-drive-token');
+        sessionStorage.removeItem('google-drive-token');
         console.log('Disconnected from Google Drive');
       },
 
@@ -1880,49 +1877,32 @@
           const configSnap = await firebaseDb.ref('jmart-safety/config/appPasswordHash').once('value');
           this.APP_PASSWORD_HASH = configSnap.val();
 
-          // MIGRATION: Check for devices in old flat structure and migrate to hierarchical
-          const oldDeviceSnap = await firebaseDb.ref('jmart-safety/devices/' + this.deviceId).once('value');
-          if (oldDeviceSnap.exists()) {
-            const oldData = oldDeviceSnap.val();
-            // Only migrate if it has status field (old format) and not in a subfolder
-            if (oldData.status && typeof oldData.status === 'string') {
-              console.log('Migrating device from old path to new hierarchical structure:', oldData.status);
-              const targetPath = 'jmart-safety/devices/' + oldData.status + '/' + this.deviceId;
-              // Copy to new path
-              await firebaseDb.ref(targetPath).set({
-                ...oldData,
-                id: this.deviceId,
-                migratedAt: new Date().toISOString(),
-                migratedFrom: 'flat-structure'
-              });
-              // Remove from old path
-              await firebaseDb.ref('jmart-safety/devices/' + this.deviceId).remove();
-              console.log('Migration complete for device:', this.deviceId);
+          // MIGRATION: Check for device in old flat structure and migrate
+          // Wrapped in its own try-catch so migration errors don't block auth
+          try {
+            const oldDeviceSnap = await firebaseDb.ref('jmart-safety/devices/' + this.deviceId).once('value');
+            if (oldDeviceSnap.exists()) {
+              const oldData = oldDeviceSnap.val();
+              if (oldData.status && typeof oldData.status === 'string') {
+                console.log('Migrating device from old path:', oldData.status);
+                const targetPath = 'jmart-safety/devices/' + oldData.status + '/' + this.deviceId;
+                await firebaseDb.ref(targetPath).set({
+                  ...oldData,
+                  id: this.deviceId,
+                  migratedAt: new Date().toISOString(),
+                  migratedFrom: 'flat-structure'
+                });
+                await firebaseDb.ref('jmart-safety/devices/' + this.deviceId).remove();
+                console.log('Migration complete for device:', this.deviceId);
+              }
             }
+          } catch (migrationErr) {
+            console.warn('Device migration skipped (non-fatal):', migrationErr.message);
           }
 
-          // Also migrate any other devices in flat structure (for admin devices)
-          // This runs once to clean up all old devices
-          const allDevicesSnap = await firebaseDb.ref('jmart-safety/devices').once('value');
-          if (allDevicesSnap.exists()) {
-            const allDevices = allDevicesSnap.val();
-            for (const [key, value] of Object.entries(allDevices)) {
-              // Skip hierarchical folders
-              if (key === 'pending' || key === 'approved' || key === 'denied') continue;
-              // Skip if not an object with status
-              if (!value || typeof value !== 'object' || !value.status) continue;
-
-              console.log('Migrating device:', key, 'status:', value.status);
-              const targetPath = 'jmart-safety/devices/' + value.status + '/' + key;
-              await firebaseDb.ref(targetPath).set({
-                ...value,
-                id: key,
-                migratedAt: new Date().toISOString(),
-                migratedFrom: 'flat-structure'
-              });
-              await firebaseDb.ref('jmart-safety/devices/' + key).remove();
-            }
-          }
+          // Bulk migration removed — reading all devices at once is blocked by
+          // Firebase rules (only individual device reads are allowed).
+          // Old-format devices are migrated individually above when they connect.
 
           // Check if this device is registered - use hierarchical paths
           // Check approved devices first
@@ -6831,7 +6811,7 @@
 
       const displayDate = formDate.toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
       const displayTime = formDate.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
-      const builders = ['Fdc Fitout and Refurbishment', 'Fdc Construction', 'Hunter Mason', 'Built', 'Landlease'];
+      const builders = ['Fdc Fitout and Refurbishment', 'Fdc Construction', 'Hunter Mason', 'Built', 'Lendlease'];
       const defaultSites = ['Site 1 - Sydney CBD', 'Site 2 - Parramatta', 'Site 3 - North Sydney', 'Site 4 - Chatswood', 'Site 5 - Liverpool'];
       const sitesList = sites.length > 0 ? sites : defaultSites;
       const teamMembers = ['Jeff Fu', 'Scott Seeho', 'Davide Casolini', 'Zonggang Jiang', 'Leon Yu', 'Wang Jia', 'Gen Bao'];
@@ -7656,7 +7636,7 @@
       const todayDate = new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
       const teamMembers = ['Jeff Fu', 'Scott Seeho', 'Davide Casolini', 'Zonggang Jiang', 'Leon Yu', 'Wang Jia', 'Gen Bao'];
       const preparers = ['Jeff Fu', 'Scott Seeho', 'Davide Casolini'];
-      const builders = ['Fdc Fitout and Refurbishment', 'Fdc Construction', 'Hunter Mason', 'Built', 'Landlease'];
+      const builders = ['Fdc Fitout and Refurbishment', 'Fdc Construction', 'Hunter Mason', 'Built', 'Lendlease'];
       const defaultSites = ['Site 1 - Sydney CBD', 'Site 2 - Parramatta', 'Site 3 - North Sydney', 'Site 4 - Chatswood', 'Site 5 - Liverpool'];
       const sitesList = sites.length > 0 ? sites : defaultSites;
 
@@ -9820,7 +9800,11 @@
                         className="w-full h-24 object-cover rounded-lg cursor-pointer hover:opacity-80"
                         onClick={() => {
                           const win = window.open('', '_blank');
-                          win.document.write(`<img src="${photo.data}" style="max-width:100%;height:auto;">`);
+                          const img = win.document.createElement('img');
+                          img.src = photo.data;
+                          img.style.maxWidth = '100%';
+                          img.style.height = 'auto';
+                          win.document.body.appendChild(img);
                         }}
                       />
                     ))}

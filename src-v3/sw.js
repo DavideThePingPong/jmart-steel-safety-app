@@ -30,16 +30,15 @@ const CDN_RESOURCES = [
   // Tailwind CSS
   'https://cdn.tailwindcss.com',
 
-  // React (CRITICAL)
-  'https://unpkg.com/react@18/umd/react.production.min.js',
-  'https://unpkg.com/react-dom@18/umd/react-dom.production.min.js',
+  // React (CRITICAL — pinned versions)
+  'https://unpkg.com/react@18.2.0/umd/react.production.min.js',
+  'https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js',
 
-  // Babel (CRITICAL - app fails without this)
-  'https://unpkg.com/@babel/standalone/babel.min.js',
+  // Babel (CRITICAL — app fails without this, pinned version)
+  'https://unpkg.com/@babel/standalone@7.24.0/babel.min.js',
 
-  // Icons
-  'https://unpkg.com/lucide@latest',
-  'https://unpkg.com/lucide@latest/dist/umd/lucide.min.js',
+  // Icons (pinned version — was @latest which is a supply-chain risk)
+  'https://unpkg.com/lucide@0.344.0/dist/umd/lucide.min.js',
 
   // PDF generation
   'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',

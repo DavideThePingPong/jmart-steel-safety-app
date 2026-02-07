@@ -12,6 +12,12 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
 
     <script>
+    // XSS Protection - HTML Escape (available in first script block)
+    function escapeHtml(str) {
+        if (str === null || str === undefined) return '';
+        return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }
+
     // ═══════════════════════════════════════════════════════════════════════════
     // FIREBASE CONFIGURATION (Shared with JMart Safety App)
     // ═══════════════════════════════════════════════════════════════════════════
@@ -227,7 +233,7 @@
                     <p style="color:#888;margin-bottom:20px;">Your device needs to be approved to access STEEL Command Center.</p>
                     <div style="background:rgba(255,255,255,0.1);padding:20px;border-radius:12px;margin-bottom:20px;">
                         <p style="font-size:14px;color:#aaa;">Device ID:</p>
-                        <code style="font-size:12px;color:#667eea;">${this.deviceId}</code>
+                        <code style="font-size:12px;color:#667eea;">${escapeHtml(this.deviceId)}</code>
                     </div>
                     <p style="color:#666;font-size:14px;">Ask an admin to approve this device in the JMart Safety App.</p>
                     <button onclick="location.reload()" style="margin-top:20px;padding:12px 24px;background:linear-gradient(135deg,#667eea,#764ba2);border:none;border-radius:8px;color:#fff;cursor:pointer;font-size:14px;">
@@ -2314,6 +2320,14 @@
 
     <script>
     // ═══════════════════════════════════════════════════════════════════════════
+    // XSS PROTECTION - HTML Escape Utility
+    // ═══════════════════════════════════════════════════════════════════════════
+    function escapeHtml(str) {
+        if (str === null || str === undefined) return '';
+        return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // EMBEDDED DATA - HOBART
     // ═══════════════════════════════════════════════════════════════════════════
     const HOLLO_BOLT_DATA={DRILLING_DATA:{M8:{clearance_hole:14,tolerance:"+1.0/-0.2",min_hole_distance:35,min_edge_distance:13},M10:{clearance_hole:18,tolerance:"+1.0/-0.2",min_hole_distance:40,min_edge_distance:15},M12:{clearance_hole:20,tolerance:"+1.0/-0.2",min_hole_distance:50,min_edge_distance:18},M16:{clearance_hole:26,tolerance:"+2.0/-0.2",min_hole_distance:55,min_edge_distance:20,min_outer_ply:8},M20:{clearance_hole:33,tolerance:"+2.0/-0.2",min_hole_distance:70,min_edge_distance:25,min_outer_ply:8}},HEXAGONAL_HEAD:{M8:{product_codes_with_sizes:["HB08-1 (L=45mm, clamp 3-22mm)","HB08-2 (L=65mm, clamp 22-41mm)","HB08-3 (L=85mm, clamp 41-60mm)"],clamping_ranges:["3-22","22-41","41-60"],torque_nm:23,spanner_mm:19,tensile_swl_kn:4.0,shear_swl_kn:5.0},M10:{product_codes_with_sizes:["HB10-1 (L=49mm, clamp 3-22mm)","HB10-2 (L=64mm, clamp 22-41mm)","HB10-3 (L=84mm, clamp 41-60mm)"],clamping_ranges:["3-22","22-41","41-60"],torque_nm:45,spanner_mm:24,tensile_swl_kn:8.5,shear_swl_kn:10.0},M12:{product_codes_with_sizes:["HB12-1 (L=53mm, clamp 3-25mm)","HB12-2 (L=73mm, clamp 25-47mm)","HB12-3 (L=93mm, clamp 47-69mm)"],clamping_ranges:["3-25","25-47","47-69"],torque_nm:80,spanner_mm:30,tensile_swl_kn:10.5,shear_swl_kn:15.0},M16:{product_codes_with_sizes:["HB16-1 (L=67mm, clamp 12-29mm)","HB16-2 (L=92mm, clamp 29-50mm)","HB16-3 (L=112mm, clamp 50-71mm)"],clamping_ranges:["12-29","29-50","50-71"],torque_nm:190,spanner_mm:36,tensile_swl_kn:21.0,shear_swl_kn:30.0},M20:{product_codes_with_sizes:["HB20-1 (L=80mm, clamp 12-34mm)","HB20-2 (L=110mm, clamp 34-60mm)","HB20-3 (L=140mm, clamp 60-86mm)"],clamping_ranges:["12-34","34-60","60-86"],torque_nm:300,spanner_mm:46,tensile_swl_kn:35.0,shear_swl_kn:40.0}},COUNTERSUNK_HEAD:{M8:{product_codes_with_sizes:["HBCSK08-1 (L=45mm, clamp 3-22mm)","HBCSK08-2 (L=65mm, clamp 22-41mm)","HBCSK08-3 (L=85mm, clamp 41-60mm)"],clamping_ranges:["3-22","22-41","41-60"],torque_nm:23,spanner_mm:19,tensile_swl_kn:4.0,shear_swl_kn:5.0},M10:{product_codes_with_sizes:["HBCSK10-1 (L=44mm, clamp 3-22mm)","HBCSK10-2 (L=64mm, clamp 22-41mm)","HBCSK10-3 (L=84mm, clamp 41-60mm)"],clamping_ranges:["3-22","22-41","41-60"],torque_nm:45,spanner_mm:24,tensile_swl_kn:8.5,shear_swl_kn:10.0},M12:{product_codes_with_sizes:["HBCSK12-1 (L=48mm, clamp 3-25mm)","HBCSK12-2 (L=73mm, clamp 25-47mm)","HBCSK12-3 (L=93mm, clamp 47-69mm)"],clamping_ranges:["3-25","25-47","47-69"],torque_nm:80,spanner_mm:30,tensile_swl_kn:10.5,shear_swl_kn:15.0},M16:{product_codes_with_sizes:["HBCSK16-1 (L=62mm, clamp 12-29mm)","HBCSK16-2 (L=92mm, clamp 29-50mm)","HBCSK16-3 (L=112mm, clamp 50-71mm)"],clamping_ranges:["12-29","29-50","50-71"],torque_nm:190,spanner_mm:36,tensile_swl_kn:21.0,shear_swl_kn:30.0}},FLUSH_FIT_HEAD:{M8:{product_codes_with_sizes:["HBFF08-1 (L=50mm, clamp 10-27mm)","HBFF08-2 (L=70mm, clamp 27-45mm)","HBFF08-3 (L=90mm, clamp 45-64mm)"],clamping_ranges:["10-27","27-45","45-64"],torque_nm:23,spanner_mm:19,tensile_swl_kn:4.0,shear_swl_kn:5.0},M10:{product_codes_with_sizes:["HBFF10-1 (L=50mm, clamp 12-27mm)","HBFF10-2 (L=70mm, clamp 27-45mm)","HBFF10-3 (L=90mm, clamp 45-64mm)"],clamping_ranges:["12-27","27-45","45-64"],torque_nm:45,spanner_mm:24,tensile_swl_kn:8.5,shear_swl_kn:10.0},M12:{product_codes_with_sizes:["HBFF12-1 (L=55mm, clamp 12-30mm)","HBFF12-2 (L=80mm, clamp 30-52mm)","HBFF12-3 (L=100mm, clamp 52-74mm)"],clamping_ranges:["12-30","30-52","52-74"],torque_nm:80,spanner_mm:30,tensile_swl_kn:10.5,shear_swl_kn:15.0}},LINDIBOLT:{M10:{product_codes_with_sizes:["LB10 (L=74mm, clamp 7-30mm)"],clamping_ranges:["7-30"],torque_nm:20,spanner_mm:17,tensile_swl_kn:3.0,shear_swl_kn:3.4},M12:{product_codes_with_sizes:["LB12 (L=85mm, clamp 10-36mm)"],clamping_ranges:["10-36"],torque_nm:31,spanner_mm:19,tensile_swl_kn:5.0,shear_swl_kn:5.0},M16:{product_codes_with_sizes:["LB16 (L=105mm, clamp 12-48mm)"],clamping_ranges:["12-48"],torque_nm:81,spanner_mm:24,tensile_swl_kn:8.0,shear_swl_kn:9.8},M20:{product_codes_with_sizes:["LB20 (L=128mm, clamp 14-60mm)"],clamping_ranges:["14-60"],torque_nm:129,spanner_mm:30,tensile_swl_kn:14.0,shear_swl_kn:15.2},M24:{product_codes_with_sizes:["LB24 (L=158mm, clamp 18-72mm)"],clamping_ranges:["18-72"],torque_nm:203,spanner_mm:36,tensile_swl_kn:20.0,shear_swl_kn:22.5}}};
@@ -2490,7 +2504,7 @@
         else if (hobartType === 'LB') sizes = ['M10','M12','M16','M20','M24'];
 
         container.innerHTML = sizes.map(s =>
-            `<button class="btn${s === hobartSize ? ' active' : ''}" onclick="hobartSetSize('${s}', this)">${s}</button>`
+            `<button class="btn${s === hobartSize ? ' active' : ''}" onclick="hobartSetSize('${escapeHtml(s)}', this)">${escapeHtml(s)}</button>`
         ).join('');
 
         if (!sizes.includes(hobartSize)) {
@@ -2518,19 +2532,19 @@
         const shearKg = Math.round(data.shear_swl_kn * 102);
 
         document.getElementById('hobartResults').innerHTML = `
-            <div class="result-card"><div class="label">Clearance Hole</div><div class="value">${drill.clearance_hole || '-'}<span class="unit">mm</span></div></div>
-            <div class="result-card"><div class="label">Tolerance</div><div class="value">${drill.tolerance || '-'}</div></div>
-            <div class="result-card"><div class="label">Min Edge</div><div class="value">${drill.min_edge_distance || '-'}<span class="unit">mm</span></div></div>
-            <div class="result-card"><div class="label">Min Spacing</div><div class="value">${drill.min_hole_distance || '-'}<span class="unit">mm</span></div></div>
-            <div class="result-card"><div class="label">Tension SWL</div><div class="value">${tensionKg}<span class="unit">kg</span></div></div>
-            <div class="result-card"><div class="label">Shear SWL</div><div class="value">${shearKg}<span class="unit">kg</span></div></div>
-            <div class="result-card"><div class="label">Torque</div><div class="value">${data.torque_nm}<span class="unit">Nm</span></div></div>
-            <div class="result-card"><div class="label">Spanner</div><div class="value">${data.spanner_mm}<span class="unit">mm</span></div></div>
+            <div class="result-card"><div class="label">Clearance Hole</div><div class="value">${escapeHtml(drill.clearance_hole || '-')}<span class="unit">mm</span></div></div>
+            <div class="result-card"><div class="label">Tolerance</div><div class="value">${escapeHtml(drill.tolerance || '-')}</div></div>
+            <div class="result-card"><div class="label">Min Edge</div><div class="value">${escapeHtml(drill.min_edge_distance || '-')}<span class="unit">mm</span></div></div>
+            <div class="result-card"><div class="label">Min Spacing</div><div class="value">${escapeHtml(drill.min_hole_distance || '-')}<span class="unit">mm</span></div></div>
+            <div class="result-card"><div class="label">Tension SWL</div><div class="value">${escapeHtml(tensionKg)}<span class="unit">kg</span></div></div>
+            <div class="result-card"><div class="label">Shear SWL</div><div class="value">${escapeHtml(shearKg)}<span class="unit">kg</span></div></div>
+            <div class="result-card"><div class="label">Torque</div><div class="value">${escapeHtml(data.torque_nm)}<span class="unit">Nm</span></div></div>
+            <div class="result-card"><div class="label">Spanner</div><div class="value">${escapeHtml(data.spanner_mm)}<span class="unit">mm</span></div></div>
         `;
 
         const tbody = document.getElementById('hobartGripBody');
         tbody.innerHTML = data.product_codes_with_sizes.map((code, i) =>
-            `<tr><td>${code}</td><td>${data.clamping_ranges[i]}</td></tr>`
+            `<tr><td>${escapeHtml(code)}</td><td>${escapeHtml(data.clamping_ranges[i])}</td></tr>`
         ).join('');
 
         document.getElementById('hobartConsole').textContent = `🔩 ${hobartType} ${hobartSize}: Drill ${drill.clearance_hole}mm hole, torque to ${data.torque_nm}Nm`;
@@ -2598,12 +2612,12 @@
             resultsDiv.innerHTML = '<div style="color:#ef4444;padding:10px;">❌ No Hollo-Bolts fit this clamping thickness</div>';
         } else {
             resultsDiv.innerHTML = results.map(r => `
-                <div class="tube-match ${r.status}">
+                <div class="tube-match ${escapeHtml(r.status)}">
                     <div>
-                        <div class="tube-match-bolt">${r.bolt} (${r.code})</div>
-                        <div class="tube-match-info">Grip: ${r.range} | Torque: ${r.torque}Nm | ${r.info}</div>
+                        <div class="tube-match-bolt">${escapeHtml(r.bolt)} (${escapeHtml(r.code)})</div>
+                        <div class="tube-match-info">Grip: ${escapeHtml(r.range)} | Torque: ${escapeHtml(r.torque)}Nm | ${escapeHtml(r.info)}</div>
                     </div>
-                    <div class="tube-match-status">${r.statusIcon}</div>
+                    <div class="tube-match-status">${escapeHtml(r.statusIcon)}</div>
                 </div>
             `).join('');
         }
@@ -2665,8 +2679,8 @@
             `;
             // Add label with product code AND range numbers
             rangeDiv.innerHTML = `
-                <span style="font-size:9px;color:#fff;white-space:nowrap;font-weight:bold">${productCodes[i]}</span>
-                <span style="font-size:8px;color:rgba(255,255,255,0.9);white-space:nowrap">${range[0]}-${range[1]}</span>
+                <span style="font-size:9px;color:#fff;white-space:nowrap;font-weight:bold">${escapeHtml(productCodes[i])}</span>
+                <span style="font-size:8px;color:rgba(255,255,255,0.9);white-space:nowrap">${escapeHtml(range[0])}-${escapeHtml(range[1])}</span>
             `;
             diagram.appendChild(rangeDiv);
         });
@@ -2690,7 +2704,7 @@
             });
 
             if (matchingBolt) {
-                statusSpan.innerHTML = `✅ <span style="color:#22c55e">USE ${matchingBolt}</span>`;
+                statusSpan.innerHTML = `✅ <span style="color:#22c55e">USE ${escapeHtml(matchingBolt)}</span>`;
             } else if (userClamp < overallMin) {
                 statusSpan.innerHTML = '❌ <span style="color:#ef4444">TOO THIN - No bolt fits</span>';
             } else if (userClamp > overallMax) {
@@ -2802,8 +2816,8 @@
         const list = document.getElementById('igorMembersList');
         list.innerHTML = igorMembers.map((m, i) => `
             <div class="igor-member-item">
-                <span>${m.qty}x ${m.section} ${m.type} @ ${m.length}m</span>
-                <span class="weight">${m.total.toFixed(1)} kg</span>
+                <span>${escapeHtml(m.qty)}x ${escapeHtml(m.section)} ${escapeHtml(m.type)} @ ${escapeHtml(m.length)}m</span>
+                <span class="weight">${escapeHtml(m.total.toFixed(1))} kg</span>
                 <button class="remove-btn" onclick="igorRemoveMember(${i})">×</button>
             </div>
         `).join('');
@@ -2835,7 +2849,7 @@
 
         // Render breakdown
         const breakdownHtml = Object.entries(breakdown).map(([type, weight]) =>
-            `<div style="display:flex;justify-content:space-between;padding:5px 0;"><span>${type}:</span><span>${weight.toFixed(1)} kg</span></div>`
+            `<div style="display:flex;justify-content:space-between;padding:5px 0;"><span>${escapeHtml(type)}:</span><span>${escapeHtml(weight.toFixed(1))} kg</span></div>`
         ).join('');
 
         document.getElementById('igorBreakdown').innerHTML = breakdownHtml;
@@ -3742,14 +3756,14 @@
         const previewRows = data.rows.slice(0, 8);
         let tableHtml = '<table><thead><tr>';
         data.headers.forEach((h, i) => {
-            tableHtml += `<th>Col ${i + 1}: ${h || '-'}</th>`;
+            tableHtml += `<th>Col ${i + 1}: ${escapeHtml(h || '-')}</th>`;
         });
         tableHtml += '</tr></thead><tbody>';
 
         previewRows.forEach(row => {
             tableHtml += '<tr>';
             data.headers.forEach((_, i) => {
-                tableHtml += `<td>${row[i] !== undefined ? row[i] : ''}</td>`;
+                tableHtml += `<td>${row[i] !== undefined ? escapeHtml(row[i]) : ''}</td>`;
             });
             tableHtml += '</tr>';
         });
@@ -4016,7 +4030,7 @@
         const lastUpdated = supplier.lastUpdated ? new Date(supplier.lastUpdated).toLocaleDateString() : 'Unknown';
 
         document.getElementById('igorStatusText').innerHTML =
-            `<strong>${supplier.name}</strong> • ${priceCount} prices • Updated: ${lastUpdated}`;
+            `<strong>${escapeHtml(supplier.name)}</strong> • ${escapeHtml(priceCount)} prices • Updated: ${escapeHtml(lastUpdated)}`;
         document.getElementById('igorStatusDot').className = 'status-dot' + (priceCount > 0 ? '' : ' error');
 
         // Check for missing prices in current BOM
@@ -4042,7 +4056,7 @@
         const alert = document.getElementById('igorMissingAlert');
         if (missing.length > 0) {
             document.getElementById('igorMissingList').innerHTML =
-                missing.slice(0, 5).map(s => `<li>${s}</li>`).join('') +
+                missing.slice(0, 5).map(s => `<li>${escapeHtml(s)}</li>`).join('') +
                 (missing.length > 5 ? `<li>... and ${missing.length - 5} more</li>` : '');
             alert.style.display = 'block';
         } else {
@@ -4079,17 +4093,17 @@
         let html = '<table><thead><tr><th>Size</th><th>Price</th><th>Unit</th><th>Type</th><th>Grade</th></tr></thead><tbody>';
         entries.slice(0, 100).forEach(([key, val]) => {
             html += `<tr>
-                <td>${val.originalSize || key}</td>
-                <td>$${val.price.toFixed(2)}</td>
+                <td>${escapeHtml(val.originalSize || key)}</td>
+                <td>$${escapeHtml(val.price.toFixed(2))}</td>
                 <td>/${val.unit === 'tonne' ? 't' : 'm'}</td>
-                <td>${val.type || '-'}</td>
-                <td>${val.grade || '-'}</td>
+                <td>${escapeHtml(val.type || '-')}</td>
+                <td>${escapeHtml(val.grade || '-')}</td>
             </tr>`;
         });
         html += '</tbody></table>';
 
         if (entries.length > 100) {
-            html += `<p style="text-align:center;color:rgba(255,255,255,0.5);margin-top:10px;">Showing 100 of ${entries.length} items. Use filter to find specific sizes.</p>`;
+            html += `<p style="text-align:center;color:rgba(255,255,255,0.5);margin-top:10px;">Showing 100 of ${escapeHtml(entries.length)} items. Use filter to find specific sizes.</p>`;
         }
 
         document.getElementById('igorPriceListTable').innerHTML = html;
@@ -4273,7 +4287,7 @@
         const sizes = Object.keys(HILTI_DATA[chuckType].sizes);
         const container = document.getElementById('chuckSizeButtons');
         container.innerHTML = sizes.map(s =>
-            `<button class="btn${s === chuckSize ? ' active' : ''}" onclick="chuckSetSize('${s}', this)">${s}</button>`
+            `<button class="btn${s === chuckSize ? ' active' : ''}" onclick="chuckSetSize('${escapeHtml(s)}', this)">${escapeHtml(s)}</button>`
         ).join('');
         if (!sizes.includes(chuckSize)) {
             chuckSize = sizes[Math.floor(sizes.length/2)];
@@ -4306,12 +4320,12 @@
         const cart1400 = Math.ceil(totalVol / 1400);
 
         document.getElementById('chuckResults').innerHTML = `
-            <div class="result-card"><div class="label">Hole Size</div><div class="value">${sizeData.hole}<span class="unit">mm</span></div></div>
-            <div class="result-card"><div class="label">Min Embed</div><div class="value">${sizeData.embed}<span class="unit">mm</span></div></div>
-            <div class="result-card"><div class="label">Vol/Hole</div><div class="value">${holeVol.toFixed(1)}<span class="unit">ml</span></div></div>
-            <div class="result-card"><div class="label">Total Vol</div><div class="value">${totalVol.toFixed(0)}<span class="unit">ml</span></div></div>
-            <div class="result-card"><div class="label">Cartridges</div><div class="value" style="color:#22c55e">${cart330}</div></div>
-            <div class="result-card"><div class="label">Product</div><div class="value" style="font-size:0.9rem">${chemical.name}</div></div>
+            <div class="result-card"><div class="label">Hole Size</div><div class="value">${escapeHtml(sizeData.hole)}<span class="unit">mm</span></div></div>
+            <div class="result-card"><div class="label">Min Embed</div><div class="value">${escapeHtml(sizeData.embed)}<span class="unit">mm</span></div></div>
+            <div class="result-card"><div class="label">Vol/Hole</div><div class="value">${escapeHtml(holeVol.toFixed(1))}<span class="unit">ml</span></div></div>
+            <div class="result-card"><div class="label">Total Vol</div><div class="value">${escapeHtml(totalVol.toFixed(0))}<span class="unit">ml</span></div></div>
+            <div class="result-card"><div class="label">Cartridges</div><div class="value" style="color:#22c55e">${escapeHtml(cart330)}</div></div>
+            <div class="result-card"><div class="label">Product</div><div class="value" style="font-size:0.9rem">${escapeHtml(chemical.name)}</div></div>
         `;
 
         // Show cartridge options
@@ -4355,7 +4369,7 @@
         const container = document.getElementById('brittanySizeButtons');
 
         container.innerHTML = availableSizes.map(s =>
-            `<button class="btn${s === brittanySize ? ' active' : ''}" onclick="brittanySetSize('${s}', this)">${s}</button>`
+            `<button class="btn${s === brittanySize ? ' active' : ''}" onclick="brittanySetSize('${escapeHtml(s)}', this)">${escapeHtml(s)}</button>`
         ).join('');
 
         if (!availableSizes.includes(brittanySize)) {
@@ -4442,12 +4456,12 @@
 
         document.getElementById('brittanyResults').innerHTML = `
             ${substrateWarning}
-            <div class="result-card"><div class="label">Tension (each)</div><div class="value">${tensionPerKg}<span class="unit">kg</span></div></div>
-            <div class="result-card"><div class="label">Shear (each)</div><div class="value">${shearPerKg}<span class="unit">kg</span></div></div>
-            <div class="result-card"><div class="label">Total Tension</div><div class="value" style="color:#22c55e">${brittanyTotalTension.toLocaleString()}<span class="unit">kg</span></div></div>
-            <div class="result-card"><div class="label">Total Shear</div><div class="value" style="color:#22c55e">${brittanyTotalShear.toLocaleString()}<span class="unit">kg</span></div></div>
-            <div class="result-card"><div class="label">Hole Size</div><div class="value">${holeSize}<span class="unit">mm</span></div></div>
-            <div class="result-card"><div class="label">Substrate</div><div class="value" style="font-size:0.8rem">${substrateName}</div></div>
+            <div class="result-card"><div class="label">Tension (each)</div><div class="value">${escapeHtml(tensionPerKg)}<span class="unit">kg</span></div></div>
+            <div class="result-card"><div class="label">Shear (each)</div><div class="value">${escapeHtml(shearPerKg)}<span class="unit">kg</span></div></div>
+            <div class="result-card"><div class="label">Total Tension</div><div class="value" style="color:#22c55e">${escapeHtml(brittanyTotalTension.toLocaleString())}<span class="unit">kg</span></div></div>
+            <div class="result-card"><div class="label">Total Shear</div><div class="value" style="color:#22c55e">${escapeHtml(brittanyTotalShear.toLocaleString())}<span class="unit">kg</span></div></div>
+            <div class="result-card"><div class="label">Hole Size</div><div class="value">${escapeHtml(holeSize)}<span class="unit">mm</span></div></div>
+            <div class="result-card"><div class="label">Substrate</div><div class="value" style="font-size:0.8rem">${escapeHtml(substrateName)}</div></div>
         `;
 
         // Show warnings for reduced factors
@@ -5242,9 +5256,9 @@
         if (result.items && result.items.length > 0) {
             itemsList.innerHTML = result.items.map(item => `
                 <div class="hanna-item">
-                    <span class="hanna-item-name">${item.name}</span>
-                    <span class="hanna-item-qty">x${item.qty || 1}</span>
-                    <span class="hanna-item-price">$${(item.price || 0).toFixed(2)}</span>
+                    <span class="hanna-item-name">${escapeHtml(item.name)}</span>
+                    <span class="hanna-item-qty">x${escapeHtml(item.qty || 1)}</span>
+                    <span class="hanna-item-price">$${escapeHtml((item.price || 0).toFixed(2))}</span>
                 </div>
             `).join('');
         } else {
@@ -5296,9 +5310,9 @@
 
         list.innerHTML = hannaReceipts.slice(0, 5).map(r => `
             <div class="hanna-recent-item">
-                <div class="hanna-recent-store">${r.store_name || 'Unknown'}</div>
-                <div class="hanna-recent-job">${r.job || '-'}</div>
-                <div class="hanna-recent-total">$${(r.total || 0).toFixed(2)}</div>
+                <div class="hanna-recent-store">${escapeHtml(r.store_name || 'Unknown')}</div>
+                <div class="hanna-recent-job">${escapeHtml(r.job || '-')}</div>
+                <div class="hanna-recent-total">$${escapeHtml((r.total || 0).toFixed(2))}</div>
             </div>
         `).join('');
     }

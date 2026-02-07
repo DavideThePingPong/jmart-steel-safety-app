@@ -19,7 +19,7 @@ Simply open `jmart-safety-app.html` in any modern web browser (Chrome, Safari, F
 ### ð Pre-Start Checklists
 - Automatic date display
 - Supervisor name and site selection
-- Builder dropdown (Fdc, Hunter Mason, Built, Landlease, etc.)
+- Builder dropdown (Fdc, Hunter Mason, Built, Lendlease, etc.)
 - GPS-enabled address capture
 - Work areas, tasks, machinery controls, hazards, and permits sections
 - Conditional fields (Plant/Equipment, High Risk Works, SWMS coverage)
