@@ -1621,7 +1621,8 @@
         <button class="nav-tab" onclick="showSection('chuck')">🧪 CHUCK</button>
         <button class="nav-tab" onclick="showSection('brittany')">💪 BRITTANY</button>
         <button class="nav-tab" onclick="showSection('hanna')">🧾 HANNA</button>
-        <button class="nav-tab offline" onclick="showSection('ai-agents')">🤖 AI Agents</button>
+        <button class="nav-tab" onclick="showSection('victor')">🔍 VICTOR</button>
+        <button class="nav-tab" onclick="showSection('frank')">📋 FRANK</button>
         <button class="nav-tab" onclick="showSection('settings')">⚙️</button>
     </div>
 
@@ -2246,35 +2247,96 @@
         <div class="console" id="hannaConsole">🧾 HANNA Ready - "I'll scan your receipts in a flash"</div>
     </div>
 
-    <!-- AI Agents Section -->
-    <div id="ai-agents" class="agent-section">
+    <!-- VICTOR - MSDS Finder Section -->
+    <div id="victor" class="agent-section">
         <div class="agent-header">
-            <div class="agent-icon">🤖</div>
+            <div class="agent-icon">🔍</div>
             <div class="agent-title">
-                <h2>AI-Powered Agents</h2>
-                <p>These agents require API connection</p>
+                <h2>VICTOR - MSDS Finder</h2>
+                <p>Find Safety Data Sheets &amp; track WHS compliance</p>
             </div>
         </div>
 
-        <div class="api-notice">
-            <h3>⚡ API Connection Required</h3>
-            <p>The following agents use Claude AI and require the STEEL server running locally:</p>
+        <div class="calc-card">
+            <h3>Search for MSDS</h3>
+            <div style="margin-top:10px;">
+                <input type="text" id="victorProductName" placeholder="Product name (e.g. HIT-HY 200 Hilti)" style="width:100%;padding:12px 14px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;font-size:14px;margin-bottom:10px;box-sizing:border-box;">
+                <input type="text" id="victorManufacturer" placeholder="Manufacturer (optional - auto-detected)" style="width:100%;padding:12px 14px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;font-size:14px;margin-bottom:10px;box-sizing:border-box;">
+                <button onclick="victorSearch()" style="width:100%;padding:14px;background:linear-gradient(135deg,#667eea,#764ba2);border:none;border-radius:8px;color:#fff;cursor:pointer;font-weight:600;font-size:16px;">🔍 Find MSDS</button>
+            </div>
         </div>
 
-        <div class="result-grid" style="margin-top:20px">
-            <div class="result-card"><div class="label">FRANK</div><div class="value" style="font-size:1rem">SWMS Generator</div></div>
-            <div class="result-card"><div class="label">GRETA</div><div class="value" style="font-size:1rem">Plan Intelligence</div></div>
-            <div class="result-card"><div class="label">VICTOR</div><div class="value" style="font-size:1rem">MSDS Finder</div></div>
-            <div class="result-card"><div class="label">DORIS</div><div class="value" style="font-size:1rem">Document Organizer</div></div>
-            <div class="result-card"><div class="label">QUINCY</div><div class="value" style="font-size:1rem">Quality Memory</div></div>
-            <div class="result-card"><div class="label">UGO</div><div class="value" style="font-size:1rem">System Overseer</div></div>
-            <div class="result-card"><div class="label">SIMON</div><div class="value" style="font-size:1rem">Quote Analyzer</div></div>
-            <div class="result-card"><div class="label">PAMELA</div><div class="value" style="font-size:1rem">Warranty Generator</div></div>
-            <div class="result-card"><div class="label">JERRY</div><div class="value" style="font-size:1rem">Workshop Creator</div></div>
-            <div class="result-card"><div class="label">HANNA</div><div class="value" style="font-size:1rem">Receipt Tracker</div></div>
+        <div id="victorSearching" style="display:none;text-align:center;padding:30px;">
+            <div style="font-size:40px;animation:pulse 1s infinite;">🔍</div>
+            <p style="color:#aaa;margin-top:10px;">Searching for MSDS...</p>
         </div>
 
-        <div class="console">🤖 To use AI agents, run: python steel/api.py</div>
+        <div id="victorResults" style="display:none;">
+            <div class="calc-card">
+                <h3>📄 Results</h3>
+                <div id="victorResultContent" style="margin-top:10px;"></div>
+            </div>
+        </div>
+
+        <!-- Saved Products -->
+        <div class="calc-card">
+            <h3>📦 Tracked Products</h3>
+            <div id="victorProductList" style="margin-top:10px;"></div>
+            <p id="victorEmptyMsg" style="color:#666;font-size:13px;margin-top:8px;">No products tracked yet. Search above to add.</p>
+        </div>
+
+        <div class="console" id="victorConsole">🔍 VICTOR Ready - "I'll find any Safety Data Sheet"</div>
+    </div>
+
+    <!-- FRANK - SWMS Generator Section -->
+    <div id="frank" class="agent-section">
+        <div class="agent-header">
+            <div class="agent-icon">📋</div>
+            <div class="agent-title">
+                <h2>FRANK - SWMS Generator</h2>
+                <p>Generate Safe Work Method Statements</p>
+            </div>
+        </div>
+
+        <div class="calc-card">
+            <h3>Job Details</h3>
+            <div style="margin-top:10px;">
+                <textarea id="frankJobDesc" placeholder="Describe the job (e.g. Steel balustrade installation at Martin Place)" rows="3" style="width:100%;padding:12px 14px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;font-size:14px;margin-bottom:10px;box-sizing:border-box;resize:vertical;font-family:inherit;"></textarea>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+                    <input type="text" id="frankJobNumber" placeholder="Job number" style="padding:10px 14px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;font-size:14px;">
+                    <input type="text" id="frankLocation" placeholder="Location/Address" style="padding:10px 14px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;font-size:14px;">
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+                    <input type="text" id="frankBuilder" placeholder="Builder/Client" style="padding:10px 14px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;font-size:14px;">
+                    <input type="text" id="frankWorkers" placeholder="Worker names (comma sep)" style="padding:10px 14px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;font-size:14px;">
+                </div>
+                <button onclick="frankGenerate()" style="width:100%;padding:14px;background:linear-gradient(135deg,#f2994a,#f2c94c);border:none;border-radius:8px;color:#1a1a2e;cursor:pointer;font-weight:700;font-size:16px;">📋 Generate SWMS</button>
+            </div>
+        </div>
+
+        <div id="frankGenerating" style="display:none;text-align:center;padding:30px;">
+            <div style="font-size:40px;animation:pulse 1s infinite;">📋</div>
+            <p style="color:#aaa;margin-top:10px;">Generating SWMS... This may take 30-60 seconds.</p>
+        </div>
+
+        <div id="frankResults" style="display:none;">
+            <div class="calc-card">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <h3>📋 SWMS Generated</h3>
+                    <button onclick="frankPrint()" style="padding:8px 16px;background:linear-gradient(135deg,#4CAF50,#45a049);border:none;border-radius:8px;color:#fff;cursor:pointer;font-weight:600;font-size:13px;">🖨️ Print / Save PDF</button>
+                </div>
+                <div id="frankResultContent" style="margin-top:10px;"></div>
+            </div>
+        </div>
+
+        <!-- Recent SWMS -->
+        <div class="calc-card">
+            <h3>📁 Recent SWMS</h3>
+            <div id="frankRecentList" style="margin-top:10px;"></div>
+            <p id="frankEmptyMsg" style="color:#666;font-size:13px;margin-top:8px;">No SWMS generated yet.</p>
+        </div>
+
+        <div class="console" id="frankConsole">📋 FRANK Ready - "I'll write your SWMS in seconds"</div>
     </div>
 
     <!-- Settings Section -->
@@ -2285,6 +2347,17 @@
                 <h2>Settings</h2>
                 <p>Device management and app preferences</p>
             </div>
+        </div>
+
+        <!-- AI API Key -->
+        <div class="calc-card">
+            <h3>🔑 AI API Key</h3>
+            <p style="font-size:12px;color:#aaa;margin-bottom:10px;">Required for Victor (MSDS) &amp; Frank (SWMS) agents</p>
+            <div style="display:flex;gap:10px;align-items:center;">
+                <input type="password" id="apiKeyInput" placeholder="sk-ant-..." style="flex:1;padding:10px 14px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;font-size:14px;">
+                <button onclick="saveApiKey()" style="padding:10px 20px;background:linear-gradient(135deg,#667eea,#764ba2);border:none;border-radius:8px;color:#fff;cursor:pointer;font-weight:600;">Save</button>
+            </div>
+            <p id="apiKeyStatus" style="margin-top:8px;font-size:12px;color:#4CAF50;"></p>
         </div>
 
         <!-- This Device Name -->
@@ -2473,6 +2546,7 @@
         // Load settings data when settings tab is opened
         if (id === 'settings') {
             loadSettingsData();
+            loadApiKeyStatus();
         }
     }
 
@@ -5546,6 +5620,488 @@
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // API KEY MANAGEMENT
+    // ═══════════════════════════════════════════════════════════════════════════
+    function saveApiKey() {
+        const key = document.getElementById('apiKeyInput').value.trim();
+        if (!key || !key.startsWith('sk-')) {
+            document.getElementById('apiKeyStatus').textContent = 'Invalid key - must start with sk-';
+            document.getElementById('apiKeyStatus').style.color = '#f44336';
+            return;
+        }
+        localStorage.setItem('steel-api-key', key);
+        document.getElementById('apiKeyInput').value = '';
+        document.getElementById('apiKeyStatus').textContent = 'API key saved securely';
+        document.getElementById('apiKeyStatus').style.color = '#4CAF50';
+    }
+
+    function getApiKey() {
+        return localStorage.getItem('steel-api-key');
+    }
+
+    function loadApiKeyStatus() {
+        const key = getApiKey();
+        const status = document.getElementById('apiKeyStatus');
+        if (status) {
+            if (key) {
+                status.textContent = 'API key configured (sk-...' + key.slice(-4) + ')';
+                status.style.color = '#4CAF50';
+            } else {
+                status.textContent = 'No API key set - Victor & Frank need this to work';
+                status.style.color = '#f2994a';
+            }
+        }
+    }
+
+    async function callClaudeAPI(messages, options = {}) {
+        const apiKey = getApiKey();
+        if (!apiKey) {
+            throw new Error('No API key configured. Go to Settings and add your Anthropic API key.');
+        }
+
+        const body = {
+            model: options.model || 'claude-3-5-haiku-20241022',
+            max_tokens: options.maxTokens || 1024,
+            messages: messages
+        };
+        if (options.system) body.system = options.system;
+        if (options.tools) body.tools = options.tools;
+        if (options.temperature !== undefined) body.temperature = options.temperature;
+
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': apiKey,
+                'anthropic-version': '2023-06-01',
+                'anthropic-dangerous-direct-browser-access': 'true'
+            },
+            body: JSON.stringify(body)
+        });
+
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            if (response.status === 401) throw new Error('Invalid API key. Check Settings.');
+            if (response.status === 429) throw new Error('Rate limited. Wait a moment and try again.');
+            throw new Error(err.error?.message || 'API error: ' + response.status);
+        }
+
+        return await response.json();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // VICTOR - MSDS FINDER
+    // ═══════════════════════════════════════════════════════════════════════════
+    let victorProducts = JSON.parse(localStorage.getItem('victor-products') || '[]');
+
+    function victorSaveProducts() {
+        localStorage.setItem('victor-products', JSON.stringify(victorProducts));
+    }
+
+    function victorRenderProducts() {
+        const list = document.getElementById('victorProductList');
+        const empty = document.getElementById('victorEmptyMsg');
+        if (!list) return;
+        if (victorProducts.length === 0) {
+            list.innerHTML = '';
+            if (empty) empty.style.display = 'block';
+            return;
+        }
+        if (empty) empty.style.display = 'none';
+
+        list.innerHTML = victorProducts.map((p, i) => {
+            const statusColor = p.compliance === 'current' ? '#4CAF50' : p.compliance === 'expiring' ? '#f2994a' : p.compliance === 'expired' ? '#f44336' : '#888';
+            const statusLabel = (p.compliance || 'unknown').toUpperCase();
+            return '<div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:12px;margin-bottom:8px;border-left:3px solid ' + statusColor + ';">' +
+                '<div style="display:flex;justify-content:space-between;align-items:start;">' +
+                '<div><strong style="color:#fff;">' + escapeHtml(p.name) + '</strong>' +
+                (p.manufacturer ? '<br><span style="font-size:12px;color:#aaa;">' + escapeHtml(p.manufacturer) + '</span>' : '') +
+                (p.msds_date ? '<br><span style="font-size:12px;color:#aaa;">MSDS Date: ' + escapeHtml(p.msds_date) + '</span>' : '') +
+                '</div>' +
+                '<div style="text-align:right;">' +
+                '<span style="font-size:11px;font-weight:600;color:' + statusColor + ';background:rgba(255,255,255,0.1);padding:2px 8px;border-radius:4px;">' + statusLabel + '</span>' +
+                (p.msds_url ? '<br><a href="' + escapeHtml(p.msds_url) + '" target="_blank" style="font-size:12px;color:#667eea;text-decoration:none;">📄 View PDF</a>' : '') +
+                '<br><button onclick="victorRemove(' + i + ')" style="font-size:11px;color:#f44336;background:none;border:none;cursor:pointer;margin-top:4px;">Remove</button>' +
+                '</div></div></div>';
+        }).join('');
+    }
+
+    function victorRemove(index) {
+        victorProducts.splice(index, 1);
+        victorSaveProducts();
+        victorRenderProducts();
+    }
+
+    async function victorSearch() {
+        const productName = document.getElementById('victorProductName').value.trim();
+        const manufacturer = document.getElementById('victorManufacturer').value.trim();
+        if (!productName) { alert('Enter a product name'); return; }
+
+        const console_el = document.getElementById('victorConsole');
+        const searching = document.getElementById('victorSearching');
+        const results = document.getElementById('victorResults');
+        const content = document.getElementById('victorResultContent');
+
+        searching.style.display = 'block';
+        results.style.display = 'none';
+        console_el.textContent = '🔍 Searching for MSDS: ' + productName + '...';
+
+        try {
+            const searchPrompt = 'Find the Safety Data Sheet (SDS/MSDS) PDF URL for:\n' +
+                'Product: ' + productName + '\n' +
+                (manufacturer ? 'Manufacturer: ' + manufacturer + '\n' : '') +
+                '\nSearch Strategy:\n' +
+                '1. Search the manufacturer official website first\n' +
+                '2. Look for Australian (.com.au) sources\n' +
+                '3. Find direct PDF download links ending in .pdf\n' +
+                '4. Avoid aggregator sites (Scribd, SlideShare, DocPlayer)\n' +
+                '\nReturn a JSON response with EXACTLY this format:\n' +
+                '{"msds_url": "https://...pdf or NOT_FOUND", "manufacturer": "detected manufacturer name", "msds_date": "YYYY-MM-DD or unknown", "hazard_class": "hazard class or unknown", "signal_word": "Danger/Warning/None", "summary": "brief 1-2 sentence summary of the product and its hazards"}\n' +
+                'Return ONLY valid JSON, nothing else.';
+
+            const result = await callClaudeAPI(
+                [{ role: 'user', content: searchPrompt }],
+                {
+                    model: 'claude-3-5-haiku-20241022',
+                    maxTokens: 1024,
+                    tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 4 }]
+                }
+            );
+
+            // Extract text from response
+            let text = '';
+            if (result.content) {
+                for (const block of result.content) {
+                    if (block.type === 'text') text += block.text;
+                }
+            }
+
+            // Parse JSON from response
+            let data;
+            try {
+                const jsonMatch = text.match(/\{[\s\S]*\}/);
+                data = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+            } catch (e) {
+                data = { summary: text, msds_url: 'NOT_FOUND' };
+            }
+
+            if (data) {
+                const found = data.msds_url && data.msds_url !== 'NOT_FOUND';
+                const now = new Date().toISOString().split('T')[0];
+                let compliance = 'unknown';
+                if (data.msds_date && data.msds_date !== 'unknown') {
+                    const msdsDate = new Date(data.msds_date);
+                    const fiveYears = new Date(msdsDate);
+                    fiveYears.setFullYear(fiveYears.getFullYear() + 5);
+                    const sixMonthsBefore = new Date(fiveYears);
+                    sixMonthsBefore.setMonth(sixMonthsBefore.getMonth() - 6);
+                    const today = new Date();
+                    if (today < sixMonthsBefore) compliance = 'current';
+                    else if (today < fiveYears) compliance = 'expiring';
+                    else compliance = 'expired';
+                }
+
+                content.innerHTML =
+                    '<div style="padding:10px;">' +
+                    '<div style="font-size:14px;color:#fff;margin-bottom:8px;"><strong>' + escapeHtml(productName) + '</strong></div>' +
+                    (data.manufacturer ? '<p style="font-size:13px;color:#aaa;">Manufacturer: ' + escapeHtml(data.manufacturer) + '</p>' : '') +
+                    (data.summary ? '<p style="font-size:13px;color:#ccc;margin-top:8px;">' + escapeHtml(data.summary) + '</p>' : '') +
+                    (data.msds_date && data.msds_date !== 'unknown' ? '<p style="font-size:13px;color:#aaa;margin-top:4px;">MSDS Date: ' + escapeHtml(data.msds_date) + ' (' + compliance + ')</p>' : '') +
+                    (data.hazard_class && data.hazard_class !== 'unknown' ? '<p style="font-size:13px;color:#aaa;">Hazard: ' + escapeHtml(data.hazard_class) + '</p>' : '') +
+                    (data.signal_word && data.signal_word !== 'None' && data.signal_word !== 'unknown' ? '<p style="font-size:13px;color:#f2994a;font-weight:600;">Signal Word: ' + escapeHtml(data.signal_word) + '</p>' : '') +
+                    (found ? '<a href="' + escapeHtml(data.msds_url) + '" target="_blank" style="display:inline-block;margin-top:10px;padding:8px 16px;background:linear-gradient(135deg,#667eea,#764ba2);border-radius:8px;color:#fff;text-decoration:none;font-size:13px;">📄 Open MSDS PDF</a>' : '<p style="color:#f44336;margin-top:8px;">MSDS not found online. Try a different product name or add manually.</p>') +
+                    '<br><button onclick="victorSaveResult()" style="margin-top:10px;padding:8px 16px;background:linear-gradient(135deg,#4CAF50,#45a049);border:none;border-radius:8px;color:#fff;cursor:pointer;font-size:13px;">💾 Save to Tracked Products</button>' +
+                    '</div>';
+
+                // Store temp result for saving
+                window._victorLastResult = {
+                    name: productName,
+                    manufacturer: data.manufacturer || manufacturer || '',
+                    msds_url: found ? data.msds_url : '',
+                    msds_date: data.msds_date !== 'unknown' ? data.msds_date : '',
+                    compliance: compliance,
+                    hazard_class: data.hazard_class || '',
+                    signal_word: data.signal_word || '',
+                    summary: data.summary || '',
+                    searched: now
+                };
+
+                results.style.display = 'block';
+                console_el.textContent = found ? '✅ MSDS found for ' + productName : '⚠️ MSDS not found online for ' + productName;
+            }
+        } catch (error) {
+            content.innerHTML = '<p style="color:#f44336;padding:10px;">' + escapeHtml(error.message) + '</p>';
+            results.style.display = 'block';
+            console_el.textContent = '❌ Error: ' + error.message;
+        } finally {
+            searching.style.display = 'none';
+        }
+    }
+
+    function victorSaveResult() {
+        if (!window._victorLastResult) return;
+        victorProducts.unshift(window._victorLastResult);
+        victorSaveProducts();
+        victorRenderProducts();
+        document.getElementById('victorConsole').textContent = '💾 Product saved: ' + window._victorLastResult.name;
+        window._victorLastResult = null;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // FRANK - SWMS GENERATOR
+    // ═══════════════════════════════════════════════════════════════════════════
+    let frankHistory = JSON.parse(localStorage.getItem('frank-history') || '[]');
+
+    function frankSaveHistory() {
+        localStorage.setItem('frank-history', JSON.stringify(frankHistory));
+    }
+
+    function frankRenderHistory() {
+        const list = document.getElementById('frankRecentList');
+        const empty = document.getElementById('frankEmptyMsg');
+        if (!list) return;
+        if (frankHistory.length === 0) {
+            list.innerHTML = '';
+            if (empty) empty.style.display = 'block';
+            return;
+        }
+        if (empty) empty.style.display = 'none';
+        list.innerHTML = frankHistory.slice(0, 10).map((h, i) =>
+            '<div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:10px;margin-bottom:6px;cursor:pointer;" onclick="frankShowSaved(' + i + ')">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+            '<div><strong style="color:#fff;font-size:13px;">' + escapeHtml(h.jobDesc.substring(0, 50)) + (h.jobDesc.length > 50 ? '...' : '') + '</strong>' +
+            '<br><span style="font-size:11px;color:#888;">' + escapeHtml(h.date) + (h.jobNumber ? ' | Job #' + escapeHtml(h.jobNumber) : '') + '</span></div>' +
+            '<button onclick="event.stopPropagation();frankRemoveHistory(' + i + ')" style="color:#f44336;background:none;border:none;cursor:pointer;font-size:14px;">✕</button>' +
+            '</div></div>'
+        ).join('');
+    }
+
+    function frankRemoveHistory(index) {
+        frankHistory.splice(index, 1);
+        frankSaveHistory();
+        frankRenderHistory();
+    }
+
+    function frankShowSaved(index) {
+        const h = frankHistory[index];
+        if (!h) return;
+        document.getElementById('frankResultContent').innerHTML = h.html;
+        document.getElementById('frankResults').style.display = 'block';
+    }
+
+    async function frankGenerate() {
+        const jobDesc = document.getElementById('frankJobDesc').value.trim();
+        const jobNumber = document.getElementById('frankJobNumber').value.trim();
+        const location = document.getElementById('frankLocation').value.trim();
+        const builder = document.getElementById('frankBuilder').value.trim();
+        const workers = document.getElementById('frankWorkers').value.trim();
+
+        if (!jobDesc || jobDesc.length < 3) { alert('Please describe the job (at least 3 characters)'); return; }
+
+        const console_el = document.getElementById('frankConsole');
+        const generating = document.getElementById('frankGenerating');
+        const results = document.getElementById('frankResults');
+        const content = document.getElementById('frankResultContent');
+
+        generating.style.display = 'block';
+        results.style.display = 'none';
+        console_el.textContent = '📋 Generating SWMS...';
+
+        const today = new Date().toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        const workerList = workers ? workers.split(',').map(w => w.trim()).filter(Boolean) : [''];
+
+        try {
+            const systemPrompt = 'You are FRANK, Australia\'s best AI Safety Manager for steel fabrication. ' +
+                'You specialize in creating Safe Work Method Statements (SWMS) for structural steel installation. ' +
+                'You ALWAYS reference relevant AS/NZS standards:\n' +
+                '- AS/NZS 1554 (Structural Steel Welding)\n- AS 1657 (Fixed Platforms, Walkways, Stairways)\n' +
+                '- AS/NZS 4576 (Scaffolding)\n- AS/NZS 1891 (Industrial Fall Arrest)\n' +
+                '- AS 2550 (Cranes - Safe Use)\n- AS 4991 (Lifting Equipment)\n\n' +
+                'You write clear, actionable safety procedures that protect workers and comply with Australian WHS legislation.';
+
+            const userPrompt = 'Generate a complete SWMS for the following job. Return ONLY valid JSON.\n\n' +
+                'Job Description: ' + jobDesc + '\n' +
+                (jobNumber ? 'Job Number: ' + jobNumber + '\n' : '') +
+                (location ? 'Location: ' + location + '\n' : '') +
+                (builder ? 'Builder/Client: ' + builder + '\n' : '') +
+                'Date: ' + today + '\n' +
+                (workers ? 'Workers: ' + workers + '\n' : '') +
+                '\nReturn JSON with this EXACT format:\n' +
+                '{\n' +
+                '  "title": "Short SWMS title",\n' +
+                '  "detailed_description": "Detailed technical description of the work (2-3 sentences)",\n' +
+                '  "high_risk_categories": ["list of applicable high-risk work categories"],\n' +
+                '  "ppe_required": ["list of PPE items"],\n' +
+                '  "plant_equipment": ["list of plant and equipment"],\n' +
+                '  "steps": [\n' +
+                '    {\n' +
+                '      "step_number": "1",\n' +
+                '      "job_step": "Description of step",\n' +
+                '      "hazards": "List hazards for this step",\n' +
+                '      "risk_level": "H/M/L",\n' +
+                '      "controls": "Specific control measures referencing standards"\n' +
+                '    }\n' +
+                '  ],\n' +
+                '  "emergency_procedures": "Site-specific emergency procedures",\n' +
+                '  "standards": ["list of applicable AS/NZS standards"]\n' +
+                '}\n' +
+                'Generate 6-10 detailed steps. Each step must have specific hazards and controls referencing Australian standards.';
+
+            const result = await callClaudeAPI(
+                [{ role: 'user', content: userPrompt }],
+                {
+                    model: 'claude-sonnet-4-5-20250929',
+                    maxTokens: 4000,
+                    temperature: 0,
+                    system: systemPrompt
+                }
+            );
+
+            let text = '';
+            if (result.content) {
+                for (const block of result.content) {
+                    if (block.type === 'text') text += block.text;
+                }
+            }
+
+            let data;
+            try {
+                const jsonMatch = text.match(/\{[\s\S]*\}/);
+                data = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+            } catch (e) {
+                data = null;
+            }
+
+            if (!data || !data.steps) {
+                throw new Error('Could not parse SWMS response. Please try again.');
+            }
+
+            // Build SWMS HTML display
+            let html = '<div id="frankSwmsContent" style="background:#1a1a2e;padding:16px;border-radius:8px;">';
+            html += '<div style="text-align:center;border-bottom:2px solid #667eea;padding-bottom:12px;margin-bottom:16px;">';
+            html += '<h2 style="color:#fff;margin:0;">SAFE WORK METHOD STATEMENT</h2>';
+            html += '<p style="color:#aaa;margin:4px 0;">J&M Artsteel Pty Ltd</p>';
+            html += '</div>';
+
+            // Job details table
+            html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;font-size:13px;">';
+            html += '<div><span style="color:#888;">Job:</span> <span style="color:#fff;">' + escapeHtml(jobDesc) + '</span></div>';
+            html += '<div><span style="color:#888;">Date:</span> <span style="color:#fff;">' + today + '</span></div>';
+            if (jobNumber) html += '<div><span style="color:#888;">Job #:</span> <span style="color:#fff;">' + escapeHtml(jobNumber) + '</span></div>';
+            if (location) html += '<div><span style="color:#888;">Location:</span> <span style="color:#fff;">' + escapeHtml(location) + '</span></div>';
+            if (builder) html += '<div><span style="color:#888;">Builder:</span> <span style="color:#fff;">' + escapeHtml(builder) + '</span></div>';
+            if (workers) html += '<div><span style="color:#888;">Workers:</span> <span style="color:#fff;">' + escapeHtml(workers) + '</span></div>';
+            html += '</div>';
+
+            // Description
+            if (data.detailed_description) {
+                html += '<div style="background:rgba(102,126,234,0.1);padding:10px;border-radius:6px;margin-bottom:12px;font-size:13px;color:#ccc;">' + escapeHtml(data.detailed_description) + '</div>';
+            }
+
+            // High risk categories
+            if (data.high_risk_categories && data.high_risk_categories.length) {
+                html += '<div style="margin-bottom:12px;"><strong style="color:#f2994a;font-size:13px;">High Risk Categories:</strong> <span style="color:#fff;font-size:13px;">' + data.high_risk_categories.map(c => escapeHtml(c)).join(', ') + '</span></div>';
+            }
+
+            // PPE
+            if (data.ppe_required && data.ppe_required.length) {
+                html += '<div style="margin-bottom:12px;"><strong style="color:#4CAF50;font-size:13px;">PPE Required:</strong> <span style="color:#fff;font-size:13px;">' + data.ppe_required.map(p => escapeHtml(p)).join(', ') + '</span></div>';
+            }
+
+            // Plant & Equipment
+            if (data.plant_equipment && data.plant_equipment.length) {
+                html += '<div style="margin-bottom:16px;"><strong style="color:#667eea;font-size:13px;">Plant & Equipment:</strong> <span style="color:#fff;font-size:13px;">' + data.plant_equipment.map(p => escapeHtml(p)).join(', ') + '</span></div>';
+            }
+
+            // Steps table
+            html += '<div style="overflow-x:auto;">';
+            html += '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px;">';
+            html += '<thead><tr style="background:rgba(102,126,234,0.2);">' +
+                '<th style="padding:8px;color:#667eea;text-align:left;border-bottom:1px solid rgba(255,255,255,0.1);">#</th>' +
+                '<th style="padding:8px;color:#667eea;text-align:left;border-bottom:1px solid rgba(255,255,255,0.1);">Job Step</th>' +
+                '<th style="padding:8px;color:#667eea;text-align:left;border-bottom:1px solid rgba(255,255,255,0.1);">Hazards</th>' +
+                '<th style="padding:8px;color:#667eea;text-align:left;border-bottom:1px solid rgba(255,255,255,0.1);">Risk</th>' +
+                '<th style="padding:8px;color:#667eea;text-align:left;border-bottom:1px solid rgba(255,255,255,0.1);">Controls</th>' +
+                '</tr></thead><tbody>';
+            data.steps.forEach(step => {
+                const riskColor = step.risk_level === 'H' ? '#f44336' : step.risk_level === 'M' ? '#f2994a' : '#4CAF50';
+                html += '<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">' +
+                    '<td style="padding:8px;color:#fff;vertical-align:top;">' + escapeHtml(step.step_number) + '</td>' +
+                    '<td style="padding:8px;color:#fff;vertical-align:top;">' + escapeHtml(step.job_step) + '</td>' +
+                    '<td style="padding:8px;color:#f2994a;vertical-align:top;">' + escapeHtml(step.hazards) + '</td>' +
+                    '<td style="padding:8px;vertical-align:top;"><span style="color:' + riskColor + ';font-weight:600;">' + escapeHtml(step.risk_level) + '</span></td>' +
+                    '<td style="padding:8px;color:#4CAF50;vertical-align:top;">' + escapeHtml(step.controls) + '</td>' +
+                    '</tr>';
+            });
+            html += '</tbody></table></div>';
+
+            // Emergency procedures
+            if (data.emergency_procedures) {
+                html += '<div style="background:rgba(244,67,54,0.1);padding:10px;border-radius:6px;margin-bottom:12px;">' +
+                    '<strong style="color:#f44336;font-size:13px;">Emergency Procedures:</strong>' +
+                    '<p style="color:#ccc;font-size:13px;margin-top:4px;">' + escapeHtml(data.emergency_procedures) + '</p></div>';
+            }
+
+            // Standards
+            if (data.standards && data.standards.length) {
+                html += '<div style="margin-bottom:12px;"><strong style="color:#888;font-size:12px;">Applicable Standards:</strong> <span style="color:#aaa;font-size:12px;">' + data.standards.map(s => escapeHtml(s)).join(', ') + '</span></div>';
+            }
+
+            // Worker sign-off area
+            html += '<div style="border-top:1px solid rgba(255,255,255,0.1);padding-top:12px;margin-top:12px;">';
+            html += '<strong style="color:#fff;font-size:13px;">Worker Sign-Off</strong>';
+            html += '<p style="color:#aaa;font-size:12px;margin-top:4px;">I have read and understand this SWMS. I agree to follow the controls listed.</p>';
+            html += '<div style="margin-top:8px;">';
+            workerList.forEach(w => {
+                html += '<div style="display:flex;justify-content:space-between;border-bottom:1px dotted rgba(255,255,255,0.2);padding:8px 0;font-size:13px;">' +
+                    '<span style="color:#fff;">' + escapeHtml(w || '________________') + '</span>' +
+                    '<span style="color:#888;">Signature: ________________</span>' +
+                    '</div>';
+            });
+            html += '</div></div>';
+            html += '</div>';
+
+            content.innerHTML = html;
+            results.style.display = 'block';
+            console_el.textContent = '✅ SWMS generated: ' + (data.title || jobDesc);
+
+            // Save to history
+            frankHistory.unshift({
+                jobDesc: jobDesc,
+                jobNumber: jobNumber,
+                location: location,
+                date: today,
+                html: html
+            });
+            if (frankHistory.length > 20) frankHistory = frankHistory.slice(0, 20);
+            frankSaveHistory();
+            frankRenderHistory();
+
+        } catch (error) {
+            content.innerHTML = '<p style="color:#f44336;padding:10px;">' + escapeHtml(error.message) + '</p>';
+            results.style.display = 'block';
+            console_el.textContent = '❌ Error: ' + error.message;
+        } finally {
+            generating.style.display = 'none';
+        }
+    }
+
+    function frankPrint() {
+        const swmsContent = document.getElementById('frankSwmsContent');
+        if (!swmsContent) return;
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write('<html><head><title>SWMS - J&M Artsteel</title>' +
+            '<style>body{font-family:Arial,sans-serif;background:#fff;color:#000;padding:20px;} ' +
+            'table{width:100%;border-collapse:collapse;} th,td{border:1px solid #ccc;padding:8px;text-align:left;font-size:12px;} ' +
+            'th{background:#f0f0f0;font-weight:bold;} h2{text-align:center;} ' +
+            'div{color:#000 !important;} span{color:#000 !important;} strong{color:#000 !important;} p{color:#000 !important;} td{color:#000 !important;}</style></head><body>');
+        printWindow.document.write(swmsContent.innerHTML);
+        printWindow.document.write('</body></html>');
+        printWindow.document.close();
+        printWindow.print();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // INITIALIZATION
     // ═══════════════════════════════════════════════════════════════════════════
     document.addEventListener('DOMContentLoaded', async () => {
@@ -5565,6 +6121,9 @@
         brittanyUpdateSizes(); // Set up size buttons for default type
         brittanyCalculate();
         hannaInit(); // Initialize HANNA receipt scanner
+        victorRenderProducts(); // Load Victor tracked products
+        frankRenderHistory(); // Load Frank SWMS history
+        loadApiKeyStatus(); // Show API key status in settings
 
         // Log access
         console.log('🔩 STEEL Command Center loaded. Admin:', SteelAuth.isAdmin);
