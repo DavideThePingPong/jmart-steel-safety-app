@@ -68,6 +68,14 @@
         }
       },
 
+      // Hanna - Receipts (synced across all approved devices)
+      "hanna": {
+        "receipts": {
+          ".read": true,
+          ".write": true
+        }
+      },
+
       // Audit log - append only, no deletes, no updates
       // Added: string length limits on action field, timestamp must be a number
       "auditLog": {

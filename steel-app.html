@@ -5213,11 +5213,41 @@
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // HANNA - Receipt Scanner Functions
+    // HANNA - Receipt Scanner Functions (Firebase-synced across all devices)
     // ═══════════════════════════════════════════════════════════════════════════
     let hannaCurrentFile = null;
     let hannaCurrentResult = null;
-    let hannaReceipts = JSON.parse(localStorage.getItem('hannaReceipts') || '[]');
+    let hannaReceipts = [];
+    let hannaFirebaseListenerActive = false;
+
+    function hannaSaveReceipts() {
+        if (firebaseDb) {
+            try {
+                firebaseDb.ref('jmart-safety/hanna/receipts').set(hannaReceipts);
+            } catch (e) { console.warn('Hanna Firebase save failed:', e.message); }
+        }
+        localStorage.setItem('hannaReceipts', JSON.stringify(hannaReceipts));
+    }
+
+    function hannaStartSync() {
+        if (!firebaseDb || hannaFirebaseListenerActive) return;
+        hannaFirebaseListenerActive = true;
+        firebaseDb.ref('jmart-safety/hanna/receipts').on('value', (snap) => {
+            const data = snap.val();
+            if (data && Array.isArray(data)) {
+                hannaReceipts = data;
+                localStorage.setItem('hannaReceipts', JSON.stringify(data));
+            } else if (data === null) {
+                const local = JSON.parse(localStorage.getItem('hannaReceipts') || '[]');
+                if (local.length > 0) {
+                    hannaReceipts = local;
+                    firebaseDb.ref('jmart-safety/hanna/receipts').set(local);
+                }
+            }
+            hannaUpdateRecentList();
+            hannaUpdateStats();
+        });
+    }
 
     function hannaFileSelected(event) {
         const file = event.target.files[0];
@@ -5272,26 +5302,56 @@
                 reader.readAsDataURL(hannaCurrentFile);
             });
 
-            // Call HANNA API endpoint
-            const response = await fetch('/api/hanna/scan', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    image_base64: base64,
-                    filename: hannaCurrentFile.name
-                })
-            });
+            // Detect media type
+            const mediaType = hannaCurrentFile.type || 'image/jpeg';
 
-            if (!response.ok) throw new Error('Scan failed');
+            // Call Claude API directly with vision (no backend needed)
+            const result = await callClaudeAPI(
+                [{
+                    role: 'user',
+                    content: [
+                        {
+                            type: 'image',
+                            source: { type: 'base64', media_type: mediaType, data: base64 }
+                        },
+                        {
+                            type: 'text',
+                            text: 'Extract all data from this receipt. Return ONLY valid JSON:\n' +
+                                '{"store_name":"store name","date":"DD/MM/YYYY","subtotal":0.00,"gst":0.00,"total":0.00,' +
+                                '"items":[{"name":"item name","qty":1,"price":0.00}],"confidence":0.95}\n' +
+                                'Rules:\n- All prices in AUD\n- GST is 10% in Australia (calculate if not shown)\n' +
+                                '- confidence: 0.0-1.0 based on image clarity\n- Return ONLY JSON, no other text'
+                        }
+                    ]
+                }],
+                { model: 'claude-3-5-haiku-20241022', maxTokens: 1024 }
+            );
 
-            const result = await response.json();
-            hannaCurrentResult = result;
-            hannaDisplayResult(result);
+            // Extract text from response
+            let text = '';
+            if (result.content) {
+                for (const block of result.content) {
+                    if (block.type === 'text') text += block.text;
+                }
+            }
+
+            // Parse JSON
+            const jsonMatch = text.match(/\{[\s\S]*\}/);
+            const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+            if (!parsed) throw new Error('Could not parse receipt data');
+
+            hannaCurrentResult = parsed;
+            hannaDisplayResult(parsed);
+            document.getElementById('hannaConsole').textContent = '✅ Receipt scanned! Store: ' + (parsed.store_name || 'Unknown') + ', Total: $' + (parsed.total || 0).toFixed(2);
 
         } catch (error) {
             console.error('Scan error:', error);
-            // Fallback: simulate offline scanning with demo data
-            hannaSimulateScan();
+            if (error.message.includes('API key')) {
+                document.getElementById('hannaConsole').textContent = '⚠️ ' + error.message;
+            } else {
+                // Fallback: simulate offline scanning with demo data
+                hannaSimulateScan();
+            }
         } finally {
             document.getElementById('hannaScanning').style.display = 'none';
         }
@@ -5362,10 +5422,10 @@
             saved_at: new Date().toISOString()
         };
 
-        // Save to local storage
+        // Save to Firebase + localStorage
         hannaReceipts.unshift(receipt);
         if (hannaReceipts.length > 100) hannaReceipts = hannaReceipts.slice(0, 100); // Keep last 100
-        localStorage.setItem('hannaReceipts', JSON.stringify(hannaReceipts));
+        hannaSaveReceipts();
 
         // Update UI
         hannaUpdateRecentList();
@@ -6178,9 +6238,10 @@
         hannaInit(); // Initialize HANNA receipt scanner
         loadApiKeyStatus(); // Show API key status in settings
 
-        // Start Firebase sync for Victor & Frank (real-time across all devices)
+        // Start Firebase sync for Victor, Frank & Hanna (real-time across all devices)
         victorStartSync();
         frankStartSync();
+        hannaStartSync();
         // Fallback render from localStorage if Firebase hasn't loaded yet
         if (!victorFirebaseListenerActive) { victorProducts = JSON.parse(localStorage.getItem('victor-products') || '[]'); victorRenderProducts(); }
         if (!frankFirebaseListenerActive) { frankHistory = JSON.parse(localStorage.getItem('frank-history') || '[]'); frankRenderHistory(); }
