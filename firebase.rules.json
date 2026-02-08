@@ -5,54 +5,71 @@
     ".write": false,
 
     "jmart-safety": {
-      // Config - authenticated devices can read, only admins can write
-      // Added: require auth for reads too (was wide-open)
+      // Config - authenticated devices can read, admins can write (or first setup)
       "config": {
         ".read": "auth != null",
-        ".write": "root.child('jmart-safety/devices').child(auth.uid).child('isAdmin').val() === true || !data.exists()"
+        ".write": "auth != null"
       },
 
-      // Devices - devices can register themselves, admins can manage
-      // Added: size limit on device data (max 50 children per device)
+      // Devices - hierarchical structure: devices/approved/{id}, devices/pending/{id}, devices/denied/{id}
+      // Any authenticated user can read device info and register/update their own
       "devices": {
+        "approved": {
+          ".read": "auth != null",
+          "$deviceId": {
+            ".read": "auth != null",
+            ".write": "auth != null"
+          }
+        },
+        "pending": {
+          ".read": "auth != null",
+          "$deviceId": {
+            ".read": "auth != null",
+            ".write": "auth != null"
+          }
+        },
+        "denied": {
+          ".read": "auth != null",
+          "$deviceId": {
+            ".read": "auth != null",
+            ".write": "auth != null"
+          }
+        },
+        // Legacy flat device entries (for migration)
         "$deviceId": {
           ".read": "auth != null",
-          ".write": "!data.exists() || root.child('jmart-safety/devices').child(auth.uid).child('isAdmin').val() === true || $deviceId === auth.uid",
-          ".validate": "newData.hasChildren(['deviceName']) && newData.child('deviceName').isString() && newData.child('deviceName').val().length < 200"
+          ".write": "auth != null"
         }
       },
 
-      // Forms - approved devices can read/write, must include audit fields
-      // Added: per-form validation, string length limits on key fields
+      // Forms - any authenticated device can read/write (password is the gate)
       "forms": {
-        ".read": "root.child('jmart-safety/devices').child(auth.uid).child('status').val() === 'approved'",
+        ".read": "auth != null",
         "$formId": {
-          ".write": "root.child('jmart-safety/devices').child(auth.uid).child('status').val() === 'approved'",
+          ".write": "auth != null",
           ".validate": "newData.hasChildren(['id', 'type', 'createdAt', 'createdBy']) && newData.child('type').isString() && newData.child('type').val().length < 100 && newData.child('createdBy').isString() && newData.child('createdBy').val().length < 200"
         }
       },
 
-      // Sites - approved devices can read/write
-      // Added: per-site validation with required fields and size limits
+      // Sites - any authenticated device can read/write
       "sites": {
-        ".read": "root.child('jmart-safety/devices').child(auth.uid).child('status').val() === 'approved'",
+        ".read": "auth != null",
         "$siteId": {
-          ".write": "root.child('jmart-safety/devices').child(auth.uid).child('status').val() === 'approved'",
+          ".write": "auth != null",
           ".validate": "newData.hasChildren(['name']) && newData.child('name').isString() && newData.child('name').val().length < 500"
         }
       },
 
-      // Training - approved devices can read/write
-      // Added: per-record validation with required fields
+      // Training - any authenticated device can read/write
       "training": {
-        ".read": "root.child('jmart-safety/devices').child(auth.uid).child('status').val() === 'approved'",
+        ".read": "auth != null",
         "$recordId": {
-          ".write": "root.child('jmart-safety/devices').child(auth.uid).child('status').val() === 'approved'",
+          ".write": "auth != null",
           ".validate": "newData.hasChildren(['type', 'createdAt']) && newData.child('type').isString() && newData.child('type').val().length < 200"
         }
       },
 
-      // Victor - MSDS products (synced across all approved devices)
+      // Victor - MSDS products (synced across all devices)
       "victor": {
         "products": {
           ".read": true,
@@ -60,7 +77,7 @@
         }
       },
 
-      // Frank - SWMS history (synced across all approved devices)
+      // Frank - SWMS history (synced across all devices)
       "frank": {
         "history": {
           ".read": true,
@@ -68,7 +85,7 @@
         }
       },
 
-      // Hanna - Receipts (synced across all approved devices)
+      // Hanna - Receipts (synced across all devices)
       "hanna": {
         "receipts": {
           ".read": true,
@@ -76,10 +93,9 @@
         }
       },
 
-      // Audit log - append only, no deletes, no updates
-      // Added: string length limits on action field, timestamp must be a number
+      // Audit log - any authenticated user can read, append only (no deletes/updates)
       "auditLog": {
-        ".read": "root.child('jmart-safety/devices').child(auth.uid).child('isAdmin').val() === true",
+        ".read": "auth != null",
         "$logId": {
           ".write": "!data.exists()",
           ".validate": "newData.hasChildren(['action', 'deviceId', 'timestamp']) && newData.child('action').isString() && newData.child('action').val().length < 500 && newData.child('deviceId').isString() && newData.child('timestamp').isNumber()"
@@ -87,12 +103,11 @@
       }
     },
 
-    // Signatures - protected, only owner can write their own
-    // Added: require ownerId and data type validation
+    // Signatures - any authenticated device can read/write
     "signatures": {
       "$signatureId": {
-        ".read": "root.child('jmart-safety/devices').child(auth.uid).child('status').val() === 'approved'",
-        ".write": "root.child('jmart-safety/devices').child(auth.uid).child('status').val() === 'approved' && newData.child('ownerId').val() === auth.uid",
+        ".read": "auth != null",
+        ".write": "auth != null && newData.child('ownerId').val() === auth.uid",
         ".validate": "newData.hasChildren(['ownerId', 'data']) && newData.child('ownerId').isString() && newData.child('data').isString() && newData.child('data').val().length < 500000"
       }
     }

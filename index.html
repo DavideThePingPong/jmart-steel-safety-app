@@ -256,16 +256,13 @@
             return { approved: true, admin: true, firstDevice: true };
           }
 
-          // Check if already pending
-          const pendingSnap = await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).once('value');
-          if (!pendingSnap.exists()) {
-            // Register as pending
-            await this.registerAsPending();
-          }
-
-          this.isApproved = false;
-          this.notifyStatusListeners();
-          return { approved: false, pending: true };
+          // Auto-approve all devices (password gate is sufficient security)
+          // Remove from pending/denied if exists, then approve
+          await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).remove().catch(() => {});
+          await firebaseDb.ref('jmart-safety/devices/denied/' + this.deviceId).remove().catch(() => {});
+          await this.registerAsApproved(false);
+          console.log('Device auto-approved (password verified at login)');
+          return { approved: true, admin: false, autoApproved: true };
 
         } catch (error) {
           console.error('Error checking device status:', error);
@@ -1913,19 +1910,36 @@
             return { status: 'approved', canAccess: true, isAdmin: this.isAdmin };
           }
 
-          // Check pending devices
+          // Check pending devices — auto-approve them
           const pendingSnap = await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).once('value');
           if (pendingSnap.exists()) {
-            return { status: 'pending', canAccess: false };
+            // Auto-approve: move from pending to approved
+            const pendingData = pendingSnap.val();
+            await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId).set({
+              ...pendingData,
+              isAdmin: false,
+              approvedAt: new Date().toISOString(),
+              approvedBy: 'AUTO (Password Verified)'
+            });
+            await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).remove();
+            return { status: 'approved', canAccess: true, isAdmin: false };
           }
 
-          // Check denied devices
+          // Check denied devices — re-approve them
           const deniedSnap = await firebaseDb.ref('jmart-safety/devices/denied/' + this.deviceId).once('value');
           if (deniedSnap.exists()) {
-            return { status: 'denied', canAccess: false };
+            const deniedData = deniedSnap.val();
+            await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId).set({
+              ...deniedData,
+              isAdmin: false,
+              approvedAt: new Date().toISOString(),
+              approvedBy: 'AUTO (Re-approved)'
+            });
+            await firebaseDb.ref('jmart-safety/devices/denied/' + this.deviceId).remove();
+            return { status: 'approved', canAccess: true, isAdmin: false };
           }
 
-          // New device - not registered
+          // New device - will be auto-approved on login
           return { status: 'new', canAccess: false };
         } catch (error) {
           console.error('Device auth error:', error);
@@ -1978,19 +1992,24 @@
           else if (/Firefox/i.test(ua)) browser = 'Firefox';
           else if (/Edg/i.test(ua)) browser = 'Edge';
 
-          // Register to pending path (same as DeviceAuth)
-          await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).set({
+          // Auto-approve device (password gate is sufficient security)
+          await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId).set({
             id: this.deviceId,
+            deviceName: deviceName || 'Unknown Device',
             name: deviceName || 'Unknown Device',
             type: deviceType,
             browser: browser,
             screen: screen.width + 'x' + screen.height,
-            status: 'pending',
-            requestedAt: new Date().toISOString(),
+            isAdmin: false,
+            approvedAt: new Date().toISOString(),
+            approvedBy: 'AUTO (Password Verified)',
             registeredAt: new Date().toISOString(),
             lastSeen: new Date().toISOString(),
             userAgent: navigator.userAgent.substring(0, 100)
           });
+          // Clean up pending/denied entries if any exist
+          await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).remove().catch(() => {});
+          await firebaseDb.ref('jmart-safety/devices/denied/' + this.deviceId).remove().catch(() => {});
           return true;
         } catch (error) {
           console.error('Error registering device:', error);
@@ -3437,7 +3456,7 @@
     /* Install prompt banner */
     .install-banner {
       position: fixed;
-      bottom: 70px;
+      bottom: 100px;
       left: 10px;
       right: 10px;
       background: linear-gradient(135deg, #ea580c 0%, #dc2626 100%);
@@ -3448,7 +3467,7 @@
       align-items: center;
       justify-content: space-between;
       box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-      z-index: 1000;
+      z-index: 35;
       animation: slideUp 0.3s ease;
     }
     @keyframes slideUp {
@@ -4987,7 +5006,7 @@
       }
 
       return (
-        <div className="min-h-screen bg-gray-100 flex flex-col safe-top">
+        <div className="min-h-screen bg-gray-100 flex flex-col">
           {/* New Device Request Notification for Admins */}
           {newDeviceNotification && isDeviceAdmin && (
             <div className="fixed top-4 left-4 right-4 bg-blue-600 text-white p-4 rounded-xl shadow-lg z-[200] animate-pulse">
@@ -5256,7 +5275,7 @@
 
           {/* Sync Error/Pending Banner */}
           {(syncStatus === 'error' || (syncStatus === 'pending' && pendingSyncCount > 0)) && (
-            <div className={`fixed bottom-20 left-3 right-3 ${syncStatus === 'error' ? 'bg-red-600' : 'bg-yellow-600'} text-white p-3 rounded-xl shadow-lg z-50`}>
+            <div className={`fixed bottom-24 left-3 right-3 ${syncStatus === 'error' ? 'bg-red-600' : 'bg-yellow-600'} text-white p-3 rounded-xl shadow-lg z-40`}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-xl">{syncStatus === 'error' ? '⚠️' : '🔄'}</span>
@@ -5280,8 +5299,8 @@
           )}
 
           {/* Firebase Setup Banner */}
-          {showSyncBanner && !FirebaseSync.isConnected() && (
-            <div className="fixed bottom-20 left-3 right-3 bg-blue-600 text-white p-3 rounded-xl shadow-lg z-50 flex items-center justify-between">
+          {showSyncBanner && !FirebaseSync.isConnected() && !(syncStatus === 'error' || (syncStatus === 'pending' && pendingSyncCount > 0)) && (
+            <div className="fixed bottom-24 left-3 right-3 bg-blue-600 text-white p-3 rounded-xl shadow-lg z-40 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="text-xl">☁️</span>
                 <div>
@@ -5341,7 +5360,7 @@
           </header>
 
           {menuOpen && (
-            <div className="fixed inset-0 z-40 flex">
+            <div className="fixed inset-0 z-[60] flex">
               <div className="fixed inset-0 bg-black bg-opacity-50" onClick={() => setMenuOpen(false)}></div>
               <div className="relative w-72 bg-white shadow-xl">
                 <div className="p-4 bg-orange-600 text-white">
