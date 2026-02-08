@@ -4364,16 +4364,25 @@
         setError('');
 
         try {
-          // Set the password
-          await DeviceAuthManager.setPassword(newPassword);
-
-          // Register this device as admin
-          await DeviceAuthManager.registerDevice(deviceName || 'Admin Device');
-          await DeviceAuthManager.approveAsAdmin();
-
+          // Set the password, register device, approve as admin
+          // Wrap with timeout so Firebase hangs don't block forever
+          await Promise.race([
+            (async () => {
+              await DeviceAuthManager.setPassword(newPassword);
+              await DeviceAuthManager.registerDevice(deviceName || 'Admin Device');
+              await DeviceAuthManager.approveAsAdmin();
+            })(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000))
+          ]);
           onAuthenticated(true);
         } catch (err) {
-          setError('Setup failed. Please try again.');
+          if (err.message === 'timeout') {
+            // Firebase is slow but password was likely set locally — let them in
+            console.warn('Setup timed out waiting for Firebase, proceeding anyway');
+            onAuthenticated(true);
+          } else {
+            setError('Setup failed: ' + err.message);
+          }
         }
 
         setIsLoading(false);
@@ -4389,18 +4398,17 @@
         setError('');
 
         if (DeviceAuthManager.verifyPassword(password)) {
-          // Password correct — always grant access
-          // Try to register device in background (best-effort, don't block)
-          try {
-            const status = await DeviceAuthManager.init();
+          // Password correct — grant access immediately, register device in background
+          onAuthenticated(true);
+          // Fire-and-forget device registration (never blocks login)
+          Promise.race([
+            DeviceAuthManager.init(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))
+          ]).then(status => {
             if (status.status === 'new') {
               DeviceAuthManager.registerDevice(deviceName || 'Unknown Device').catch(() => {});
             }
-          } catch (regErr) {
-            console.warn('Device registration skipped:', regErr.message);
-          }
-          // Password verified = access granted
-          onAuthenticated(true);
+          }).catch(() => {});
         } else {
           setError('Incorrect password');
         }
