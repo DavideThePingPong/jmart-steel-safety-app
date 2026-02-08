@@ -26,15 +26,24 @@
   <link rel="manifest" href="data:application/json;base64,ewogICJuYW1lIjogIkpNYXJ0IFN0ZWVsIFNhZmV0eSBBcHAiLAogICJzaG9ydF9uYW1lIjogIkpNYXJ0IFNhZmV0eSIsCiAgImRlc2NyaXB0aW9uIjogIlNhZmV0eSBtYW5hZ2VtZW50IGFwcCBmb3IgSk1hcnQgU3RlZWwgLSBOU1cgT3BlcmF0aW9ucyIsCiAgInN0YXJ0X3VybCI6ICIuIiwKICAiZGlzcGxheSI6ICJzdGFuZGFsb25lIiwKICAiYmFja2dyb3VuZF9jb2xvciI6ICIjZjNmNGY2IiwKICAidGhlbWVfY29sb3IiOiAiI2VhNTgwYyIsCiAgIm9yaWVudGF0aW9uIjogInBvcnRyYWl0IiwKICAiaWNvbnMiOiBbCiAgICB7CiAgICAgICJzcmMiOiAiZGF0YTppbWFnZS9zdmcreG1sLDxzdmcgeG1sbnM9J2h0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnJyB2aWV3Qm94PScwIDAgMTkyIDE5Mic+PHJlY3Qgd2lkdGg9JzE5MicgaGVpZ2h0PScxOTInIHJ4PSc0MCcgZmlsbD0nJTIzZWE1ODBjJy8+PHRleHQgeD0nOTYnIHk9JzEyMCcgZm9udC1zaXplPSc4MCcgdGV4dC1hbmNob3I9J21pZGRsZScgZmlsbD0nd2hpdGUnPvCfm6HvuI88L3RleHQ+PC9zdmc+IiwKICAgICAgInNpemVzIjogIjE5MngxOTIiLAogICAgICAidHlwZSI6ICJpbWFnZS9zdmcreG1sIiwKICAgICAgInB1cnBvc2UiOiAiYW55IG1hc2thYmxlIgogICAgfQogIF0KfQ==">
 
   <!-- Scripts (pinned versions + crossorigin for SRI readiness) -->
-  <script src="https://cdn.tailwindcss.com" crossorigin="anonymous"></script>
+  <!-- Tailwind loaded ASYNC so it never blocks React/Babel/Firebase from loading -->
+  <!-- Fallback CSS in <style> block above covers all utility classes if Tailwind CDN is slow/down -->
   <script>
-    // Tailwind CDN fallback: try alternative CDN if primary fails
-    if (!window.tailwind) {
+    (function() {
       var tw = document.createElement('script');
-      tw.src = 'https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4/cdn.min.js';
+      tw.src = 'https://cdn.tailwindcss.com';
       tw.crossOrigin = 'anonymous';
+      tw.async = true;
+      tw.onerror = function() {
+        // Primary CDN failed, try jsdelivr as backup
+        var tw2 = document.createElement('script');
+        tw2.src = 'https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4/cdn.min.js';
+        tw2.crossOrigin = 'anonymous';
+        tw2.async = true;
+        document.head.appendChild(tw2);
+      };
       document.head.appendChild(tw);
-    }
+    })();
   </script>
   <script src="https://unpkg.com/react@18.2.0/umd/react.production.min.js" crossorigin="anonymous"></script>
   <script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
