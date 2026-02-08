@@ -36,8 +36,8 @@
 .space-y-6 > :not([hidden]) ~ :not([hidden]) { margin-top: 1.5rem; }
 
   </style>
-  <script src="https://unpkg.com/react@18.2.0/umd/react.development.js" crossorigin="anonymous"></script>
-  <script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.development.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react@18.2.0/umd/react.production.min.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
   <script src="https://unpkg.com/@babel/standalone@7.24.0/babel.min.js" crossorigin="anonymous"></script>
   <script src="https://unpkg.com/lucide@0.344.0/dist/umd/lucide.min.js" crossorigin="anonymous"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" crossorigin="anonymous"></script>
@@ -4445,7 +4445,20 @@
         const savedSites = localStorage.getItem('jmart-safety-sites');
         if (savedSites) {
           try {
-            setSites(JSON.parse(savedSites));
+            const parsed = JSON.parse(savedSites);
+            // Sanitize: Firebase can corrupt string arrays into char-by-char objects
+            const sanitized = (Array.isArray(parsed) ? parsed : Object.values(parsed || {})).map(s => {
+              if (typeof s === 'string') return s;
+              if (s && typeof s === 'object') {
+                // Reconstruct string from char-by-char Firebase object {0:'a',1:'b',...}
+                const chars = Object.keys(s).filter(k => k !== '_lastModified' && !isNaN(k)).sort((a,b) => Number(a) - Number(b));
+                return chars.map(k => s[k]).join('');
+              }
+              return String(s);
+            }).filter(s => s && s.length > 0);
+            setSites(sanitized);
+            // Fix localStorage with clean data
+            localStorage.setItem('jmart-safety-sites', JSON.stringify(sanitized));
           } catch (e) {
             console.error('Error parsing localStorage sites:', e);
           }
@@ -4528,7 +4541,16 @@
           });
 
           const unsubSites = FirebaseSync.onSitesChange((firebaseSites) => {
-            const sitesArray = Array.isArray(firebaseSites) ? firebaseSites : Object.values(firebaseSites || {});
+            const rawArray = Array.isArray(firebaseSites) ? firebaseSites : Object.values(firebaseSites || {});
+            // Sanitize: Firebase can corrupt string arrays into char-by-char objects
+            const sitesArray = rawArray.map(s => {
+              if (typeof s === 'string') return s;
+              if (s && typeof s === 'object') {
+                const chars = Object.keys(s).filter(k => k !== '_lastModified' && !isNaN(k)).sort((a,b) => Number(a) - Number(b));
+                return chars.map(k => s[k]).join('');
+              }
+              return String(s);
+            }).filter(s => s && s.length > 0);
             if (sitesArray.length > 0) {
               setSites(sitesArray);
               localStorage.setItem('jmart-safety-sites', JSON.stringify(sitesArray));
@@ -5398,7 +5420,7 @@
           <main className="flex-1 p-4 pb-20">
             {currentView === 'dashboard' && <Dashboard setCurrentView={setCurrentView} forms={forms} onViewForm={setViewFormModal} isFormBackedUp={isFormBackedUp} sites={sites} />}
             {currentView === 'training' && <TrainingView />}
-            {currentView === 'prestart' && <DebugErrorBoundary><PrestartView onSubmit={(data) => addForm('prestart', data)} onUpdate={updateForm} editingForm={editingForm?.type === 'prestart' ? editingForm : null} previousPrestarts={previousPrestarts} sites={sites} /></DebugErrorBoundary>}
+            {currentView === 'prestart' && <PrestartView onSubmit={(data) => addForm('prestart', data)} onUpdate={updateForm} editingForm={editingForm?.type === 'prestart' ? editingForm : null} previousPrestarts={previousPrestarts} sites={sites} />}
             {currentView === 'steel-itp' && <SteelITPView onSubmit={(data) => addForm('steel-itp', data)} onUpdate={updateForm} editingForm={editingForm?.type === 'steel-itp' ? editingForm : null} sites={sites} />}
             {currentView === 'inspection' && <SubcontractorInspectionView onSubmit={(data) => addForm('inspection', data)} onUpdate={updateForm} editingForm={editingForm?.type === 'inspection' ? editingForm : null} sites={sites} />}
             {currentView === 'itp' && <ITPFormView onSubmit={(data) => addForm('itp', data)} onUpdate={updateForm} editingForm={editingForm?.type === 'itp' ? editingForm : null} sites={sites} />}
@@ -6850,7 +6872,7 @@
       const displayTime = formDate.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
       const builders = ['Fdc Fitout and Refurbishment', 'Fdc Construction', 'Hunter Mason', 'Built', 'Lendlease'];
       const defaultSites = ['Site 1 - Sydney CBD', 'Site 2 - Parramatta', 'Site 3 - North Sydney', 'Site 4 - Chatswood', 'Site 5 - Liverpool'];
-      const sitesList = sites.length > 0 ? sites : defaultSites;
+      const sitesList = (sites.length > 0 ? sites : defaultSites).filter(s => typeof s === 'string');
       const teamMembers = ['Jeff Fu', 'Scott Seeho', 'Davide Casolini', 'Zonggang Jiang', 'Leon Yu', 'Wang Jia', 'Gen Bao'];
 
       const checklistTypes = [
@@ -7675,7 +7697,7 @@
       const preparers = ['Jeff Fu', 'Scott Seeho', 'Davide Casolini'];
       const builders = ['Fdc Fitout and Refurbishment', 'Fdc Construction', 'Hunter Mason', 'Built', 'Lendlease'];
       const defaultSites = ['Site 1 - Sydney CBD', 'Site 2 - Parramatta', 'Site 3 - North Sydney', 'Site 4 - Chatswood', 'Site 5 - Liverpool'];
-      const sitesList = sites.length > 0 ? sites : defaultSites;
+      const sitesList = (sites.length > 0 ? sites : defaultSites).filter(s => typeof s === 'string');
 
       const topics = [
         'Manual Handling', 'Working at Heights', 'Hot Work Safety', 'PPE Requirements',
@@ -7943,7 +7965,7 @@
       const preparers = ['Jeff Fu', 'Scott Seeho', 'Davide Casolini'];
       const inspectors = ['Scott Seeho', 'Davide Casolini'];
       const defaultSites = ['Site 1 - Sydney CBD', 'Site 2 - Parramatta', 'Site 3 - North Sydney', 'Site 4 - Chatswood', 'Site 5 - Liverpool'];
-      const sitesList = sites.length > 0 ? sites : defaultSites;
+      const sitesList = (sites.length > 0 ? sites : defaultSites).filter(s => typeof s === 'string');
 
       const inspectionQuestions = [
         { id: 'siteBoxes', text: 'Site boxes in good condition and lockable' },
@@ -8196,7 +8218,7 @@
       const todayDate = new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
       const preparers = ['Jeff Fu', 'Scott Seeho', 'Davide Casolini'];
       const defaultSites = ['Site 1 - Sydney CBD', 'Site 2 - Parramatta', 'Site 3 - North Sydney'];
-      const sitesList = sites.length > 0 ? sites : defaultSites;
+      const sitesList = (sites.length > 0 ? sites : defaultSites).filter(s => typeof s === 'string');
 
       const getLocation = () => {
         setIsLocating(true);
@@ -8575,7 +8597,7 @@
 
       const todayDate = new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
       const defaultSites = ['Site 1 - Sydney CBD', 'Site 2 - Parramatta', 'Site 3 - North Sydney'];
-      const sitesList = sites.length > 0 ? sites : defaultSites;
+      const sitesList = (sites.length > 0 ? sites : defaultSites).filter(s => typeof s === 'string');
 
       const SelectField = ({ label, value, onChange }) => (
         <div className="space-y-2">
