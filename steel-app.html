@@ -6216,7 +6216,7 @@
                 '</div>' +
                 '<div style="text-align:right;">' +
                 '<span style="font-size:11px;font-weight:600;color:' + statusColor + ';background:rgba(255,255,255,0.1);padding:2px 8px;border-radius:4px;">' + statusLabel + '</span>' +
-                (needsUpdate ? '<br><button onclick="victorUpdate(' + i + ')" style="font-size:11px;color:#fff;background:' + statusColor + ';border:none;border-radius:4px;cursor:pointer;margin-top:4px;padding:3px 8px;" title="' + expiryInfo + '">🔄 Update</button>' : '') +
+                (needsUpdate ? '<br><button onclick="victorUpdate(' + i + ', this)" style="font-size:11px;color:#fff;background:' + statusColor + ';border:none;border-radius:4px;cursor:pointer;margin-top:4px;padding:3px 8px;" title="' + expiryInfo + '">🔄 Update</button>' : '') +
                 (p.msds_url ? '<br><a href="' + escapeHtml(p.msds_url) + '" target="_blank" style="font-size:12px;color:#667eea;text-decoration:none;">📄 View PDF</a>' : '') +
                 '<br><button onclick="victorRemove(' + i + ')" style="font-size:11px;color:#f44336;background:none;border:none;cursor:pointer;margin-top:4px;">Remove</button>' +
                 '</div></div></div>';
@@ -6235,14 +6235,19 @@
     }
 
     // Update/refresh an MSDS — re-searches for a newer version
-    async function victorUpdate(index) {
+    async function victorUpdate(index, btn) {
         const product = victorProducts[index];
         if (!product) return;
 
-        const btn = event.target;
-        const origText = btn.innerHTML;
-        btn.innerHTML = '⏳ Searching...';
-        btn.disabled = true;
+        // Check API key first
+        if (!getApiKey()) {
+            alert('No API key configured. Go to Settings (⚙️) and add your Anthropic API key first.');
+            victorLog('⚠️ API key needed — go to Settings to add it');
+            return;
+        }
+
+        const origText = btn ? btn.innerHTML : '';
+        if (btn) { btn.innerHTML = '⏳ Searching...'; btn.disabled = true; }
 
         try {
             const searchPrompt = 'Find the latest Safety Data Sheet (SDS/MSDS) PDF URL for:\n' +
@@ -6299,13 +6304,11 @@
                     ? '✅ Updated ' + product.name + ' — new MSDS dated ' + newDate + ' (was ' + oldDate + ')'
                     : '✅ Refreshed ' + product.name + ' — MSDS date: ' + newDate);
             } else {
-                btn.innerHTML = '❌ Not found';
-                setTimeout(() => { btn.innerHTML = origText; btn.disabled = false; }, 2000);
+                if (btn) { btn.innerHTML = '❌ Not found'; setTimeout(() => { btn.innerHTML = origText; btn.disabled = false; }, 2000); }
                 victorLog('⚠️ Could not find updated MSDS for ' + product.name);
             }
         } catch (err) {
-            btn.innerHTML = '❌ Error';
-            setTimeout(() => { btn.innerHTML = origText; btn.disabled = false; }, 2000);
+            if (btn) { btn.innerHTML = '❌ Error'; setTimeout(() => { btn.innerHTML = origText; btn.disabled = false; }, 2000); }
             victorLog('❌ Update error: ' + err.message);
         }
     }
