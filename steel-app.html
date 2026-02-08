@@ -6154,6 +6154,28 @@
         });
     }
 
+    // Calculate compliance status dynamically from msds_date
+    // SDS valid for 5 years from issue date; "expiring" = within 1 year of 5-year mark
+    function victorCalcCompliance(msdsDate) {
+        if (!msdsDate || msdsDate === 'unknown') return 'unknown';
+        const issued = new Date(msdsDate);
+        if (isNaN(issued.getTime())) return 'unknown';
+        const fiveYears = new Date(issued);
+        fiveYears.setFullYear(fiveYears.getFullYear() + 5);
+        const oneYearBefore = new Date(fiveYears);
+        oneYearBefore.setFullYear(oneYearBefore.getFullYear() - 1);
+        const today = new Date();
+        if (today >= fiveYears) return 'expired';
+        if (today >= oneYearBefore) return 'expiring';
+        return 'current';
+    }
+
+    // Check if MSDS needs update (expiring within 1 year or already expired)
+    function victorNeedsUpdate(msdsDate) {
+        const status = victorCalcCompliance(msdsDate);
+        return status === 'expiring' || status === 'expired';
+    }
+
     function victorRenderProducts() {
         const list = document.getElementById('victorProductList');
         const empty = document.getElementById('victorEmptyMsg');
@@ -6166,16 +6188,35 @@
         if (empty) empty.style.display = 'none';
 
         list.innerHTML = victorProducts.map((p, i) => {
-            const statusColor = p.compliance === 'current' ? '#4CAF50' : p.compliance === 'expiring' ? '#f2994a' : p.compliance === 'expired' ? '#f44336' : '#888';
-            const statusLabel = (p.compliance || 'unknown').toUpperCase();
+            // Recalculate compliance dynamically from msds_date every render
+            const liveCompliance = victorCalcCompliance(p.msds_date);
+            // Update stored compliance if it changed
+            if (liveCompliance !== 'unknown' && p.compliance !== liveCompliance) {
+                p.compliance = liveCompliance;
+            }
+            const statusColor = liveCompliance === 'current' ? '#4CAF50' : liveCompliance === 'expiring' ? '#f2994a' : liveCompliance === 'expired' ? '#f44336' : '#888';
+            const statusLabel = liveCompliance.toUpperCase();
+            const needsUpdate = victorNeedsUpdate(p.msds_date);
+            // Calculate days until expiry for the update button tooltip
+            let expiryInfo = '';
+            if (p.msds_date && p.msds_date !== 'unknown') {
+                const issued = new Date(p.msds_date);
+                const expiry = new Date(issued);
+                expiry.setFullYear(expiry.getFullYear() + 5);
+                const daysLeft = Math.ceil((expiry - new Date()) / (1000 * 60 * 60 * 24));
+                if (daysLeft > 0) expiryInfo = 'Expires in ' + daysLeft + ' days';
+                else expiryInfo = 'Expired ' + Math.abs(daysLeft) + ' days ago';
+            }
             return '<div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:12px;margin-bottom:8px;border-left:3px solid ' + statusColor + ';">' +
                 '<div style="display:flex;justify-content:space-between;align-items:start;">' +
                 '<div><strong style="color:#fff;">' + escapeHtml(p.name) + '</strong>' +
                 (p.manufacturer ? '<br><span style="font-size:12px;color:#aaa;">' + escapeHtml(p.manufacturer) + '</span>' : '') +
                 (p.msds_date ? '<br><span style="font-size:12px;color:#aaa;">MSDS Date: ' + escapeHtml(p.msds_date) + '</span>' : '') +
+                (expiryInfo ? '<br><span style="font-size:11px;color:' + (needsUpdate ? statusColor : '#888') + ';">' + expiryInfo + '</span>' : '') +
                 '</div>' +
                 '<div style="text-align:right;">' +
                 '<span style="font-size:11px;font-weight:600;color:' + statusColor + ';background:rgba(255,255,255,0.1);padding:2px 8px;border-radius:4px;">' + statusLabel + '</span>' +
+                (needsUpdate ? '<br><button onclick="victorUpdate(' + i + ')" style="font-size:11px;color:#fff;background:' + statusColor + ';border:none;border-radius:4px;cursor:pointer;margin-top:4px;padding:3px 8px;" title="' + expiryInfo + '">🔄 Update</button>' : '') +
                 (p.msds_url ? '<br><a href="' + escapeHtml(p.msds_url) + '" target="_blank" style="font-size:12px;color:#667eea;text-decoration:none;">📄 View PDF</a>' : '') +
                 '<br><button onclick="victorRemove(' + i + ')" style="font-size:11px;color:#f44336;background:none;border:none;cursor:pointer;margin-top:4px;">Remove</button>' +
                 '</div></div></div>';
@@ -6186,6 +6227,87 @@
         victorProducts.splice(index, 1);
         victorSaveProducts();
         victorRenderProducts();
+    }
+
+    function victorLog(msg) {
+        const el = document.getElementById('victorConsole');
+        if (el) el.textContent = msg;
+    }
+
+    // Update/refresh an MSDS — re-searches for a newer version
+    async function victorUpdate(index) {
+        const product = victorProducts[index];
+        if (!product) return;
+
+        const btn = event.target;
+        const origText = btn.innerHTML;
+        btn.innerHTML = '⏳ Searching...';
+        btn.disabled = true;
+
+        try {
+            const searchPrompt = 'Find the latest Safety Data Sheet (SDS/MSDS) PDF URL for:\n' +
+                'Product: ' + product.name + '\n' +
+                'Manufacturer: ' + (product.manufacturer || 'unknown') + '\n\n' +
+                'I need the MOST RECENT version of the SDS. The current one is dated ' + (product.msds_date || 'unknown') + ' and may be outdated.\n\n' +
+                'Search Strategy:\n' +
+                '1. Search the manufacturer official website first\n' +
+                '2. Look for Australian (.com.au) sources\n' +
+                '3. Find direct PDF download links ending in .pdf\n' +
+                '4. Prioritize the newest/most recent version available\n' +
+                '5. Avoid aggregator sites\n\n' +
+                'Return ONLY valid JSON:\n' +
+                '{"msds_url":"https://...pdf or NOT_FOUND","msds_date":"YYYY-MM-DD or unknown","hazard_class":"class or unknown","signal_word":"Danger/Warning/None","summary":"brief summary"}';
+
+            const result = await callClaudeAPI(
+                [{ role: 'user', content: searchPrompt }],
+                { model: 'claude-3-5-haiku-20241022', maxTokens: 1024, tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 4 }] }
+            );
+
+            let text = '';
+            if (result && result.content) {
+                for (const block of result.content) {
+                    if (block.type === 'text') text += block.text;
+                }
+            }
+
+            let data;
+            try {
+                const jsonMatch = text.match(/\{[\s\S]*\}/);
+                data = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+            } catch (e) { data = null; }
+
+            if (data && data.msds_url && data.msds_url !== 'NOT_FOUND') {
+                // Check if the new MSDS is actually newer
+                const oldDate = product.msds_date || '0000-00-00';
+                const newDate = data.msds_date || 'unknown';
+                const isNewer = newDate !== 'unknown' && newDate > oldDate;
+
+                // Update product with new data
+                victorProducts[index].msds_url = data.msds_url;
+                if (newDate !== 'unknown') {
+                    victorProducts[index].msds_date = newDate;
+                    victorProducts[index].compliance = victorCalcCompliance(newDate);
+                }
+                if (data.summary) victorProducts[index].summary = data.summary;
+                if (data.hazard_class && data.hazard_class !== 'unknown') victorProducts[index].hazard_class = data.hazard_class;
+                if (data.signal_word && data.signal_word !== 'unknown') victorProducts[index].signal_word = data.signal_word;
+                victorProducts[index].lastUpdated = new Date().toISOString().split('T')[0];
+
+                victorSaveProducts();
+                victorRenderProducts();
+                victorLog(isNewer
+                    ? '✅ Updated ' + product.name + ' — new MSDS dated ' + newDate + ' (was ' + oldDate + ')'
+                    : '✅ Refreshed ' + product.name + ' — MSDS date: ' + newDate);
+            } else {
+                btn.innerHTML = '❌ Not found';
+                setTimeout(() => { btn.innerHTML = origText; btn.disabled = false; }, 2000);
+                victorLog('⚠️ Could not find updated MSDS for ' + product.name);
+            }
+        } catch (err) {
+            btn.innerHTML = '❌ Error';
+            setTimeout(() => { btn.innerHTML = origText; btn.disabled = false; }, 2000);
+            victorLog('❌ Update error: ' + err.message);
+        }
     }
 
     async function victorSearch() {
@@ -6244,18 +6366,8 @@
             if (data) {
                 const found = data.msds_url && data.msds_url !== 'NOT_FOUND';
                 const now = new Date().toISOString().split('T')[0];
-                let compliance = 'unknown';
-                if (data.msds_date && data.msds_date !== 'unknown') {
-                    const msdsDate = new Date(data.msds_date);
-                    const fiveYears = new Date(msdsDate);
-                    fiveYears.setFullYear(fiveYears.getFullYear() + 5);
-                    const sixMonthsBefore = new Date(fiveYears);
-                    sixMonthsBefore.setMonth(sixMonthsBefore.getMonth() - 6);
-                    const today = new Date();
-                    if (today < sixMonthsBefore) compliance = 'current';
-                    else if (today < fiveYears) compliance = 'expiring';
-                    else compliance = 'expired';
-                }
+                // Use shared compliance calculator (5-year lifespan, 1-year warning window)
+                let compliance = victorCalcCompliance(data.msds_date);
 
                 content.innerHTML =
                     '<div style="padding:10px;">' +
