@@ -4051,22 +4051,18 @@
         setError('');
 
         if (DeviceAuthManager.verifyPassword(password)) {
-          // Password correct - register device if new
-          const status = await DeviceAuthManager.init();
-
-          if (status.status === 'new') {
-            // Register as pending
-            await DeviceAuthManager.registerDevice(deviceName || 'Unknown Device');
-            setError('');
-            // Force re-render with pending status
-            onAuthenticated(false, 'pending');
-          } else if (status.status === 'approved') {
-            onAuthenticated(true);
-          } else if (status.status === 'pending') {
-            onAuthenticated(false, 'pending');
-          } else if (status.status === 'denied') {
-            setError('This device has been denied access. Contact your administrator.');
+          // Password correct — always grant access
+          // Try to register device in background (best-effort, don't block)
+          try {
+            const status = await DeviceAuthManager.init();
+            if (status.status === 'new') {
+              DeviceAuthManager.registerDevice(deviceName || 'Unknown Device').catch(() => {});
+            }
+          } catch (regErr) {
+            console.warn('Device registration skipped:', regErr.message);
           }
+          // Password verified = access granted
+          onAuthenticated(true);
         } else {
           setError('Incorrect password');
         }
@@ -4387,20 +4383,10 @@
               }
             });
           } else {
-            setDeviceAuthStatus('pending');
-
-            // Poll for approval every 5 seconds
-            const pollInterval = setInterval(async () => {
-              const checkResult = await DeviceAuth.checkDeviceStatus();
-              if (checkResult.approved) {
-                setDeviceAuthStatus('approved');
-                setIsDeviceAdmin(checkResult.admin);
-                clearInterval(pollInterval);
-                window.location.reload(); // Reload to fully initialize
-              }
-            }, 5000);
-
-            return () => clearInterval(pollInterval);
+            // User already passed the outer password check — allow access
+            // Device registration happens in background (best-effort)
+            setDeviceAuthStatus('approved');
+            console.log('Device not in approved list but user authenticated via password — granting access');
           }
         };
 
@@ -5375,7 +5361,7 @@
             </div>
           )}
 
-          <main className="flex-1 p-4 pb-20">
+          <main className="flex-1 p-4 pb-24">
             {currentView === 'dashboard' && <Dashboard setCurrentView={setCurrentView} forms={forms} onViewForm={setViewFormModal} isFormBackedUp={isFormBackedUp} sites={sites} />}
             {currentView === 'training' && <TrainingView />}
             {currentView === 'prestart' && <PrestartView onSubmit={(data) => addForm('prestart', data)} onUpdate={updateForm} editingForm={editingForm?.type === 'prestart' ? editingForm : null} previousPrestarts={previousPrestarts} sites={sites} />}
@@ -5389,7 +5375,7 @@
             {currentView === 'recordings' && <RecordingsView forms={forms} sites={sites} />}
           </main>
 
-          <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around py-2 px-1 z-30">
+          <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around py-3 px-2 z-30 safe-bottom" style={{paddingBottom: 'max(12px, env(safe-area-inset-bottom))'}}>
             {[
               { id: 'dashboard', emoji: '🏠', label: 'Home' },
               { id: 'training', emoji: '🎓', label: 'Training' },
@@ -5398,9 +5384,9 @@
               { id: 'emergency', emoji: '📞', label: 'Emergency' },
             ].map((item) => (
               <button key={item.id} onClick={() => setCurrentView(item.id)}
-                className={`flex flex-col items-center p-2 rounded-lg ${currentView === item.id ? 'text-orange-600' : 'text-gray-500'}`}>
-                <span className="text-xl">{item.emoji}</span>
-                <span className="text-xs mt-1">{item.label}</span>
+                className={`flex flex-col items-center px-3 py-2 rounded-xl transition ${currentView === item.id ? 'text-orange-600 bg-orange-50' : 'text-gray-400 active:bg-gray-100'}`}>
+                <span className="text-2xl">{item.emoji}</span>
+                <span className="text-xs mt-1 font-medium">{item.label}</span>
               </button>
             ))}
           </nav>
@@ -5563,7 +5549,8 @@
 
               {/* Photo Menu */}
               {showPhotoMenu && (
-                <div className="absolute top-12 right-0 bg-white rounded-xl shadow-lg border border-gray-200 w-72 max-h-96 overflow-y-auto z-50">
+                <div className="absolute top-12 right-0 bg-white rounded-xl shadow-lg border border-gray-200 max-h-96 overflow-y-auto z-50" style={{width: 'min(288px, calc(100vw - 32px))'}}>
+
                   {menuStep === 'jobs' ? (
                     <>
                       <div className="p-3 border-b border-gray-100">
@@ -5625,66 +5612,43 @@
             </div>
           </div>
 
-          <div className="grid grid-cols-5 gap-2">
-            <div className="bg-white rounded-xl p-2 shadow-sm">
-              <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center mb-1">
-                <span className="text-white font-bold text-xs">{forms.filter(f => f.type === 'prestart').length}</span>
-              </div>
-              <p className="text-gray-600 text-xs">Pre-Start</p>
-            </div>
-            <div className="bg-white rounded-xl p-2 shadow-sm">
-              <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center mb-1">
-                <span className="text-white font-bold text-xs">{forms.filter(f => f.type === 'inspection').length}</span>
-              </div>
-              <p className="text-gray-600 text-xs">Inspect</p>
-            </div>
-            <div className="bg-white rounded-xl p-2 shadow-sm">
-              <div className="w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center mb-1">
-                <span className="text-white font-bold text-xs">{forms.filter(f => f.type === 'itp').length}</span>
-              </div>
-              <p className="text-gray-600 text-xs">ITP</p>
-            </div>
-            <div className="bg-white rounded-xl p-2 shadow-sm">
-              <div className="w-8 h-8 bg-red-500 rounded-lg flex items-center justify-center mb-1">
-                <span className="text-white font-bold text-xs">{forms.filter(f => f.type === 'incident').length}</span>
-              </div>
-              <p className="text-gray-600 text-xs">Incident</p>
-            </div>
-            <div className="bg-white rounded-xl p-2 shadow-sm">
-              <div className="w-8 h-8 bg-purple-500 rounded-lg flex items-center justify-center mb-1">
-                <span className="text-white font-bold text-xs">{forms.filter(f => f.type === 'toolbox').length}</span>
-              </div>
-              <p className="text-gray-600 text-xs">Toolbox</p>
-            </div>
+          <div className="flex flex-wrap gap-3 justify-center">
+            {[
+              { type: 'prestart', color: 'bg-green-500', label: 'Pre-Start', emoji: '📋' },
+              { type: 'inspection', color: 'bg-blue-500', label: 'Inspect', emoji: '🔍' },
+              { type: 'itp', color: 'bg-indigo-500', label: 'ITP', emoji: '📝' },
+              { type: 'incident', color: 'bg-red-500', label: 'Incident', emoji: '⚠️' },
+              { type: 'toolbox', color: 'bg-purple-500', label: 'Toolbox', emoji: '👥' },
+            ].map(item => {
+              const count = forms.filter(f => f.type === item.type).length;
+              return (
+                <div key={item.type} className="bg-white rounded-xl p-3 shadow-sm text-center" style={{minWidth: '70px', flex: '1 1 70px', maxWidth: '100px'}}>
+                  <div className={`w-10 h-10 ${item.color} rounded-lg flex items-center justify-center mx-auto mb-1`}>
+                    <span className="text-white font-bold text-sm">{count}</span>
+                  </div>
+                  <p className="text-gray-600 text-xs font-medium">{item.label}</p>
+                </div>
+              );
+            })}
           </div>
 
           <div>
             <h3 className="font-semibold text-gray-800 mb-3">Quick Actions</h3>
-            <div className="grid grid-cols-3 gap-2">
-              <button onClick={() => setCurrentView('prestart')} className="bg-white rounded-xl p-2 shadow-sm flex flex-col items-center gap-1 hover:shadow-md">
-                <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center text-lg">📋</div>
-                <span className="text-xs font-medium text-gray-700 text-center">Pre-Start</span>
-              </button>
-              <button onClick={() => setCurrentView('recordings')} className="bg-white rounded-xl p-2 shadow-sm flex flex-col items-center gap-1 hover:shadow-md border-2 border-teal-200">
-                <div className="w-10 h-10 bg-teal-500 rounded-full flex items-center justify-center text-lg">📸</div>
-                <span className="text-xs font-medium text-gray-700 text-center">Recordings</span>
-              </button>
-              <button onClick={() => setCurrentView('steel-itp')} className="bg-white rounded-xl p-2 shadow-sm flex flex-col items-center gap-1 hover:shadow-md">
-                <div className="w-10 h-10 bg-slate-600 rounded-full flex items-center justify-center text-lg">🔩</div>
-                <span className="text-xs font-medium text-gray-700 text-center">Steel ITP</span>
-              </button>
-              <button onClick={() => setCurrentView('inspection')} className="bg-white rounded-xl p-2 shadow-sm flex flex-col items-center gap-1 hover:shadow-md">
-                <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-lg">🔍</div>
-                <span className="text-xs font-medium text-gray-700 text-center">Inspect</span>
-              </button>
-              <button onClick={() => setCurrentView('itp')} className="bg-white rounded-xl p-2 shadow-sm flex flex-col items-center gap-1 hover:shadow-md">
-                <div className="w-10 h-10 bg-indigo-500 rounded-full flex items-center justify-center text-lg">📝</div>
-                <span className="text-xs font-medium text-gray-700 text-center">ITP</span>
-              </button>
-              <button onClick={() => setCurrentView('incidents')} className="bg-white rounded-xl p-2 shadow-sm flex flex-col items-center gap-1 hover:shadow-md">
-                <div className="w-10 h-10 bg-red-500 rounded-full flex items-center justify-center text-lg">⚠️</div>
-                <span className="text-xs font-medium text-gray-700 text-center">Incident</span>
-              </button>
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { id: 'prestart', color: 'bg-green-500', emoji: '📋', label: 'Pre-Start' },
+                { id: 'recordings', color: 'bg-teal-500', emoji: '📸', label: 'Recordings', border: true },
+                { id: 'steel-itp', color: 'bg-slate-600', emoji: '🔩', label: 'Steel ITP' },
+                { id: 'inspection', color: 'bg-blue-500', emoji: '🔍', label: 'Inspect' },
+                { id: 'itp', color: 'bg-indigo-500', emoji: '📝', label: 'ITP' },
+                { id: 'incidents', color: 'bg-red-500', emoji: '⚠️', label: 'Incident' },
+              ].map(item => (
+                <button key={item.id} onClick={() => setCurrentView(item.id)}
+                  className={`bg-white rounded-xl p-3 shadow-sm flex flex-col items-center gap-2 hover:shadow-md active:scale-95 transition ${item.border ? 'border-2 border-teal-200' : ''}`}>
+                  <div className={`w-12 h-12 ${item.color} rounded-full flex items-center justify-center text-xl`}>{item.emoji}</div>
+                  <span className="text-sm font-medium text-gray-700 text-center">{item.label}</span>
+                </button>
+              ))}
             </div>
           </div>
 
