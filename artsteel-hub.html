@@ -6135,16 +6135,16 @@
         victorFirebaseListenerActive = true;
         firebaseDb.ref('jmart-safety/victor/products').on('value', (snap) => {
             const data = snap.val();
-            if (data && Array.isArray(data)) {
+            if (data && Array.isArray(data) && data.length > 0) {
                 victorProducts = data;
                 localStorage.setItem('victor-products', JSON.stringify(data));
-            } else if (data === null) {
-                // No data in Firebase yet - seed with pre-loaded SDS data
+            } else {
+                // No data or empty array in Firebase - seed with pre-loaded SDS data
                 const local = JSON.parse(localStorage.getItem('victor-products') || '[]');
                 if (local.length > 0) {
                     victorProducts = local;
                 } else {
-                    // First time: seed with all saved SDS from J&M Artsteel Hub
+                    // First time or reset: seed with all saved SDS from J&M Artsteel Hub
                     victorProducts = VICTOR_SEED_DATA.slice();
                     console.log('Victor: Seeded ' + victorProducts.length + ' SDS products from STEEL database');
                 }
