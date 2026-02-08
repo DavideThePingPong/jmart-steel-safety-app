@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>STEEL - AI Trade Documentation Suite</title>
+    <title>J&M Artsteel Hub</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔩</text></svg>">
 
     <!-- Firebase SDK for Device Authorization (shared with Safety App) -->
@@ -88,7 +88,7 @@
             else if (/Windows/i.test(ua)) deviceType = 'Windows';
             else if (/Mac/i.test(ua)) deviceType = 'Mac';
 
-            return { id: this.deviceId, type: deviceType, app: 'STEEL Command Center', registeredAt: new Date().toISOString() };
+            return { id: this.deviceId, type: deviceType, app: 'J&M Artsteel Hub', registeredAt: new Date().toISOString() };
         },
 
         async init() {
@@ -230,7 +230,7 @@
                 <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;text-align:center;padding:20px;background:linear-gradient(135deg,#1a1a2e,#16213e,#0f3460);color:#fff;font-family:system-ui,sans-serif;">
                     <div style="font-size:80px;margin-bottom:20px;">🔐</div>
                     <h1 style="font-size:2rem;margin-bottom:10px;">Device Pending Approval</h1>
-                    <p style="color:#888;margin-bottom:20px;">Your device needs to be approved to access STEEL Command Center.</p>
+                    <p style="color:#888;margin-bottom:20px;">Your device needs to be approved to access J&M Artsteel Hub.</p>
                     <div style="background:rgba(255,255,255,0.1);padding:20px;border-radius:12px;margin-bottom:20px;">
                         <p style="font-size:14px;color:#aaa;">Device ID:</p>
                         <code style="font-size:12px;color:#667eea;">${escapeHtml(this.deviceId)}</code>
@@ -1886,8 +1886,8 @@
 </head>
 <body>
     <div class="header">
-        <h1>🔩 STEEL Command Center</h1>
-        <p>AI-Powered Trade Documentation Suite</p>
+        <h1>🔩 J&M Artsteel Hub</h1>
+        <p>AI-Powered Tools for J&M Artsteel</p>
     </div>
 
     <!-- Navigation -->
@@ -3295,7 +3295,7 @@
         }
 
         const workbook = new ExcelJS.Workbook();
-        workbook.creator = 'IGOR - STEEL Command Center';
+        workbook.creator = 'IGOR - J&M Artsteel Hub';
         workbook.created = new Date();
 
         const SS_FACTOR = 1.02; // Stainless steel factor (density 8000 vs 7850 kg/m³)
@@ -6100,7 +6100,7 @@
     let victorProducts = [];
     let victorFirebaseListenerActive = false;
 
-    // Pre-loaded SDS data from STEEL Command Center (port 8000)
+    // Pre-loaded SDS data from J&M Artsteel Hub (port 8000)
     const VICTOR_SEED_DATA = [
         { name: '210 METALPRIME', manufacturer: 'Lacnam', msds_url: 'https://www.lacnam.com.au/wp-content/uploads/2021/09/210-Metalprime.pdf', msds_date: '2021-08-20', compliance: 'expired', hazard_class: '', signal_word: '', summary: 'Metal primer for steel preparation', searched: '2026-01-20' },
         { name: 'Weathermax HBR Part A', manufacturer: 'Dulux', msds_url: 'https://go.lupinsys.com/duluxgroup/harms/pm/3c8bb9f28239cf735c4e49d35e57b28d-published/attachment/aus-ghs.pdf', msds_date: '2024-04-01', compliance: 'current', hazard_class: '', signal_word: '', summary: 'High build roof membrane coating - Part A', searched: '2026-01-20' },
@@ -6144,7 +6144,7 @@
                 if (local.length > 0) {
                     victorProducts = local;
                 } else {
-                    // First time: seed with all saved SDS from STEEL Command Center
+                    // First time: seed with all saved SDS from J&M Artsteel Hub
                     victorProducts = VICTOR_SEED_DATA.slice();
                     console.log('Victor: Seeded ' + victorProducts.length + ' SDS products from STEEL database');
                 }
@@ -6818,7 +6818,7 @@
         if (!frankFirebaseListenerActive) { frankHistory = JSON.parse(localStorage.getItem('frank-history') || '[]'); frankRenderHistory(); }
 
         // Log access
-        console.log('🔩 STEEL Command Center loaded. Admin:', SteelAuth.isAdmin);
+        console.log('🔩 J&M Artsteel Hub loaded. Admin:', SteelAuth.isAdmin);
     });
     </script>
 </body>
