@@ -4582,7 +4582,19 @@
           return;
         }
 
-        const status = await DeviceAuthManager.init();
+        // Wrap auth init with a timeout so the app NEVER hangs on loading
+        // If Firebase reads are slow/blocked, fall through to login after 5 seconds
+        let status;
+        try {
+          status = await Promise.race([
+            DeviceAuthManager.init(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Auth timeout')), 5000))
+          ]);
+        } catch (timeoutErr) {
+          console.warn('Auth check timed out after 5s, showing login screen:', timeoutErr.message);
+          setAuthState('unauthenticated');
+          return;
+        }
         console.log('Device auth status:', status);
 
         if (status.canAccess) {
