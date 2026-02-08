@@ -5398,7 +5398,7 @@
           <main className="flex-1 p-4 pb-20">
             {currentView === 'dashboard' && <Dashboard setCurrentView={setCurrentView} forms={forms} onViewForm={setViewFormModal} isFormBackedUp={isFormBackedUp} sites={sites} />}
             {currentView === 'training' && <TrainingView />}
-            {currentView === 'prestart' && <PrestartView onSubmit={(data) => addForm('prestart', data)} onUpdate={updateForm} editingForm={editingForm?.type === 'prestart' ? editingForm : null} previousPrestarts={previousPrestarts} sites={sites} />}
+            {currentView === 'prestart' && <DebugErrorBoundary><PrestartView onSubmit={(data) => addForm('prestart', data)} onUpdate={updateForm} editingForm={editingForm?.type === 'prestart' ? editingForm : null} previousPrestarts={previousPrestarts} sites={sites} /></DebugErrorBoundary>}
             {currentView === 'steel-itp' && <SteelITPView onSubmit={(data) => addForm('steel-itp', data)} onUpdate={updateForm} editingForm={editingForm?.type === 'steel-itp' ? editingForm : null} sites={sites} />}
             {currentView === 'inspection' && <SubcontractorInspectionView onSubmit={(data) => addForm('inspection', data)} onUpdate={updateForm} editingForm={editingForm?.type === 'inspection' ? editingForm : null} sites={sites} />}
             {currentView === 'itp' && <ITPFormView onSubmit={(data) => addForm('itp', data)} onUpdate={updateForm} editingForm={editingForm?.type === 'itp' ? editingForm : null} sites={sites} />}
@@ -6779,6 +6779,23 @@
           </div>
         </div>
       );
+    }
+
+    // Error Boundary for debugging
+    class DebugErrorBoundary extends React.Component {
+      constructor(props) { super(props); this.state = { hasError: false, error: null, errorInfo: null }; }
+      static getDerivedStateFromError(error) { return { hasError: true, error: error }; }
+      componentDidCatch(error, errorInfo) { this.setState({ errorInfo: errorInfo }); console.error('ERROR BOUNDARY CAUGHT:', error.message, error.stack); }
+      render() {
+        if (this.state.hasError) {
+          return React.createElement('div', { style: { padding: '20px', background: '#fee', border: '2px solid red', margin: '10px', borderRadius: '8px' } },
+            React.createElement('h2', { style: { color: 'red' } }, 'Component Error'),
+            React.createElement('pre', { style: { whiteSpace: 'pre-wrap', fontSize: '12px' } }, String(this.state.error)),
+            React.createElement('pre', { style: { whiteSpace: 'pre-wrap', fontSize: '10px', marginTop: '10px' } }, this.state.errorInfo ? this.state.errorInfo.componentStack : 'no stack')
+          );
+        }
+        return this.props.children;
+      }
     }
 
     // Pre-Start View
