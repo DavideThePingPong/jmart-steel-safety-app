@@ -8,7 +8,7 @@
  * - Better error recovery
  */
 
-const CACHE_VERSION = 'v15';
+const CACHE_VERSION = 'v16';
 const STATIC_CACHE = `jmart-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `jmart-dynamic-${CACHE_VERSION}`;
 const CDN_CACHE = `jmart-cdn-${CACHE_VERSION}`;
