@@ -34,12 +34,21 @@
       tw.src = 'https://cdn.tailwindcss.com';
       tw.crossOrigin = 'anonymous';
       tw.async = true;
+      tw.onload = function() {
+        // Tailwind loaded — remove fallback CSS to avoid conflicts
+        var fb = document.getElementById('tw-fallback');
+        if (fb) fb.remove();
+      };
       tw.onerror = function() {
         // Primary CDN failed, try jsdelivr as backup
         var tw2 = document.createElement('script');
         tw2.src = 'https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4/cdn.min.js';
         tw2.crossOrigin = 'anonymous';
         tw2.async = true;
+        tw2.onload = function() {
+          var fb = document.getElementById('tw-fallback');
+          if (fb) fb.remove();
+        };
         document.head.appendChild(tw2);
       };
       document.head.appendChild(tw);
@@ -3423,9 +3432,12 @@
       box-sizing: border-box;
     }
 
+  </style>
+  <!-- Fallback CSS: auto-removed when Tailwind loads successfully -->
+  <style id="tw-fallback">
     /* ═══════════════════════════════════════════════════════════════════════
        TAILWIND CSS FALLBACK - Works when CDN fails
-       Covers all critical classes used in the app
+       Auto-removed by tw.onload when Tailwind CDN loads successfully
        ═══════════════════════════════════════════════════════════════════════ */
 
     /* --- Display & Position --- */
@@ -3723,7 +3735,8 @@
     /* ═══════════════════════════════════════════════════════════════════════
        END TAILWIND FALLBACK
        ═══════════════════════════════════════════════════════════════════════ */
-
+  </style>
+  <style>
     /* Safe area padding for notched devices */
     .safe-top { padding-top: env(safe-area-inset-top); }
     .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
