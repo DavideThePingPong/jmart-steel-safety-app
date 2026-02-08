@@ -466,6 +466,282 @@
             margin-top: 15px;
         }
 
+        /* FRANK Specific Styles */
+        .frank-section {
+            border: 2px solid #10b981;
+        }
+        .frank-section .agent-icon {
+            background: linear-gradient(135deg, #10b981, #059669);
+            border-radius: 12px;
+            width: 56px;
+            height: 56px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .frank-section .agent-title h2 {
+            color: #34d399;
+        }
+        .frank-quick-tasks {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+        .frank-quick-btn {
+            padding: 10px 16px;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            background: rgba(16, 185, 129, 0.1);
+            border-radius: 20px;
+            color: #6ee7b7;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .frank-quick-btn:hover {
+            background: rgba(16, 185, 129, 0.25);
+            border-color: #10b981;
+            color: #fff;
+            transform: translateY(-1px);
+        }
+        .frank-quick-btn.selected {
+            background: linear-gradient(135deg, #10b981, #059669);
+            border-color: #10b981;
+            color: #fff;
+        }
+        .frank-form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        .frank-form-group {
+            margin-bottom: 15px;
+        }
+        .frank-form-group label {
+            display: block;
+            color: rgba(255,255,255,0.8);
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+        .frank-form-group input,
+        .frank-form-group textarea,
+        .frank-form-group select {
+            width: 100%;
+            padding: 12px;
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: 8px;
+            color: #fff;
+            font-size: 1rem;
+            box-sizing: border-box;
+        }
+        .frank-form-group input:focus,
+        .frank-form-group textarea:focus,
+        .frank-form-group select:focus {
+            outline: none;
+            border-color: #10b981;
+        }
+        .frank-form-group textarea {
+            min-height: 100px;
+            resize: vertical;
+            font-family: inherit;
+        }
+        .frank-form-group select option {
+            background: #1a1a2e;
+            color: #fff;
+        }
+        .frank-workers {
+            background: rgba(0,0,0,0.2);
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        .frank-workers-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .frank-workers-header label {
+            color: rgba(255,255,255,0.8);
+            font-weight: 500;
+        }
+        .frank-workers-actions {
+            display: flex;
+            gap: 8px;
+        }
+        .frank-workers-actions button {
+            padding: 5px 12px;
+            background: rgba(16, 185, 129, 0.2);
+            border: 1px solid rgba(16, 185, 129, 0.4);
+            border-radius: 5px;
+            color: #6ee7b7;
+            font-size: 0.8rem;
+            cursor: pointer;
+        }
+        .frank-workers-actions button:hover {
+            background: rgba(16, 185, 129, 0.4);
+        }
+        .frank-workers-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 8px;
+            max-height: 180px;
+            overflow-y: auto;
+        }
+        .frank-worker-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 10px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            color: rgba(255,255,255,0.8);
+        }
+        .frank-worker-checkbox:hover {
+            background: rgba(16, 185, 129, 0.15);
+        }
+        .frank-worker-checkbox input {
+            width: auto;
+            accent-color: #10b981;
+        }
+        .frank-worker-count {
+            text-align: right;
+            font-size: 0.85rem;
+            color: #6ee7b7;
+            margin-top: 8px;
+        }
+        .frank-generate-btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #10b981, #059669);
+            border: none;
+            border-radius: 10px;
+            color: #fff;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 10px;
+        }
+        .frank-generate-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(16, 185, 129, 0.4);
+        }
+        .frank-generate-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .frank-progress {
+            display: none;
+            margin-top: 15px;
+        }
+        .frank-progress.active {
+            display: block;
+        }
+        .frank-progress-bar {
+            height: 8px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .frank-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #10b981, #34d399);
+            width: 0%;
+            transition: width 0.3s;
+            animation: frankPulse 1.5s infinite;
+        }
+        @keyframes frankPulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        .frank-progress-text {
+            text-align: center;
+            color: #6ee7b7;
+            margin-top: 8px;
+            font-size: 0.9rem;
+        }
+        .frank-result {
+            display: none;
+            background: rgba(0,0,0,0.3);
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 15px;
+        }
+        .frank-result.active {
+            display: block;
+        }
+        .frank-result.success {
+            border: 1px solid rgba(16, 185, 129, 0.5);
+        }
+        .frank-result.error {
+            border: 1px solid rgba(239, 68, 68, 0.5);
+        }
+        .frank-result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .frank-result-header h4 {
+            color: #34d399;
+            margin: 0;
+        }
+        .frank-result-actions {
+            display: flex;
+            gap: 10px;
+        }
+        .frank-result-btn {
+            padding: 8px 15px;
+            background: rgba(16, 185, 129, 0.2);
+            border: 1px solid rgba(16, 185, 129, 0.4);
+            border-radius: 6px;
+            color: #6ee7b7;
+            cursor: pointer;
+        }
+        .frank-result-btn:hover {
+            background: rgba(16, 185, 129, 0.4);
+        }
+        .frank-result-content {
+            color: rgba(255,255,255,0.9);
+            line-height: 1.6;
+        }
+        .frank-result-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .frank-badge {
+            padding: 4px 10px;
+            background: rgba(16, 185, 129, 0.2);
+            border-radius: 12px;
+            font-size: 0.8rem;
+            color: #6ee7b7;
+        }
+        .frank-console {
+            background: rgba(0,0,0,0.5);
+            border-radius: 8px;
+            padding: 12px 15px;
+            font-family: monospace;
+            font-size: 0.85rem;
+            color: #34d399;
+            margin-top: 15px;
+        }
+        @media (max-width: 768px) {
+            .frank-form-row {
+                grid-template-columns: 1fr;
+            }
+            .frank-workers-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
         /* API Notice */
         .api-notice {
             background: rgba(245,158,11,0.2);
@@ -1622,7 +1898,7 @@
         <button class="nav-tab" onclick="showSection('brittany')">💪 BRITTANY</button>
         <button class="nav-tab" onclick="showSection('hanna')">🧾 HANNA</button>
         <button class="nav-tab" onclick="showSection('victor')">🔍 VICTOR</button>
-        <button class="nav-tab" onclick="showSection('frank')">📋 FRANK</button>
+        <button class="nav-tab" onclick="showSection('frank')">🦺 FRANK</button>
         <button class="nav-tab" onclick="showSection('settings')">⚙️</button>
     </div>
 
@@ -2289,54 +2565,129 @@
     </div>
 
     <!-- FRANK - SWMS Generator Section -->
-    <div id="frank" class="agent-section">
+    <div id="frank" class="agent-section frank-section">
         <div class="agent-header">
-            <div class="agent-icon">📋</div>
+            <div class="agent-icon">🦺</div>
             <div class="agent-title">
                 <h2>FRANK - SWMS Generator</h2>
-                <p>Generate Safe Work Method Statements</p>
+                <p>Safe Work Method Statement Generator - Creates compliant SWMS for high-risk construction work</p>
             </div>
         </div>
 
-        <div class="calc-card">
-            <h3>Job Details</h3>
-            <div style="margin-top:10px;">
-                <textarea id="frankJobDesc" placeholder="Describe the job (e.g. Steel balustrade installation at Martin Place)" rows="3" style="width:100%;padding:12px 14px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;font-size:14px;margin-bottom:10px;box-sizing:border-box;resize:vertical;font-family:inherit;"></textarea>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
-                    <input type="text" id="frankJobNumber" placeholder="Job number" style="padding:10px 14px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;font-size:14px;">
-                    <input type="text" id="frankLocation" placeholder="Location/Address" style="padding:10px 14px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;font-size:14px;">
-                </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
-                    <input type="text" id="frankBuilder" placeholder="Builder/Client" style="padding:10px 14px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;font-size:14px;">
-                    <input type="text" id="frankWorkers" placeholder="Worker names (comma sep)" style="padding:10px 14px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;font-size:14px;">
-                </div>
-                <button onclick="frankGenerate()" style="width:100%;padding:14px;background:linear-gradient(135deg,#f2994a,#f2c94c);border:none;border-radius:8px;color:#1a1a2e;cursor:pointer;font-weight:700;font-size:16px;">📋 Generate SWMS</button>
+        <!-- Quick Task Buttons -->
+        <label style="color: rgba(255,255,255,0.7); margin-bottom: 8px; display: block;">Quick Tasks - Click to auto-fill job description</label>
+        <div class="frank-quick-tasks" id="frankQuickTasks">
+            <button class="frank-quick-btn" onclick="frankSelectTask('Steel balustrade installation including mechanical fixing to concrete substrate and on-site welding')">🔩 Balustrade Install</button>
+            <button class="frank-quick-btn" onclick="frankSelectTask('Steel handrail installation including core drilling, chemical anchoring and MIG welding')">🛡️ Handrail Install</button>
+            <button class="frank-quick-btn" onclick="frankSelectTask('Glass balustrade and glazing installation including handling glass panels, silicone sealing and edge protection')">🪟 Glazing Install</button>
+            <button class="frank-quick-btn" onclick="frankSelectTask('Operable wall steel frame installation including overhead track mounting, working at heights and precision alignment')">🚪 Operable Walls</button>
+            <button class="frank-quick-btn" onclick="frankSelectTask('Structural steel installation including beam/column erection, bolted connections and crane/rigging operations')">🏗️ Structural Steel</button>
+            <button class="frank-quick-btn" onclick="frankSelectTask('Steel staircase installation including lifting heavy components, temporary supports and handrail attachment')">🪜 Staircase Install</button>
+            <button class="frank-quick-btn" onclick="frankSelectTask('Steel platform and mezzanine installation including edge protection, working at heights and floor grating')">🏢 Platform/Mezzanine</button>
+            <button class="frank-quick-btn" onclick="frankSelectTask('MIG welding operations including hot work permit, fire watch, UV/fume hazards and grinding')">⚡ MIG Welding</button>
+            <button class="frank-quick-btn" onclick="frankSelectTask('Plasma cutting steel sections including electrical hazards, hot metal, UV exposure and fume extraction')">🔥 Plasma Cutting</button>
+            <button class="frank-quick-btn" onclick="frankSelectTask('Oxy-acetylene cutting including gas cylinder handling, flashback arrestors, hot work and fire prevention')">🔥 Oxy Cutting</button>
+            <button class="frank-quick-btn" onclick="frankSelectTask('Angle grinding and linishing operations including disc guards, PPE, sparks/hot metal and dust extraction')">⚙️ Grinding/Linishing</button>
+            <button class="frank-quick-btn" onclick="frankSelectTask('Steel gate and fence installation including post setting, hinge welding and automation wiring')">🚧 Gate Installation</button>
+        </div>
+
+        <!-- Job Description -->
+        <div class="frank-form-group">
+            <label>Job/Task Description *</label>
+            <textarea id="frankJobDesc" placeholder="Describe the high-risk work activity in detail, or click a Quick Task above..."></textarea>
+        </div>
+
+        <!-- Job Number & Location -->
+        <div class="frank-form-row">
+            <div class="frank-form-group">
+                <label>Job Number</label>
+                <input type="text" id="frankJobNumber" placeholder="e.g., JOB-2026-001 (optional)">
+            </div>
+            <div class="frank-form-group">
+                <label>Work Location</label>
+                <input type="text" id="frankLocation" placeholder="e.g., 123 Main St, Sydney NSW 2000">
             </div>
         </div>
 
-        <div id="frankGenerating" style="display:none;text-align:center;padding:30px;">
-            <div style="font-size:40px;animation:pulse 1s infinite;">📋</div>
-            <p style="color:#aaa;margin-top:10px;">Generating SWMS... This may take 30-60 seconds.</p>
+        <!-- Builder Dropdown -->
+        <div class="frank-form-group">
+            <label>Builder/Client</label>
+            <select id="frankBuilder">
+                <option value="">-- Select Builder --</option>
+                <option value="FDC Fitout and Refurbishment">FDC Fitout and Refurbishment</option>
+                <option value="FDC Construction">FDC Construction</option>
+                <option value="Built">Built</option>
+                <option value="Landlease">Landlease</option>
+                <option value="Hunter Mason">Hunter Mason</option>
+                <option value="Other">Other</option>
+            </select>
         </div>
 
-        <div id="frankResults" style="display:none;">
-            <div class="calc-card">
-                <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <h3>📋 SWMS Generated</h3>
-                    <button onclick="frankPrint()" style="padding:8px 16px;background:linear-gradient(135deg,#4CAF50,#45a049);border:none;border-radius:8px;color:#fff;cursor:pointer;font-weight:600;font-size:13px;">🖨️ Print / Save PDF</button>
+        <!-- Worker Selection Grid -->
+        <div class="frank-workers">
+            <div class="frank-workers-header">
+                <label>Select Workers</label>
+                <div class="frank-workers-actions">
+                    <button type="button" onclick="frankSelectAllWorkers()">Select All</button>
+                    <button type="button" onclick="frankClearAllWorkers()">Clear All</button>
                 </div>
-                <div id="frankResultContent" style="margin-top:10px;"></div>
             </div>
+            <div class="frank-workers-grid" id="frankWorkersGrid">
+                <label class="frank-worker-checkbox"><input type="checkbox" value="Davide Casolini"> Davide Casolini</label>
+                <label class="frank-worker-checkbox"><input type="checkbox" value="Genbao Shi"> Genbao Shi</label>
+                <label class="frank-worker-checkbox"><input type="checkbox" value="Jackson Cox"> Jackson Cox</label>
+                <label class="frank-worker-checkbox"><input type="checkbox" value="Jeff Fu"> Jeff Fu</label>
+                <label class="frank-worker-checkbox"><input type="checkbox" value="Jia Wang"> Jia Wang</label>
+                <label class="frank-worker-checkbox"><input type="checkbox" value="Jiang Zhao"> Jiang Zhao</label>
+                <label class="frank-worker-checkbox"><input type="checkbox" value="Leon Yu"> Leon Yu</label>
+                <label class="frank-worker-checkbox"><input type="checkbox" value="Mark Edison"> Mark Edison</label>
+                <label class="frank-worker-checkbox"><input type="checkbox" value="Mitchell Hall"> Mitchell Hall</label>
+                <label class="frank-worker-checkbox"><input type="checkbox" value="Paul Fitzpatrick"> Paul Fitzpatrick</label>
+                <label class="frank-worker-checkbox"><input type="checkbox" value="Paul Waters"> Paul Waters</label>
+                <label class="frank-worker-checkbox"><input type="checkbox" value="Russell Hinds"> Russell Hinds</label>
+                <label class="frank-worker-checkbox"><input type="checkbox" value="Sam Higginbotham"> Sam Higginbotham</label>
+                <label class="frank-worker-checkbox"><input type="checkbox" value="Scott Seeho"> Scott Seeho</label>
+                <label class="frank-worker-checkbox"><input type="checkbox" value="Shanchuang Zhang"> Shanchuang Zhang</label>
+                <label class="frank-worker-checkbox"><input type="checkbox" value="Yong Xiao"> Yong Xiao</label>
+                <label class="frank-worker-checkbox"><input type="checkbox" value="Zhangbo XIANG"> Zhangbo XIANG</label>
+                <label class="frank-worker-checkbox"><input type="checkbox" value="Zonggang Jiang"> Zonggang Jiang</label>
+            </div>
+            <div class="frank-worker-count" id="frankWorkerCount">0 workers selected</div>
+        </div>
+
+        <!-- Generate Button -->
+        <button class="frank-generate-btn" id="frankGenerateBtn" onclick="frankGenerate()">
+            🦺 Generate SWMS
+        </button>
+
+        <!-- Progress Bar -->
+        <div class="frank-progress" id="frankProgress">
+            <div class="frank-progress-bar">
+                <div class="frank-progress-fill" id="frankProgressFill"></div>
+            </div>
+            <div class="frank-progress-text" id="frankProgressText">Generating SWMS...</div>
+        </div>
+
+        <!-- Result Display -->
+        <div class="frank-result" id="frankResult">
+            <div class="frank-result-header">
+                <h4>🦺 SWMS Generated</h4>
+                <div class="frank-result-actions">
+                    <button class="frank-result-btn" onclick="frankPrint()">🖨️ Print / PDF</button>
+                </div>
+            </div>
+            <div class="frank-result-content" id="frankResultContent"></div>
+            <div class="frank-result-badges" id="frankResultBadges"></div>
         </div>
 
         <!-- Recent SWMS -->
-        <div class="calc-card">
-            <h3>📁 Recent SWMS</h3>
+        <div class="calc-card" style="border:1px solid rgba(16,185,129,0.2);margin-top:15px;">
+            <h3 style="color:#34d399;">📁 Recent SWMS</h3>
             <div id="frankRecentList" style="margin-top:10px;"></div>
             <p id="frankEmptyMsg" style="color:#666;font-size:13px;margin-top:8px;">No SWMS generated yet.</p>
         </div>
 
-        <div class="console" id="frankConsole">📋 FRANK Ready - "I'll write your SWMS in seconds"</div>
+        <div class="frank-console" id="frankConsole">🦺 FRANK Ready - "G'day mate, ready to write your SWMS!"</div>
     </div>
 
     <!-- Settings Section -->
@@ -5936,13 +6287,11 @@
     let frankFirebaseListenerActive = false;
 
     function frankSaveHistory() {
-        // Save to Firebase (syncs to all devices)
         if (firebaseDb) {
             try {
                 firebaseDb.ref('jmart-safety/frank/history').set(frankHistory);
             } catch (e) { console.warn('Frank Firebase save failed:', e.message); }
         }
-        // Also keep localStorage as fallback
         localStorage.setItem('frank-history', JSON.stringify(frankHistory));
     }
 
@@ -5976,7 +6325,7 @@
         }
         if (empty) empty.style.display = 'none';
         list.innerHTML = frankHistory.slice(0, 10).map((h, i) =>
-            '<div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:10px;margin-bottom:6px;cursor:pointer;" onclick="frankShowSaved(' + i + ')">' +
+            '<div style="background:rgba(16,185,129,0.05);border:1px solid rgba(16,185,129,0.15);border-radius:8px;padding:10px;margin-bottom:6px;cursor:pointer;" onclick="frankShowSaved(' + i + ')">' +
             '<div style="display:flex;justify-content:space-between;align-items:center;">' +
             '<div><strong style="color:#fff;font-size:13px;">' + escapeHtml(h.jobDesc.substring(0, 50)) + (h.jobDesc.length > 50 ? '...' : '') + '</strong>' +
             '<br><span style="font-size:11px;color:#888;">' + escapeHtml(h.date) + (h.jobNumber ? ' | Job #' + escapeHtml(h.jobNumber) : '') + '</span></div>' +
@@ -5995,29 +6344,89 @@
         const h = frankHistory[index];
         if (!h) return;
         document.getElementById('frankResultContent').innerHTML = h.html;
-        document.getElementById('frankResults').style.display = 'block';
+        document.getElementById('frankResult').classList.add('active', 'success');
+        document.getElementById('frankResult').classList.remove('error');
     }
+
+    // Frank helper functions - Quick Task selection
+    function frankSelectTask(taskDesc) {
+        document.getElementById('frankJobDesc').value = taskDesc;
+        document.querySelectorAll('.frank-quick-btn').forEach(btn => {
+            btn.classList.remove('selected');
+            if (btn.textContent && taskDesc.toLowerCase().includes(btn.textContent.replace(/^.{2}/, '').trim().toLowerCase().split(' ')[0].toLowerCase())) {
+                btn.classList.add('selected');
+            }
+        });
+        frankLog('Selected: ' + taskDesc.substring(0, 50) + '...');
+    }
+
+    // Frank helper functions - Worker selection
+    function frankSelectAllWorkers() {
+        document.querySelectorAll('#frankWorkersGrid input[type="checkbox"]').forEach(cb => cb.checked = true);
+        frankUpdateWorkerCount();
+    }
+
+    function frankClearAllWorkers() {
+        document.querySelectorAll('#frankWorkersGrid input[type="checkbox"]').forEach(cb => cb.checked = false);
+        frankUpdateWorkerCount();
+    }
+
+    function frankUpdateWorkerCount() {
+        const checked = document.querySelectorAll('#frankWorkersGrid input[type="checkbox"]:checked').length;
+        document.getElementById('frankWorkerCount').textContent = checked + ' worker' + (checked !== 1 ? 's' : '') + ' selected';
+    }
+
+    function frankLog(msg) {
+        document.getElementById('frankConsole').innerHTML = '🦺 ' + msg;
+    }
+
+    // Setup worker checkbox listeners on DOM ready
+    document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('#frankWorkersGrid input[type="checkbox"]').forEach(cb => {
+            cb.addEventListener('change', frankUpdateWorkerCount);
+        });
+    });
 
     async function frankGenerate() {
         const jobDesc = document.getElementById('frankJobDesc').value.trim();
         const jobNumber = document.getElementById('frankJobNumber').value.trim();
         const location = document.getElementById('frankLocation').value.trim();
-        const builder = document.getElementById('frankBuilder').value.trim();
-        const workers = document.getElementById('frankWorkers').value.trim();
+        const builder = document.getElementById('frankBuilder').value;
 
-        if (!jobDesc || jobDesc.length < 3) { alert('Please describe the job (at least 3 characters)'); return; }
+        // Get selected workers from checkboxes
+        const workers = [];
+        document.querySelectorAll('#frankWorkersGrid input[type="checkbox"]:checked').forEach(cb => {
+            workers.push(cb.value);
+        });
+        const workersStr = workers.join(', ');
 
+        if (!jobDesc || jobDesc.length < 3) {
+            frankLog('Please enter a job description or select a quick task!');
+            return;
+        }
+
+        const btn = document.getElementById('frankGenerateBtn');
         const console_el = document.getElementById('frankConsole');
-        const generating = document.getElementById('frankGenerating');
-        const results = document.getElementById('frankResults');
+        const resultEl = document.getElementById('frankResult');
         const content = document.getElementById('frankResultContent');
+        const badgesEl = document.getElementById('frankResultBadges');
 
-        generating.style.display = 'block';
-        results.style.display = 'none';
-        console_el.textContent = '📋 Generating SWMS...';
+        // Show progress bar, disable button
+        btn.disabled = true;
+        btn.textContent = '🦺 Generating...';
+        document.getElementById('frankProgress').classList.add('active');
+        resultEl.classList.remove('active', 'success', 'error');
+        frankLog('Generating SWMS - this may take 30-60 seconds...');
+
+        // Animate progress bar
+        let progress = 0;
+        const progressInterval = setInterval(() => {
+            progress = Math.min(progress + Math.random() * 5, 90);
+            document.getElementById('frankProgressFill').style.width = progress + '%';
+        }, 500);
 
         const today = new Date().toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric' });
-        const workerList = workers ? workers.split(',').map(w => w.trim()).filter(Boolean) : [''];
+        const workerList = workers.length > 0 ? workers : [''];
 
         try {
             const systemPrompt = 'You are FRANK, Australia\'s best AI Safety Manager for steel fabrication. ' +
@@ -6034,7 +6443,7 @@
                 (location ? 'Location: ' + location + '\n' : '') +
                 (builder ? 'Builder/Client: ' + builder + '\n' : '') +
                 'Date: ' + today + '\n' +
-                (workers ? 'Workers: ' + workers + '\n' : '') +
+                (workersStr ? 'Workers: ' + workersStr + '\n' : '') +
                 '\nReturn JSON with this EXACT format:\n' +
                 '{\n' +
                 '  "title": "Short SWMS title",\n' +
@@ -6066,6 +6475,9 @@
                 }
             );
 
+            clearInterval(progressInterval);
+            document.getElementById('frankProgressFill').style.width = '100%';
+
             let text = '';
             if (result.content) {
                 for (const block of result.content) {
@@ -6087,7 +6499,7 @@
 
             // Build SWMS HTML display
             let html = '<div id="frankSwmsContent" style="background:#1a1a2e;padding:16px;border-radius:8px;">';
-            html += '<div style="text-align:center;border-bottom:2px solid #667eea;padding-bottom:12px;margin-bottom:16px;">';
+            html += '<div style="text-align:center;border-bottom:2px solid #10b981;padding-bottom:12px;margin-bottom:16px;">';
             html += '<h2 style="color:#fff;margin:0;">SAFE WORK METHOD STATEMENT</h2>';
             html += '<p style="color:#aaa;margin:4px 0;">J&M Artsteel Pty Ltd</p>';
             html += '</div>';
@@ -6099,12 +6511,12 @@
             if (jobNumber) html += '<div><span style="color:#888;">Job #:</span> <span style="color:#fff;">' + escapeHtml(jobNumber) + '</span></div>';
             if (location) html += '<div><span style="color:#888;">Location:</span> <span style="color:#fff;">' + escapeHtml(location) + '</span></div>';
             if (builder) html += '<div><span style="color:#888;">Builder:</span> <span style="color:#fff;">' + escapeHtml(builder) + '</span></div>';
-            if (workers) html += '<div><span style="color:#888;">Workers:</span> <span style="color:#fff;">' + escapeHtml(workers) + '</span></div>';
+            if (workersStr) html += '<div><span style="color:#888;">Workers:</span> <span style="color:#fff;">' + escapeHtml(workersStr) + '</span></div>';
             html += '</div>';
 
             // Description
             if (data.detailed_description) {
-                html += '<div style="background:rgba(102,126,234,0.1);padding:10px;border-radius:6px;margin-bottom:12px;font-size:13px;color:#ccc;">' + escapeHtml(data.detailed_description) + '</div>';
+                html += '<div style="background:rgba(16,185,129,0.1);padding:10px;border-radius:6px;margin-bottom:12px;font-size:13px;color:#ccc;">' + escapeHtml(data.detailed_description) + '</div>';
             }
 
             // High risk categories
@@ -6119,18 +6531,18 @@
 
             // Plant & Equipment
             if (data.plant_equipment && data.plant_equipment.length) {
-                html += '<div style="margin-bottom:16px;"><strong style="color:#667eea;font-size:13px;">Plant & Equipment:</strong> <span style="color:#fff;font-size:13px;">' + data.plant_equipment.map(p => escapeHtml(p)).join(', ') + '</span></div>';
+                html += '<div style="margin-bottom:16px;"><strong style="color:#10b981;font-size:13px;">Plant & Equipment:</strong> <span style="color:#fff;font-size:13px;">' + data.plant_equipment.map(p => escapeHtml(p)).join(', ') + '</span></div>';
             }
 
             // Steps table
             html += '<div style="overflow-x:auto;">';
             html += '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px;">';
-            html += '<thead><tr style="background:rgba(102,126,234,0.2);">' +
-                '<th style="padding:8px;color:#667eea;text-align:left;border-bottom:1px solid rgba(255,255,255,0.1);">#</th>' +
-                '<th style="padding:8px;color:#667eea;text-align:left;border-bottom:1px solid rgba(255,255,255,0.1);">Job Step</th>' +
-                '<th style="padding:8px;color:#667eea;text-align:left;border-bottom:1px solid rgba(255,255,255,0.1);">Hazards</th>' +
-                '<th style="padding:8px;color:#667eea;text-align:left;border-bottom:1px solid rgba(255,255,255,0.1);">Risk</th>' +
-                '<th style="padding:8px;color:#667eea;text-align:left;border-bottom:1px solid rgba(255,255,255,0.1);">Controls</th>' +
+            html += '<thead><tr style="background:rgba(16,185,129,0.2);">' +
+                '<th style="padding:8px;color:#10b981;text-align:left;border-bottom:1px solid rgba(255,255,255,0.1);">#</th>' +
+                '<th style="padding:8px;color:#10b981;text-align:left;border-bottom:1px solid rgba(255,255,255,0.1);">Job Step</th>' +
+                '<th style="padding:8px;color:#10b981;text-align:left;border-bottom:1px solid rgba(255,255,255,0.1);">Hazards</th>' +
+                '<th style="padding:8px;color:#10b981;text-align:left;border-bottom:1px solid rgba(255,255,255,0.1);">Risk</th>' +
+                '<th style="padding:8px;color:#10b981;text-align:left;border-bottom:1px solid rgba(255,255,255,0.1);">Controls</th>' +
                 '</tr></thead><tbody>';
             data.steps.forEach(step => {
                 const riskColor = step.risk_level === 'H' ? '#f44336' : step.risk_level === 'M' ? '#f2994a' : '#4CAF50';
@@ -6171,8 +6583,25 @@
             html += '</div>';
 
             content.innerHTML = html;
-            results.style.display = 'block';
-            console_el.textContent = '✅ SWMS generated: ' + (data.title || jobDesc);
+
+            // Show result badges
+            let badges = '';
+            if (data.title) {
+                badges += '<span class="frank-badge">📋 ' + escapeHtml(data.title) + '</span>';
+            }
+            if (data.high_risk_categories && data.high_risk_categories.length > 0) {
+                data.high_risk_categories.forEach(cat => {
+                    badges += '<span class="frank-badge">⚠️ ' + escapeHtml(cat) + '</span>';
+                });
+            }
+            if (data.steps) {
+                badges += '<span class="frank-badge">📝 ' + data.steps.length + ' steps</span>';
+            }
+            badgesEl.innerHTML = badges;
+
+            resultEl.classList.add('active', 'success');
+            resultEl.classList.remove('error');
+            frankLog('SWMS generated: ' + (data.title || jobDesc));
 
             // Save to history
             frankHistory.unshift({
@@ -6187,11 +6616,17 @@
             frankRenderHistory();
 
         } catch (error) {
+            clearInterval(progressInterval);
+            resultEl.classList.add('active', 'error');
+            resultEl.classList.remove('success');
             content.innerHTML = '<p style="color:#f44336;padding:10px;">' + escapeHtml(error.message) + '</p>';
-            results.style.display = 'block';
-            console_el.textContent = '❌ Error: ' + error.message;
+            badgesEl.innerHTML = '';
+            frankLog('Error: ' + error.message);
         } finally {
-            generating.style.display = 'none';
+            btn.disabled = false;
+            btn.textContent = '🦺 Generate SWMS';
+            document.getElementById('frankProgress').classList.remove('active');
+            document.getElementById('frankProgressFill').style.width = '0%';
         }
     }
 
