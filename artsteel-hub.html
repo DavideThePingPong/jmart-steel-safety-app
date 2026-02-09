@@ -2523,18 +2523,59 @@
         <div class="console" id="hannaConsole">🧾 HANNA Ready - "I'll scan your receipts in a flash"</div>
     </div>
 
-    <!-- VICTOR - MSDS Finder Section -->
+    <!-- VICTOR - MSDS Register Section -->
     <div id="victor" class="agent-section">
         <div class="agent-header">
             <div class="agent-icon">🔍</div>
             <div class="agent-title">
-                <h2>VICTOR - MSDS Finder</h2>
-                <p>Find Safety Data Sheets &amp; track WHS compliance</p>
+                <h2>VICTOR - MSDS Register</h2>
+                <p>All Safety Data Sheets &amp; WHS compliance status</p>
             </div>
         </div>
 
+        <!-- Compliance Dashboard -->
+        <div id="victorDashboard" class="calc-card" style="padding:16px;">
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;text-align:center;">
+                <div style="background:rgba(255,255,255,0.08);border-radius:8px;padding:12px 8px;">
+                    <div id="victorCountTotal" style="font-size:28px;font-weight:700;color:#fff;">0</div>
+                    <div style="font-size:11px;color:#aaa;margin-top:2px;">TOTAL</div>
+                </div>
+                <div style="background:rgba(76,175,80,0.15);border-radius:8px;padding:12px 8px;border:1px solid rgba(76,175,80,0.3);">
+                    <div id="victorCountCurrent" style="font-size:28px;font-weight:700;color:#4CAF50;">0</div>
+                    <div style="font-size:11px;color:#4CAF50;margin-top:2px;">CURRENT</div>
+                </div>
+                <div style="background:rgba(242,153,74,0.15);border-radius:8px;padding:12px 8px;border:1px solid rgba(242,153,74,0.3);">
+                    <div id="victorCountExpiring" style="font-size:28px;font-weight:700;color:#f2994a;">0</div>
+                    <div style="font-size:11px;color:#f2994a;margin-top:2px;">EXPIRING</div>
+                </div>
+                <div style="background:rgba(244,67,54,0.15);border-radius:8px;padding:12px 8px;border:1px solid rgba(244,67,54,0.3);">
+                    <div id="victorCountExpired" style="font-size:28px;font-weight:700;color:#f44336;">0</div>
+                    <div style="font-size:11px;color:#f44336;margin-top:2px;">EXPIRED</div>
+                </div>
+            </div>
+            <div id="victorActionNeeded" style="display:none;margin-top:10px;padding:8px 12px;background:rgba(242,153,74,0.1);border-radius:6px;font-size:12px;color:#aaa;text-align:center;"></div>
+        </div>
+
+        <!-- All MSDS Register -->
         <div class="calc-card">
-            <h3>Search for MSDS</h3>
+            <h3>📋 All MSDS</h3>
+            <!-- Search & Filter Controls -->
+            <div style="margin-top:10px;">
+                <input type="text" id="victorFilterText" oninput="victorRenderProducts()" placeholder="Filter by product or manufacturer..." style="width:100%;padding:10px 14px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;font-size:13px;margin-bottom:10px;box-sizing:border-box;">
+                <div id="victorFilterButtons" style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;">
+                    <button onclick="victorSetFilter('all')" id="victorFilterAll" style="padding:6px 14px;border-radius:6px;border:1px solid rgba(255,255,255,0.2);background:rgba(102,126,234,0.3);color:#fff;cursor:pointer;font-size:12px;font-weight:600;">All</button>
+                    <button onclick="victorSetFilter('current')" id="victorFilterCurrent" style="padding:6px 14px;border-radius:6px;border:1px solid rgba(76,175,80,0.3);background:transparent;color:#4CAF50;cursor:pointer;font-size:12px;font-weight:600;">Current</button>
+                    <button onclick="victorSetFilter('expiring')" id="victorFilterExpiring" style="padding:6px 14px;border-radius:6px;border:1px solid rgba(242,153,74,0.3);background:transparent;color:#f2994a;cursor:pointer;font-size:12px;font-weight:600;">Expiring</button>
+                    <button onclick="victorSetFilter('expired')" id="victorFilterExpired" style="padding:6px 14px;border-radius:6px;border:1px solid rgba(244,67,54,0.3);background:transparent;color:#f44336;cursor:pointer;font-size:12px;font-weight:600;">Expired</button>
+                </div>
+            </div>
+            <div id="victorProductList" style="margin-top:4px;"></div>
+            <p id="victorEmptyMsg" style="color:#666;font-size:13px;margin-top:8px;">No products tracked yet. Search below to add.</p>
+        </div>
+
+        <!-- Add New MSDS -->
+        <div class="calc-card">
+            <h3>➕ Add New MSDS</h3>
             <div style="margin-top:10px;">
                 <input type="text" id="victorProductName" placeholder="Product name (e.g. HIT-HY 200 Hilti)" style="width:100%;padding:12px 14px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;font-size:14px;margin-bottom:10px;box-sizing:border-box;">
                 <input type="text" id="victorManufacturer" placeholder="Manufacturer (optional - auto-detected)" style="width:100%;padding:12px 14px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;font-size:14px;margin-bottom:10px;box-sizing:border-box;">
@@ -2554,14 +2595,7 @@
             </div>
         </div>
 
-        <!-- Saved Products -->
-        <div class="calc-card">
-            <h3>📦 Tracked Products</h3>
-            <div id="victorProductList" style="margin-top:10px;"></div>
-            <p id="victorEmptyMsg" style="color:#666;font-size:13px;margin-top:8px;">No products tracked yet. Search above to add.</p>
-        </div>
-
-        <div class="console" id="victorConsole">🔍 VICTOR Ready - "I'll find any Safety Data Sheet"</div>
+        <div class="console" id="victorConsole">🔍 VICTOR Ready - "All your Safety Data Sheets in one place"</div>
     </div>
 
     <!-- FRANK - SWMS Generator Section -->
@@ -6099,6 +6133,7 @@
     // ═══════════════════════════════════════════════════════════════════════════
     let victorProducts = [];
     let victorFirebaseListenerActive = false;
+    let victorActiveFilter = 'all'; // 'all', 'current', 'expiring', 'expired'
 
     // Pre-loaded SDS data from J&M Artsteel Hub (port 8000)
     const VICTOR_SEED_DATA = [
@@ -6176,10 +6211,102 @@
         return status === 'expiring' || status === 'expired';
     }
 
+    // Check if MSDS expires within N months (for 6-month push alert)
+    function victorExpiresSoon(msdsDate, months) {
+        if (!msdsDate || msdsDate === 'unknown') return false;
+        const issued = new Date(msdsDate);
+        if (isNaN(issued.getTime())) return false;
+        const expiry = new Date(issued);
+        expiry.setFullYear(expiry.getFullYear() + 5);
+        const today = new Date();
+        if (today >= expiry) return true; // already expired
+        const diffMs = expiry - today;
+        const diffMonths = diffMs / (1000 * 60 * 60 * 24 * 30.44);
+        return diffMonths <= months;
+    }
+
+    // Manufacturer SDS portal lookup — tells Victor WHERE to search
+    const VICTOR_SDS_PORTALS = {
+        'hilti': { url: 'https://www.hilti.com.au', sds: 'https://productdata.hilti.com', note: 'Search productdata.hilti.com for SDS PDFs' },
+        'ramset': { url: 'https://www.ramset.com.au', sds: 'https://cdn.ramset.com.au', note: 'SDS PDFs hosted on cdn.ramset.com.au' },
+        'dulux': { url: 'https://www.dulux.com.au', sds: 'https://go.lupinsys.com/duluxgroup', note: 'SDS via Lupinsys portal (go.lupinsys.com/duluxgroup)' },
+        'lacnam': { url: 'https://www.lacnam.com.au', sds: 'https://www.lacnam.com.au/wp-content/uploads', note: 'SDS PDFs in lacnam.com.au/wp-content/uploads' },
+        'parex': { url: 'https://www.parexgroup.com.au', sds: '', note: 'Search parexgroup.com.au or summitsupplies.com.au' },
+        'parex lanko': { url: 'https://www.parexgroup.com.au', sds: '', note: 'Search parexgroup.com.au or summitsupplies.com.au' },
+        'boc': { url: 'https://www.boc-gas.com.au', sds: 'https://www.boc-gas.com.au', note: 'SDS on boc-gas.com.au' },
+        'parchem': { url: 'https://www.parchem.com.au', sds: 'https://www.rlapolymers.com.au', note: 'SDS via rlapolymers.com.au' },
+        'wd-40': { url: 'https://www.wd40.com.au', sds: 'https://files.wd40.com/pdf/sds', note: 'SDS PDFs at files.wd40.com/pdf/sds' },
+        'sika': { url: 'https://www.sika.com.au', sds: 'https://aus.sika.com', note: 'Search aus.sika.com for SDS documents' },
+        'fosroc': { url: 'https://www.fosroc.com.au', sds: '', note: 'Search fosroc.com.au for SDS' },
+        'simpson strong-tie': { url: 'https://www.strongtie.com.au', sds: '', note: 'Search strongtie.com.au for SDS' },
+        'chemours': { url: 'https://www.chemours.com', sds: '', note: 'Search chemours.com for SDS' }
+    };
+
+    // Look up manufacturer SDS portal info
+    function victorGetPortal(manufacturer) {
+        if (!manufacturer) return null;
+        const mfr = manufacturer.toLowerCase().trim();
+        // Direct match
+        if (VICTOR_SDS_PORTALS[mfr]) return VICTOR_SDS_PORTALS[mfr];
+        // Partial match
+        for (const [key, val] of Object.entries(VICTOR_SDS_PORTALS)) {
+            if (mfr.includes(key) || key.includes(mfr)) return val;
+        }
+        return null;
+    }
+
+    // Set active filter and re-render
+    function victorSetFilter(filter) {
+        victorActiveFilter = filter;
+        // Update button styles
+        ['all', 'current', 'expiring', 'expired'].forEach(f => {
+            const btn = document.getElementById('victorFilter' + f.charAt(0).toUpperCase() + f.slice(1));
+            if (!btn) return;
+            if (f === filter) {
+                btn.style.background = f === 'all' ? 'rgba(102,126,234,0.3)' : f === 'current' ? 'rgba(76,175,80,0.2)' : f === 'expiring' ? 'rgba(242,153,74,0.2)' : 'rgba(244,67,54,0.2)';
+            } else {
+                btn.style.background = 'transparent';
+            }
+        });
+        victorRenderProducts();
+    }
+
+    // Update the compliance dashboard counts
+    function victorUpdateDashboard() {
+        let total = 0, current = 0, expiring = 0, expired = 0, soon = 0;
+        victorProducts.forEach(p => {
+            total++;
+            const status = victorCalcCompliance(p.msds_date);
+            if (status === 'current') current++;
+            else if (status === 'expiring') expiring++;
+            else if (status === 'expired') expired++;
+            if (victorExpiresSoon(p.msds_date, 6)) soon++;
+        });
+        const el = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+        el('victorCountTotal', total);
+        el('victorCountCurrent', current);
+        el('victorCountExpiring', expiring);
+        el('victorCountExpired', expired);
+        // Show action-needed count
+        const actionEl = document.getElementById('victorActionNeeded');
+        if (actionEl) {
+            if (soon > 0) {
+                actionEl.style.display = 'block';
+                actionEl.innerHTML = '<span style="color:#f2994a;font-weight:600;">' + soon + ' MSDS need updating</span> — expiring within 6 months or already expired';
+            } else {
+                actionEl.style.display = 'none';
+            }
+        }
+    }
+
     function victorRenderProducts() {
         const list = document.getElementById('victorProductList');
         const empty = document.getElementById('victorEmptyMsg');
         if (!list) return;
+
+        // Update dashboard counts
+        victorUpdateDashboard();
+
         if (victorProducts.length === 0) {
             list.innerHTML = '';
             if (empty) empty.style.display = 'block';
@@ -6187,17 +6314,45 @@
         }
         if (empty) empty.style.display = 'none';
 
-        list.innerHTML = victorProducts.map((p, i) => {
-            // Recalculate compliance dynamically from msds_date every render
+        // Build indexed list with live compliance
+        const indexed = victorProducts.map((p, i) => {
             const liveCompliance = victorCalcCompliance(p.msds_date);
-            // Update stored compliance if it changed
             if (liveCompliance !== 'unknown' && p.compliance !== liveCompliance) {
                 p.compliance = liveCompliance;
             }
-            const statusColor = liveCompliance === 'current' ? '#4CAF50' : liveCompliance === 'expiring' ? '#f2994a' : liveCompliance === 'expired' ? '#f44336' : '#888';
-            const statusLabel = liveCompliance.toUpperCase();
+            return { p, i, compliance: liveCompliance };
+        });
+
+        // Sort: expired first, then expiring, then current, then unknown
+        const order = { expired: 0, expiring: 1, current: 2, unknown: 3 };
+        indexed.sort((a, b) => (order[a.compliance] ?? 3) - (order[b.compliance] ?? 3));
+
+        // Apply status filter
+        let filtered = indexed;
+        if (victorActiveFilter !== 'all') {
+            filtered = indexed.filter(item => item.compliance === victorActiveFilter);
+        }
+
+        // Apply text filter
+        const filterText = (document.getElementById('victorFilterText')?.value || '').toLowerCase().trim();
+        if (filterText) {
+            filtered = filtered.filter(item =>
+                item.p.name.toLowerCase().includes(filterText) ||
+                (item.p.manufacturer || '').toLowerCase().includes(filterText)
+            );
+        }
+
+        if (filtered.length === 0) {
+            list.innerHTML = '<p style="color:#666;font-size:13px;text-align:center;padding:16px;">No MSDS matching filter.</p>';
+            return;
+        }
+
+        list.innerHTML = filtered.map(({ p, i, compliance }) => {
+            const statusColor = compliance === 'current' ? '#4CAF50' : compliance === 'expiring' ? '#f2994a' : compliance === 'expired' ? '#f44336' : '#888';
+            const statusLabel = compliance.toUpperCase();
             const needsUpdate = victorNeedsUpdate(p.msds_date);
-            // Calculate days until expiry for the update button tooltip
+            const expiresSoon = victorExpiresSoon(p.msds_date, 6);
+            const portal = victorGetPortal(p.manufacturer);
             let expiryInfo = '';
             if (p.msds_date && p.msds_date !== 'unknown') {
                 const issued = new Date(p.msds_date);
@@ -6207,17 +6362,24 @@
                 if (daysLeft > 0) expiryInfo = 'Expires in ' + daysLeft + ' days';
                 else expiryInfo = 'Expired ' + Math.abs(daysLeft) + ' days ago';
             }
-            return '<div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:12px;margin-bottom:8px;border-left:3px solid ' + statusColor + ';">' +
+            // Push update button for items expiring within 6 months or already expired
+            const pushBtn = expiresSoon
+                ? '<br><button onclick="victorUpdate(' + i + ', this)" style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#fff;background:' + (compliance === 'expired' ? '#f44336' : '#f2994a') + ';border:none;border-radius:6px;cursor:pointer;margin-top:6px;padding:6px 12px;font-weight:600;" title="' + (portal ? portal.note + ' — ' : '') + expiryInfo + '"><span style="font-size:14px;">&#x1F504;</span> Get Latest SDS' + (portal ? ' (' + escapeHtml(p.manufacturer) + ')' : '') + '</button>'
+                : '';
+            return '<div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:12px;margin-bottom:8px;border-left:3px solid ' + statusColor + ';' + (expiresSoon ? 'box-shadow:inset 0 0 0 1px ' + statusColor + '33;' : '') + '">' +
                 '<div style="display:flex;justify-content:space-between;align-items:start;">' +
-                '<div><strong style="color:#fff;">' + escapeHtml(p.name) + '</strong>' +
+                '<div style="flex:1;min-width:0;">' +
+                '<strong style="color:#fff;">' + escapeHtml(p.name) + '</strong>' +
                 (p.manufacturer ? '<br><span style="font-size:12px;color:#aaa;">' + escapeHtml(p.manufacturer) + '</span>' : '') +
+                (p.summary ? '<br><span style="font-size:11px;color:#888;">' + escapeHtml(p.summary) + '</span>' : '') +
                 (p.msds_date ? '<br><span style="font-size:12px;color:#aaa;">MSDS Date: ' + escapeHtml(p.msds_date) + '</span>' : '') +
-                (expiryInfo ? '<br><span style="font-size:11px;color:' + (needsUpdate ? statusColor : '#888') + ';">' + expiryInfo + '</span>' : '') +
+                (expiryInfo ? '<br><span style="font-size:11px;font-weight:' + (expiresSoon ? '600' : '400') + ';color:' + (expiresSoon || needsUpdate ? statusColor : '#888') + ';">' + expiryInfo + '</span>' : '') +
+                (portal && expiresSoon ? '<br><span style="font-size:10px;color:#667eea;">Source: ' + escapeHtml(portal.url) + '</span>' : '') +
+                pushBtn +
                 '</div>' +
-                '<div style="text-align:right;">' +
+                '<div style="text-align:right;flex-shrink:0;margin-left:8px;">' +
                 '<span style="font-size:11px;font-weight:600;color:' + statusColor + ';background:rgba(255,255,255,0.1);padding:2px 8px;border-radius:4px;">' + statusLabel + '</span>' +
-                (needsUpdate ? '<br><button onclick="victorUpdate(' + i + ', this)" style="font-size:11px;color:#fff;background:' + statusColor + ';border:none;border-radius:4px;cursor:pointer;margin-top:4px;padding:3px 8px;" title="' + expiryInfo + '">🔄 Update</button>' : '') +
-                (p.msds_url ? '<br><a href="' + escapeHtml(p.msds_url) + '" target="_blank" style="font-size:12px;color:#667eea;text-decoration:none;">📄 View PDF</a>' : '') +
+                (p.msds_url ? '<br><a href="' + escapeHtml(p.msds_url) + '" target="_blank" style="font-size:12px;color:#667eea;text-decoration:none;">View PDF</a>' : '') +
                 '<br><button onclick="victorRemove(' + i + ')" style="font-size:11px;color:#f44336;background:none;border:none;cursor:pointer;margin-top:4px;">Remove</button>' +
                 '</div></div></div>';
         }).join('');
@@ -6250,16 +6412,30 @@
         if (btn) { btn.innerHTML = '⏳ Searching...'; btn.disabled = true; }
 
         try {
+            // Look up manufacturer SDS portal for targeted searching
+            const portal = victorGetPortal(product.manufacturer);
+            const portalHint = portal
+                ? '\n\nKNOWN SDS SOURCE for ' + product.manufacturer + ':\n' +
+                  '- Manufacturer website: ' + portal.url + '\n' +
+                  (portal.sds ? '- SDS portal/CDN: ' + portal.sds + '\n' : '') +
+                  '- Tip: ' + portal.note + '\n' +
+                  '- The current PDF URL is: ' + (product.msds_url || 'unknown') + '\n' +
+                  '- Check the same domain/path pattern for an updated version first.\n'
+                : '\n\n- The current PDF URL is: ' + (product.msds_url || 'unknown') + '\n' +
+                  '- Check the same domain for an updated version first.\n';
+
             const searchPrompt = 'Find the latest Safety Data Sheet (SDS/MSDS) PDF URL for:\n' +
                 'Product: ' + product.name + '\n' +
                 'Manufacturer: ' + (product.manufacturer || 'unknown') + '\n\n' +
-                'I need the MOST RECENT version of the SDS. The current one is dated ' + (product.msds_date || 'unknown') + ' and may be outdated.\n\n' +
-                'Search Strategy:\n' +
-                '1. Search the manufacturer official website first\n' +
-                '2. Look for Australian (.com.au) sources\n' +
-                '3. Find direct PDF download links ending in .pdf\n' +
-                '4. Prioritize the newest/most recent version available\n' +
-                '5. Avoid aggregator sites\n\n' +
+                'I need the MOST RECENT version of the SDS. The current one is dated ' + (product.msds_date || 'unknown') + ' and may be outdated.' +
+                portalHint +
+                '\nSearch Strategy:\n' +
+                '1. Check the known SDS source/portal listed above FIRST\n' +
+                '2. Search the manufacturer official website\n' +
+                '3. Look for Australian (.com.au) sources\n' +
+                '4. Find direct PDF download links ending in .pdf\n' +
+                '5. Prioritize the newest/most recent version available\n' +
+                '6. Avoid aggregator sites\n\n' +
                 'Return ONLY valid JSON:\n' +
                 '{"msds_url":"https://...pdf or NOT_FOUND","msds_date":"YYYY-MM-DD or unknown","hazard_class":"class or unknown","signal_word":"Danger/Warning/None","summary":"brief summary"}';
 
@@ -6328,14 +6504,25 @@
         console_el.textContent = '🔍 Searching for MSDS: ' + productName + '...';
 
         try {
+            // Look up known SDS portal for manufacturer
+            const searchPortal = victorGetPortal(manufacturer || productName);
+            const searchPortalHint = searchPortal
+                ? '\n\nKNOWN SDS SOURCE:\n' +
+                  '- Manufacturer website: ' + searchPortal.url + '\n' +
+                  (searchPortal.sds ? '- SDS portal/CDN: ' + searchPortal.sds + '\n' : '') +
+                  '- Tip: ' + searchPortal.note + '\n'
+                : '';
+
             const searchPrompt = 'Find the Safety Data Sheet (SDS/MSDS) PDF URL for:\n' +
                 'Product: ' + productName + '\n' +
                 (manufacturer ? 'Manufacturer: ' + manufacturer + '\n' : '') +
+                searchPortalHint +
                 '\nSearch Strategy:\n' +
-                '1. Search the manufacturer official website first\n' +
-                '2. Look for Australian (.com.au) sources\n' +
-                '3. Find direct PDF download links ending in .pdf\n' +
-                '4. Avoid aggregator sites (Scribd, SlideShare, DocPlayer)\n' +
+                (searchPortal ? '1. Check the known SDS source/portal listed above FIRST\n' : '') +
+                (searchPortal ? '2' : '1') + '. Search the manufacturer official website\n' +
+                (searchPortal ? '3' : '2') + '. Look for Australian (.com.au) sources\n' +
+                (searchPortal ? '4' : '3') + '. Find direct PDF download links ending in .pdf\n' +
+                (searchPortal ? '5' : '4') + '. Avoid aggregator sites (Scribd, SlideShare, DocPlayer)\n' +
                 '\nReturn a JSON response with EXACTLY this format:\n' +
                 '{"msds_url": "https://...pdf or NOT_FOUND", "manufacturer": "detected manufacturer name", "msds_date": "YYYY-MM-DD or unknown", "hazard_class": "hazard class or unknown", "signal_word": "Danger/Warning/None", "summary": "brief 1-2 sentence summary of the product and its hazards"}\n' +
                 'Return ONLY valid JSON, nothing else.';
