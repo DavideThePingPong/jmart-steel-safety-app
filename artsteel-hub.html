@@ -2523,18 +2523,58 @@
         <div class="console" id="hannaConsole">🧾 HANNA Ready - "I'll scan your receipts in a flash"</div>
     </div>
 
-    <!-- VICTOR - MSDS Finder Section -->
+    <!-- VICTOR - MSDS Register Section -->
     <div id="victor" class="agent-section">
         <div class="agent-header">
             <div class="agent-icon">🔍</div>
             <div class="agent-title">
-                <h2>VICTOR - MSDS Finder</h2>
-                <p>Find Safety Data Sheets &amp; track WHS compliance</p>
+                <h2>VICTOR - MSDS Register</h2>
+                <p>All Safety Data Sheets &amp; WHS compliance status</p>
             </div>
         </div>
 
+        <!-- Compliance Dashboard -->
+        <div id="victorDashboard" class="calc-card" style="padding:16px;">
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;text-align:center;">
+                <div style="background:rgba(255,255,255,0.08);border-radius:8px;padding:12px 8px;">
+                    <div id="victorCountTotal" style="font-size:28px;font-weight:700;color:#fff;">0</div>
+                    <div style="font-size:11px;color:#aaa;margin-top:2px;">TOTAL</div>
+                </div>
+                <div style="background:rgba(76,175,80,0.15);border-radius:8px;padding:12px 8px;border:1px solid rgba(76,175,80,0.3);">
+                    <div id="victorCountCurrent" style="font-size:28px;font-weight:700;color:#4CAF50;">0</div>
+                    <div style="font-size:11px;color:#4CAF50;margin-top:2px;">CURRENT</div>
+                </div>
+                <div style="background:rgba(242,153,74,0.15);border-radius:8px;padding:12px 8px;border:1px solid rgba(242,153,74,0.3);">
+                    <div id="victorCountExpiring" style="font-size:28px;font-weight:700;color:#f2994a;">0</div>
+                    <div style="font-size:11px;color:#f2994a;margin-top:2px;">EXPIRING</div>
+                </div>
+                <div style="background:rgba(244,67,54,0.15);border-radius:8px;padding:12px 8px;border:1px solid rgba(244,67,54,0.3);">
+                    <div id="victorCountExpired" style="font-size:28px;font-weight:700;color:#f44336;">0</div>
+                    <div style="font-size:11px;color:#f44336;margin-top:2px;">EXPIRED</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- All MSDS Register -->
         <div class="calc-card">
-            <h3>Search for MSDS</h3>
+            <h3>📋 All MSDS</h3>
+            <!-- Search & Filter Controls -->
+            <div style="margin-top:10px;">
+                <input type="text" id="victorFilterText" oninput="victorRenderProducts()" placeholder="Filter by product or manufacturer..." style="width:100%;padding:10px 14px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;font-size:13px;margin-bottom:10px;box-sizing:border-box;">
+                <div id="victorFilterButtons" style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;">
+                    <button onclick="victorSetFilter('all')" id="victorFilterAll" style="padding:6px 14px;border-radius:6px;border:1px solid rgba(255,255,255,0.2);background:rgba(102,126,234,0.3);color:#fff;cursor:pointer;font-size:12px;font-weight:600;">All</button>
+                    <button onclick="victorSetFilter('current')" id="victorFilterCurrent" style="padding:6px 14px;border-radius:6px;border:1px solid rgba(76,175,80,0.3);background:transparent;color:#4CAF50;cursor:pointer;font-size:12px;font-weight:600;">Current</button>
+                    <button onclick="victorSetFilter('expiring')" id="victorFilterExpiring" style="padding:6px 14px;border-radius:6px;border:1px solid rgba(242,153,74,0.3);background:transparent;color:#f2994a;cursor:pointer;font-size:12px;font-weight:600;">Expiring</button>
+                    <button onclick="victorSetFilter('expired')" id="victorFilterExpired" style="padding:6px 14px;border-radius:6px;border:1px solid rgba(244,67,54,0.3);background:transparent;color:#f44336;cursor:pointer;font-size:12px;font-weight:600;">Expired</button>
+                </div>
+            </div>
+            <div id="victorProductList" style="margin-top:4px;"></div>
+            <p id="victorEmptyMsg" style="color:#666;font-size:13px;margin-top:8px;">No products tracked yet. Search below to add.</p>
+        </div>
+
+        <!-- Add New MSDS -->
+        <div class="calc-card">
+            <h3>➕ Add New MSDS</h3>
             <div style="margin-top:10px;">
                 <input type="text" id="victorProductName" placeholder="Product name (e.g. HIT-HY 200 Hilti)" style="width:100%;padding:12px 14px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;font-size:14px;margin-bottom:10px;box-sizing:border-box;">
                 <input type="text" id="victorManufacturer" placeholder="Manufacturer (optional - auto-detected)" style="width:100%;padding:12px 14px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;font-size:14px;margin-bottom:10px;box-sizing:border-box;">
@@ -2554,14 +2594,7 @@
             </div>
         </div>
 
-        <!-- Saved Products -->
-        <div class="calc-card">
-            <h3>📦 Tracked Products</h3>
-            <div id="victorProductList" style="margin-top:10px;"></div>
-            <p id="victorEmptyMsg" style="color:#666;font-size:13px;margin-top:8px;">No products tracked yet. Search above to add.</p>
-        </div>
-
-        <div class="console" id="victorConsole">🔍 VICTOR Ready - "I'll find any Safety Data Sheet"</div>
+        <div class="console" id="victorConsole">🔍 VICTOR Ready - "All your Safety Data Sheets in one place"</div>
     </div>
 
     <!-- FRANK - SWMS Generator Section -->
@@ -6099,6 +6132,7 @@
     // ═══════════════════════════════════════════════════════════════════════════
     let victorProducts = [];
     let victorFirebaseListenerActive = false;
+    let victorActiveFilter = 'all'; // 'all', 'current', 'expiring', 'expired'
 
     // Pre-loaded SDS data from J&M Artsteel Hub (port 8000)
     const VICTOR_SEED_DATA = [
@@ -6176,10 +6210,47 @@
         return status === 'expiring' || status === 'expired';
     }
 
+    // Set active filter and re-render
+    function victorSetFilter(filter) {
+        victorActiveFilter = filter;
+        // Update button styles
+        ['all', 'current', 'expiring', 'expired'].forEach(f => {
+            const btn = document.getElementById('victorFilter' + f.charAt(0).toUpperCase() + f.slice(1));
+            if (!btn) return;
+            if (f === filter) {
+                btn.style.background = f === 'all' ? 'rgba(102,126,234,0.3)' : f === 'current' ? 'rgba(76,175,80,0.2)' : f === 'expiring' ? 'rgba(242,153,74,0.2)' : 'rgba(244,67,54,0.2)';
+            } else {
+                btn.style.background = 'transparent';
+            }
+        });
+        victorRenderProducts();
+    }
+
+    // Update the compliance dashboard counts
+    function victorUpdateDashboard() {
+        let total = 0, current = 0, expiring = 0, expired = 0;
+        victorProducts.forEach(p => {
+            total++;
+            const status = victorCalcCompliance(p.msds_date);
+            if (status === 'current') current++;
+            else if (status === 'expiring') expiring++;
+            else if (status === 'expired') expired++;
+        });
+        const el = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+        el('victorCountTotal', total);
+        el('victorCountCurrent', current);
+        el('victorCountExpiring', expiring);
+        el('victorCountExpired', expired);
+    }
+
     function victorRenderProducts() {
         const list = document.getElementById('victorProductList');
         const empty = document.getElementById('victorEmptyMsg');
         if (!list) return;
+
+        // Update dashboard counts
+        victorUpdateDashboard();
+
         if (victorProducts.length === 0) {
             list.innerHTML = '';
             if (empty) empty.style.display = 'block';
@@ -6187,17 +6258,43 @@
         }
         if (empty) empty.style.display = 'none';
 
-        list.innerHTML = victorProducts.map((p, i) => {
-            // Recalculate compliance dynamically from msds_date every render
+        // Build indexed list with live compliance
+        const indexed = victorProducts.map((p, i) => {
             const liveCompliance = victorCalcCompliance(p.msds_date);
-            // Update stored compliance if it changed
             if (liveCompliance !== 'unknown' && p.compliance !== liveCompliance) {
                 p.compliance = liveCompliance;
             }
-            const statusColor = liveCompliance === 'current' ? '#4CAF50' : liveCompliance === 'expiring' ? '#f2994a' : liveCompliance === 'expired' ? '#f44336' : '#888';
-            const statusLabel = liveCompliance.toUpperCase();
+            return { p, i, compliance: liveCompliance };
+        });
+
+        // Sort: expired first, then expiring, then current, then unknown
+        const order = { expired: 0, expiring: 1, current: 2, unknown: 3 };
+        indexed.sort((a, b) => (order[a.compliance] ?? 3) - (order[b.compliance] ?? 3));
+
+        // Apply status filter
+        let filtered = indexed;
+        if (victorActiveFilter !== 'all') {
+            filtered = indexed.filter(item => item.compliance === victorActiveFilter);
+        }
+
+        // Apply text filter
+        const filterText = (document.getElementById('victorFilterText')?.value || '').toLowerCase().trim();
+        if (filterText) {
+            filtered = filtered.filter(item =>
+                item.p.name.toLowerCase().includes(filterText) ||
+                (item.p.manufacturer || '').toLowerCase().includes(filterText)
+            );
+        }
+
+        if (filtered.length === 0) {
+            list.innerHTML = '<p style="color:#666;font-size:13px;text-align:center;padding:16px;">No MSDS matching filter.</p>';
+            return;
+        }
+
+        list.innerHTML = filtered.map(({ p, i, compliance }) => {
+            const statusColor = compliance === 'current' ? '#4CAF50' : compliance === 'expiring' ? '#f2994a' : compliance === 'expired' ? '#f44336' : '#888';
+            const statusLabel = compliance.toUpperCase();
             const needsUpdate = victorNeedsUpdate(p.msds_date);
-            // Calculate days until expiry for the update button tooltip
             let expiryInfo = '';
             if (p.msds_date && p.msds_date !== 'unknown') {
                 const issued = new Date(p.msds_date);
@@ -6209,15 +6306,17 @@
             }
             return '<div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:12px;margin-bottom:8px;border-left:3px solid ' + statusColor + ';">' +
                 '<div style="display:flex;justify-content:space-between;align-items:start;">' +
-                '<div><strong style="color:#fff;">' + escapeHtml(p.name) + '</strong>' +
+                '<div style="flex:1;min-width:0;">' +
+                '<strong style="color:#fff;">' + escapeHtml(p.name) + '</strong>' +
                 (p.manufacturer ? '<br><span style="font-size:12px;color:#aaa;">' + escapeHtml(p.manufacturer) + '</span>' : '') +
+                (p.summary ? '<br><span style="font-size:11px;color:#888;">' + escapeHtml(p.summary) + '</span>' : '') +
                 (p.msds_date ? '<br><span style="font-size:12px;color:#aaa;">MSDS Date: ' + escapeHtml(p.msds_date) + '</span>' : '') +
                 (expiryInfo ? '<br><span style="font-size:11px;color:' + (needsUpdate ? statusColor : '#888') + ';">' + expiryInfo + '</span>' : '') +
                 '</div>' +
-                '<div style="text-align:right;">' +
+                '<div style="text-align:right;flex-shrink:0;margin-left:8px;">' +
                 '<span style="font-size:11px;font-weight:600;color:' + statusColor + ';background:rgba(255,255,255,0.1);padding:2px 8px;border-radius:4px;">' + statusLabel + '</span>' +
-                (needsUpdate ? '<br><button onclick="victorUpdate(' + i + ', this)" style="font-size:11px;color:#fff;background:' + statusColor + ';border:none;border-radius:4px;cursor:pointer;margin-top:4px;padding:3px 8px;" title="' + expiryInfo + '">🔄 Update</button>' : '') +
-                (p.msds_url ? '<br><a href="' + escapeHtml(p.msds_url) + '" target="_blank" style="font-size:12px;color:#667eea;text-decoration:none;">📄 View PDF</a>' : '') +
+                (needsUpdate ? '<br><button onclick="victorUpdate(' + i + ', this)" style="font-size:11px;color:#fff;background:' + statusColor + ';border:none;border-radius:4px;cursor:pointer;margin-top:4px;padding:3px 8px;" title="' + expiryInfo + '">Update</button>' : '') +
+                (p.msds_url ? '<br><a href="' + escapeHtml(p.msds_url) + '" target="_blank" style="font-size:12px;color:#667eea;text-decoration:none;">View PDF</a>' : '') +
                 '<br><button onclick="victorRemove(' + i + ')" style="font-size:11px;color:#f44336;background:none;border:none;cursor:pointer;margin-top:4px;">Remove</button>' +
                 '</div></div></div>';
         }).join('');
