@@ -1563,9 +1563,20 @@
           case 'forms':
             await firebaseDb.ref('jmart-safety/forms').set(item.data);
             break;
-          case 'sites':
-            await firebaseDb.ref('jmart-safety/sites').set(item.data);
+          case 'sites': {
+            // Sanitize queued sites data — old queue entries may contain corrupted objects
+            const raw = Array.isArray(item.data) ? item.data : Object.values(item.data || {});
+            const clean = [...new Set(raw.map(s => {
+              if (typeof s === 'string') return s;
+              if (s && typeof s === 'object') {
+                const chars = Object.keys(s).filter(k => k !== '_lastModified' && !isNaN(k)).sort((a,b) => Number(a) - Number(b));
+                return chars.map(k => s[k]).join('');
+              }
+              return null;
+            }).filter(s => s && s.length > 1 && s !== 'undefined' && s !== 'null'))];
+            await firebaseDb.ref('jmart-safety/sites').set(clean);
             break;
+          }
           case 'training':
             await firebaseDb.ref('jmart-safety/training').set(item.data);
             break;
@@ -4576,7 +4587,7 @@
                 return chars.map(k => s[k]).join('');
               }
               return String(s);
-            }).filter(s => s && s.length > 0))];
+            }).filter(s => s && s.length > 1 && s !== 'undefined' && s !== 'null'))];
             setSites(sanitized);
             // Fix localStorage with clean deduplicated data
             localStorage.setItem('jmart-safety-sites', JSON.stringify(sanitized));
