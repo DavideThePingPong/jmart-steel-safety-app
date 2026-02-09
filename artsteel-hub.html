@@ -6134,6 +6134,9 @@
     let victorProducts = [];
     let victorFirebaseListenerActive = false;
     let victorActiveFilter = 'all'; // 'all', 'current', 'expiring', 'expired'
+    let victorAutoUpdateRunning = false;
+    let victorAutoUpdateQueue = [];
+    const VICTOR_AUTO_UPDATE_COOLDOWN = 7 * 24 * 60 * 60 * 1000; // 7 days between auto-checks per product
 
     // Pre-loaded SDS data from J&M Artsteel Hub (port 8000)
     const VICTOR_SEED_DATA = [
@@ -6186,6 +6189,10 @@
                 firebaseDb.ref('jmart-safety/victor/products').set(victorProducts);
             }
             victorRenderProducts();
+            // Kick off auto-update for expiring/expired MSDS (runs once after load, 3s delay)
+            if (!victorAutoUpdateRunning) {
+                setTimeout(() => victorStartAutoUpdate(), 3000);
+            }
         });
     }
 
@@ -6362,9 +6369,12 @@
                 if (daysLeft > 0) expiryInfo = 'Expires in ' + daysLeft + ' days';
                 else expiryInfo = 'Expired ' + Math.abs(daysLeft) + ' days ago';
             }
-            // Push update button for items expiring within 6 months or already expired
-            const pushBtn = expiresSoon
-                ? '<br><button onclick="victorUpdate(' + i + ', this)" style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#fff;background:' + (compliance === 'expired' ? '#f44336' : '#f2994a') + ';border:none;border-radius:6px;cursor:pointer;margin-top:6px;padding:6px 12px;font-weight:600;" title="' + (portal ? portal.note + ' — ' : '') + expiryInfo + '"><span style="font-size:14px;">&#x1F504;</span> Get Latest SDS' + (portal ? ' (' + escapeHtml(p.manufacturer) + ')' : '') + '</button>'
+            // Auto-update status indicator (replaces manual button)
+            const lastChecked = p.lastUpdated ? p.lastUpdated : null;
+            const autoStatus = expiresSoon
+                ? (lastChecked
+                    ? '<br><span style="font-size:10px;color:#888;">Last checked: ' + escapeHtml(lastChecked) + '</span>'
+                    : '<br><span style="font-size:10px;color:' + statusColor + ';font-weight:600;">⏳ Queued for auto-update</span>')
                 : '';
             return '<div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:12px;margin-bottom:8px;border-left:3px solid ' + statusColor + ';' + (expiresSoon ? 'box-shadow:inset 0 0 0 1px ' + statusColor + '33;' : '') + '">' +
                 '<div style="display:flex;justify-content:space-between;align-items:start;">' +
@@ -6375,7 +6385,7 @@
                 (p.msds_date ? '<br><span style="font-size:12px;color:#aaa;">MSDS Date: ' + escapeHtml(p.msds_date) + '</span>' : '') +
                 (expiryInfo ? '<br><span style="font-size:11px;font-weight:' + (expiresSoon ? '600' : '400') + ';color:' + (expiresSoon || needsUpdate ? statusColor : '#888') + ';">' + expiryInfo + '</span>' : '') +
                 (portal && expiresSoon ? '<br><span style="font-size:10px;color:#667eea;">Source: ' + escapeHtml(portal.url) + '</span>' : '') +
-                pushBtn +
+                autoStatus +
                 '</div>' +
                 '<div style="text-align:right;flex-shrink:0;margin-left:8px;">' +
                 '<span style="font-size:11px;font-weight:600;color:' + statusColor + ';background:rgba(255,255,255,0.1);padding:2px 8px;border-radius:4px;">' + statusLabel + '</span>' +
@@ -6487,6 +6497,60 @@
             if (btn) { btn.innerHTML = '❌ Error'; setTimeout(() => { btn.innerHTML = origText; btn.disabled = false; }, 2000); }
             victorLog('❌ Update error: ' + err.message);
         }
+    }
+
+    // ═══ VICTOR AUTO-UPDATE ENGINE ═══
+    // Automatically refreshes expiring/expired MSDS without user interaction.
+    // Processes one product at a time, skips recently checked ones (7-day cooldown).
+    function victorStartAutoUpdate() {
+        if (victorAutoUpdateRunning) return;
+        if (!getApiKey()) {
+            victorLog('🔍 Auto-update skipped — no API key configured');
+            return;
+        }
+
+        // Build queue: products expiring within 6 months or already expired, not checked recently
+        const now = Date.now();
+        victorAutoUpdateQueue = [];
+        victorProducts.forEach((p, i) => {
+            if (!victorExpiresSoon(p.msds_date, 6)) return; // only expiring/expired
+            const lastChecked = p.lastUpdated ? new Date(p.lastUpdated).getTime() : 0;
+            if ((now - lastChecked) < VICTOR_AUTO_UPDATE_COOLDOWN) return; // checked recently
+            victorAutoUpdateQueue.push(i);
+        });
+
+        if (victorAutoUpdateQueue.length === 0) {
+            victorLog('🔍 All MSDS up to date — nothing to auto-refresh');
+            return;
+        }
+
+        victorAutoUpdateRunning = true;
+        victorLog('🔄 Auto-updating ' + victorAutoUpdateQueue.length + ' MSDS that need refresh...');
+        victorProcessAutoQueue();
+    }
+
+    async function victorProcessAutoQueue() {
+        if (victorAutoUpdateQueue.length === 0) {
+            victorAutoUpdateRunning = false;
+            victorLog('✅ Auto-update complete');
+            victorUpdateDashboard();
+            return;
+        }
+
+        const index = victorAutoUpdateQueue.shift();
+        const product = victorProducts[index];
+        if (!product) { victorProcessAutoQueue(); return; }
+
+        const remaining = victorAutoUpdateQueue.length;
+        const compliance = victorCalcCompliance(product.msds_date);
+        const icon = compliance === 'expired' ? '🔴' : '🟠';
+        victorLog(icon + ' Updating ' + product.name + '... (' + (remaining) + ' remaining)');
+
+        // Re-use the existing victorUpdate function but without a button reference
+        await victorUpdate(index, null);
+
+        // Brief pause between requests to avoid rate limiting
+        setTimeout(() => victorProcessAutoQueue(), 2000);
     }
 
     async function victorSearch() {
