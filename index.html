@@ -1607,21 +1607,24 @@
         }
       },
 
-      // Sync sites to Firebase - v3: granular per-site update()
+      // Sync sites to Firebase - v4: REPLACE entire sites array with set()
+      // v3 used update() which accumulated entries and spread strings into char objects
       syncSites: async function(sites) {
         if (!firebaseDb || !isFirebaseConfigured) {
           this.addToQueue('sites', sites);
           return { success: false, queued: true };
         }
         try {
-          const sitesArray = Array.isArray(sites) ? sites : Object.values(sites || {});
-          const updates = {};
-          sitesArray.forEach((site, i) => {
-            const key = site.id || `site-${i}`;
-            updates[key] = { ...site, _lastModified: Date.now() };
-          });
-          await firebaseDb.ref('jmart-safety/sites').update(updates);
-          console.log('Sites synced to Firebase (granular):', sitesArray.length, 'sites');
+          // Ensure we're writing a clean array of plain strings (no objects, no duplicates)
+          const sitesArray = [...new Set(
+            (Array.isArray(sites) ? sites : Object.values(sites || {}))
+              .map(s => typeof s === 'string' ? s : (s && s.name ? s.name : String(s)))
+              .filter(s => s && s.length > 0 && s !== 'undefined' && s !== 'null')
+          )];
+
+          // Use set() to REPLACE the entire sites node — prevents accumulation
+          await firebaseDb.ref('jmart-safety/sites').set(sitesArray);
+          console.log('Sites synced to Firebase (clean replace):', sitesArray.length, 'sites');
           return { success: true };
         } catch (error) {
           console.error('Error syncing sites, adding to retry queue:', error);
@@ -4464,6 +4467,7 @@
       });
       const isInitialLoad = useRef(true);
       const deletingFormRef = useRef(false); // Track when we're deleting to prevent Firebase restore
+      const sitesFromFirebaseRef = useRef(false); // Prevent sync-back loop when sites come FROM Firebase
 
       // Device Authorization State
       const [deviceAuthStatus, setDeviceAuthStatus] = useState('checking'); // 'checking', 'approved', 'pending', 'denied'
@@ -4668,12 +4672,45 @@
                 return chars.map(k => s[k]).join('');
               }
               return String(s);
-            }).filter(s => s && s.length > 0))];
+            }).filter(s => s && s.length > 0 && s !== 'undefined' && s !== 'null'))];
             if (sitesArray.length > 0) {
+              // Flag that this update came FROM Firebase — don't sync it back
+              sitesFromFirebaseRef.current = true;
               setSites(sitesArray);
               localStorage.setItem('jmart-safety-sites', JSON.stringify(sitesArray));
             }
           });
+
+          // ONE-TIME CLEANUP: Fix corrupted Firebase sites data
+          // The old syncSites v3 used update() which accumulated garbage entries.
+          // This reads the mess, extracts clean site names, and replaces the entire node.
+          (async () => {
+            try {
+              const sitesSnap = await firebaseDb.ref('jmart-safety/sites').once('value');
+              const rawData = sitesSnap.val();
+              if (rawData && typeof rawData === 'object' && !Array.isArray(rawData)) {
+                // Firebase has an object (corrupted) instead of a clean array
+                console.log('CLEANUP: Firebase sites is corrupted object, fixing...');
+                const cleanSites = [...new Set(Object.values(rawData).map(s => {
+                  if (typeof s === 'string') return s;
+                  if (s && typeof s === 'object') {
+                    const chars = Object.keys(s).filter(k => k !== '_lastModified' && !isNaN(k)).sort((a,b) => Number(a) - Number(b));
+                    return chars.map(k => s[k]).join('');
+                  }
+                  return null;
+                }).filter(s => s && s.length > 1 && s !== 'undefined' && s !== 'null'))];
+                console.log('CLEANUP: Replacing with', cleanSites.length, 'clean sites:', cleanSites);
+                // Flag to prevent feedback loop
+                sitesFromFirebaseRef.current = true;
+                await firebaseDb.ref('jmart-safety/sites').set(cleanSites);
+                setSites(cleanSites);
+                localStorage.setItem('jmart-safety-sites', JSON.stringify(cleanSites));
+                console.log('CLEANUP: Firebase sites fixed!');
+              }
+            } catch (err) {
+              console.warn('Sites cleanup skipped:', err.message);
+            }
+          })();
 
           // Mark initial load as complete after a short delay
           setTimeout(() => {
@@ -4717,7 +4754,13 @@
         if (sites.length > 0 && !isInitialLoad.current) {
           localStorage.setItem('jmart-safety-sites', JSON.stringify(sites));
 
-          // Sync to Firebase if connected
+          // Skip sync-back if this change originated FROM Firebase (prevents infinite loop)
+          if (sitesFromFirebaseRef.current) {
+            sitesFromFirebaseRef.current = false;
+            return;
+          }
+
+          // Only sync LOCAL changes to Firebase
           if (FirebaseSync.isConnected() && isOnline) {
             FirebaseSync.syncSites(sites);
           }
