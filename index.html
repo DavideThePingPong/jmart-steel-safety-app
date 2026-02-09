@@ -265,6 +265,47 @@
             return { approved: true, admin: true, firstDevice: true };
           }
 
+          // ADMIN RECOVERY: Check if all approved devices are orphaned (no recent activity)
+          // If all admins have lastSeen older than 7 days and this device has verified the
+          // app password, it can reclaim admin. This handles the case where browser cache
+          // was cleared on all admin devices, leaving them orphaned in Firebase.
+          const approvedDevices = allApprovedSnap.val();
+          const now = Date.now();
+          const ORPHAN_THRESHOLD = 7 * 24 * 60 * 60 * 1000; // 7 days
+          let hasActiveAdmin = false;
+
+          if (approvedDevices) {
+            Object.values(approvedDevices).forEach(dev => {
+              if (dev && dev.isAdmin) {
+                const lastSeen = dev.lastSeen ? new Date(dev.lastSeen).getTime() : 0;
+                if ((now - lastSeen) < ORPHAN_THRESHOLD) {
+                  hasActiveAdmin = true;
+                }
+              }
+            });
+          }
+
+          if (!hasActiveAdmin) {
+            // All admin devices are orphaned — auto-approve this device as admin
+            // (user already passed the password gate to get here)
+            console.log('ADMIN RECOVERY: No active admin devices found. Reclaiming admin for this device.');
+
+            // Clean up orphaned approved devices that haven't been seen in 30+ days
+            const CLEANUP_THRESHOLD = 30 * 24 * 60 * 60 * 1000;
+            if (approvedDevices) {
+              for (const [devId, dev] of Object.entries(approvedDevices)) {
+                const lastSeen = dev && dev.lastSeen ? new Date(dev.lastSeen).getTime() : 0;
+                if ((now - lastSeen) > CLEANUP_THRESHOLD) {
+                  console.log('Cleaning up orphaned device:', devId, dev.name || dev.type || 'unknown');
+                  await firebaseDb.ref('jmart-safety/devices/approved/' + devId).remove().catch(() => {});
+                }
+              }
+            }
+
+            await this.registerAsApproved(true);
+            return { approved: true, admin: true, adminRecovery: true };
+          }
+
           // Check if already pending
           const pendingSnap = await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).once('value');
           if (!pendingSnap.exists()) {
@@ -1711,32 +1752,57 @@
       },
 
       // Migrate from old 'sites' structure to new 'jobs' structure
+      // Uses a migration-complete flag to prevent re-running on every app load
       migrateFromSites: async function() {
         if (!firebaseDb) return;
 
         try {
+          // Check if migration was already completed
+          const migrationSnap = await firebaseDb.ref('jmart-safety/config/jobsMigrationComplete').once('value');
+          if (migrationSnap.val()) {
+            console.log('JobsManager: Migration already completed, skipping');
+            return;
+          }
+
           const sitesSnap = await firebaseDb.ref('jmart-safety/sites').once('value');
           const sites = sitesSnap.val();
 
           if (sites && Array.isArray(sites)) {
             const jobsSnap = await firebaseDb.ref('jmart-safety/jobs').once('value');
-            if (!jobsSnap.val()) {
-              console.log('JobsManager: Migrating', sites.length, 'sites to jobs...');
-              for (const site of sites) {
-                if (site && site.name) {
-                  await this.addJob({
-                    name: site.name,
-                    client: site.builder || '',
-                    address: site.address || '',
-                    status: 'active',
-                    createdAt: new Date().toISOString(),
-                    source: 'migrated-from-sites'
-                  });
-                }
+            const existingJobs = jobsSnap.val();
+
+            // Build a Set of existing job names to prevent duplicates
+            const existingNames = new Set();
+            if (existingJobs) {
+              Object.values(existingJobs).forEach(j => {
+                if (j && j.name) existingNames.add(j.name.toLowerCase());
+              });
+            }
+
+            let migratedCount = 0;
+            for (const site of sites) {
+              if (site && site.name && !existingNames.has(site.name.toLowerCase())) {
+                await this.addJob({
+                  name: site.name,
+                  client: site.builder || '',
+                  address: site.address || '',
+                  status: 'active',
+                  createdAt: new Date().toISOString(),
+                  source: 'migrated-from-sites'
+                });
+                existingNames.add(site.name.toLowerCase());
+                migratedCount++;
               }
-              console.log('JobsManager: Migration complete');
+            }
+
+            if (migratedCount > 0) {
+              console.log('JobsManager: Migrated', migratedCount, 'new sites to jobs');
             }
           }
+
+          // Mark migration as complete so it never runs again
+          await firebaseDb.ref('jmart-safety/config/jobsMigrationComplete').set(true);
+          console.log('JobsManager: Migration flagged as complete');
         } catch (error) {
           console.error('JobsManager: Migration error:', error);
         }
@@ -1813,11 +1879,62 @@
       // Get jobs as simple name array (for dropdowns)
       getJobNames: function() {
         return this.getActiveJobs().map(j => j.name);
+      },
+
+      // Clean up duplicate jobs (keeps the oldest entry for each name)
+      deduplicateJobs: async function() {
+        if (!firebaseDb) return;
+
+        try {
+          const jobsSnap = await firebaseDb.ref('jmart-safety/jobs').once('value');
+          const jobs = jobsSnap.val();
+          if (!jobs) return;
+
+          const seenNames = new Map(); // name → oldest job key
+          const duplicateKeys = [];
+
+          Object.entries(jobs).forEach(([key, job]) => {
+            if (!job || !job.name) return;
+            const nameKey = job.name.toLowerCase().trim();
+            if (seenNames.has(nameKey)) {
+              // Duplicate - keep the older one, remove the newer one
+              const existingKey = seenNames.get(nameKey);
+              const existingJob = jobs[existingKey];
+              const existingDate = new Date(existingJob.createdAt || 0).getTime();
+              const currentDate = new Date(job.createdAt || 0).getTime();
+
+              if (currentDate < existingDate) {
+                // Current is older, remove the existing one
+                duplicateKeys.push(existingKey);
+                seenNames.set(nameKey, key);
+              } else {
+                // Existing is older, remove current
+                duplicateKeys.push(key);
+              }
+            } else {
+              seenNames.set(nameKey, key);
+            }
+          });
+
+          if (duplicateKeys.length > 0) {
+            console.log('JobsManager: Removing', duplicateKeys.length, 'duplicate jobs');
+            const updates = {};
+            duplicateKeys.forEach(key => { updates[key] = null; });
+            await firebaseDb.ref('jmart-safety/jobs').update(updates);
+            console.log('JobsManager: Deduplication complete');
+          } else {
+            console.log('JobsManager: No duplicate jobs found');
+          }
+        } catch (error) {
+          console.error('JobsManager: Dedup error:', error);
+        }
       }
     };
 
-    // Initialize Jobs Manager
+    // Initialize Jobs Manager and clean up duplicates
     JobsManager.init();
+    // Run dedup once on load to clean up any existing duplicates
+    setTimeout(() => JobsManager.deduplicateJobs(), 3000);
 
     // ========================================
     // DEVICE AUTHENTICATION MANAGER
@@ -4447,7 +4564,7 @@
           try {
             const parsed = JSON.parse(savedSites);
             // Sanitize: Firebase can corrupt string arrays into char-by-char objects
-            const sanitized = (Array.isArray(parsed) ? parsed : Object.values(parsed || {})).map(s => {
+            const sanitized = [...new Set((Array.isArray(parsed) ? parsed : Object.values(parsed || {})).map(s => {
               if (typeof s === 'string') return s;
               if (s && typeof s === 'object') {
                 // Reconstruct string from char-by-char Firebase object {0:'a',1:'b',...}
@@ -4455,9 +4572,9 @@
                 return chars.map(k => s[k]).join('');
               }
               return String(s);
-            }).filter(s => s && s.length > 0);
+            }).filter(s => s && s.length > 0))];
             setSites(sanitized);
-            // Fix localStorage with clean data
+            // Fix localStorage with clean deduplicated data
             localStorage.setItem('jmart-safety-sites', JSON.stringify(sanitized));
           } catch (e) {
             console.error('Error parsing localStorage sites:', e);
@@ -4543,14 +4660,15 @@
           const unsubSites = FirebaseSync.onSitesChange((firebaseSites) => {
             const rawArray = Array.isArray(firebaseSites) ? firebaseSites : Object.values(firebaseSites || {});
             // Sanitize: Firebase can corrupt string arrays into char-by-char objects
-            const sitesArray = rawArray.map(s => {
+            // Also deduplicate to prevent duplicate sites from accumulating
+            const sitesArray = [...new Set(rawArray.map(s => {
               if (typeof s === 'string') return s;
               if (s && typeof s === 'object') {
                 const chars = Object.keys(s).filter(k => k !== '_lastModified' && !isNaN(k)).sort((a,b) => Number(a) - Number(b));
                 return chars.map(k => s[k]).join('');
               }
               return String(s);
-            }).filter(s => s && s.length > 0);
+            }).filter(s => s && s.length > 0))];
             if (sitesArray.length > 0) {
               setSites(sitesArray);
               localStorage.setItem('jmart-safety-sites', JSON.stringify(sitesArray));

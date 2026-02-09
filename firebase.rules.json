@@ -51,13 +51,16 @@
         }
       },
 
+      // Jobs - managed job entries for forms and photo uploads
+      "jobs": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      },
+
       // Sites - any authenticated device can read/write
       "sites": {
         ".read": "auth != null",
-        "$siteId": {
-          ".write": "auth != null",
-          ".validate": "newData.hasChildren(['name']) && newData.child('name').isString() && newData.child('name').val().length < 500"
-        }
+        ".write": "auth != null"
       },
 
       // Training - any authenticated device can read/write
