@@ -6287,7 +6287,7 @@
             if (status === 'current') current++;
             else if (status === 'expiring') expiring++;
             else if (status === 'expired') expired++;
-            if (victorExpiresSoon(p.msds_date, 6)) soon++;
+            if (victorExpiresSoon(p.msds_date, 12)) soon++;
         });
         const el = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
         el('victorCountTotal', total);
@@ -6299,7 +6299,7 @@
         if (actionEl) {
             if (soon > 0) {
                 actionEl.style.display = 'block';
-                actionEl.innerHTML = '<span style="color:#f2994a;font-weight:600;">' + soon + ' MSDS need updating</span> — expiring within 6 months or already expired';
+                actionEl.innerHTML = '<span style="color:#f2994a;font-weight:600;">' + soon + ' MSDS need updating</span> — expiring within 12 months or already expired';
             } else {
                 actionEl.style.display = 'none';
             }
@@ -6358,7 +6358,7 @@
             const statusColor = compliance === 'current' ? '#4CAF50' : compliance === 'expiring' ? '#f2994a' : compliance === 'expired' ? '#f44336' : '#888';
             const statusLabel = compliance.toUpperCase();
             const needsUpdate = victorNeedsUpdate(p.msds_date);
-            const expiresSoon = victorExpiresSoon(p.msds_date, 6);
+            const expiresSoon = victorExpiresSoon(p.msds_date, 12);
             const portal = victorGetPortal(p.manufacturer);
             let expiryInfo = '';
             if (p.msds_date && p.msds_date !== 'unknown') {
@@ -6509,11 +6509,11 @@
             return;
         }
 
-        // Build queue: products expiring within 6 months or already expired, not checked recently
+        // Build queue: products expiring within 12 months or already expired, not checked recently
         const now = Date.now();
         victorAutoUpdateQueue = [];
         victorProducts.forEach((p, i) => {
-            if (!victorExpiresSoon(p.msds_date, 6)) return; // only expiring/expired
+            if (!victorExpiresSoon(p.msds_date, 12)) return; // only expiring/expired
             const lastChecked = p.lastUpdated ? new Date(p.lastUpdated).getTime() : 0;
             if ((now - lastChecked) < VICTOR_AUTO_UPDATE_COOLDOWN) return; // checked recently
             victorAutoUpdateQueue.push(i);
