@@ -6136,7 +6136,25 @@
     let victorActiveFilter = 'all'; // 'all', 'current', 'expiring', 'expired'
     let victorAutoUpdateRunning = false;
     let victorAutoUpdateQueue = [];
-    const VICTOR_AUTO_UPDATE_COOLDOWN = 7 * 24 * 60 * 60 * 1000; // 7 days between auto-checks per product
+    const VICTOR_AUTO_UPDATE_COOLDOWN = 7 * 24 * 60 * 60 * 1000; // 7 days between auto-checks for first attempt
+
+    // Check if today falls in the 2nd Sunday window (Sun–Tue) of the current month
+    function victorIsSecondSundayWindow() {
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = today.getMonth();
+        let sundayCount = 0;
+        for (let d = 1; d <= 28; d++) {
+            if (new Date(year, month, d).getDay() === 0) {
+                sundayCount++;
+                if (sundayCount === 2) {
+                    // 3-day window: 2nd Sunday through Tuesday after
+                    return today.getDate() >= d && today.getDate() <= d + 2;
+                }
+            }
+        }
+        return false;
+    }
 
     // Pre-loaded SDS data from J&M Artsteel Hub (port 8000)
     const VICTOR_SEED_DATA = [
@@ -6371,11 +6389,17 @@
             }
             // Auto-update status indicator (replaces manual button)
             const lastChecked = p.lastUpdated ? p.lastUpdated : null;
-            const autoStatus = expiresSoon
-                ? (lastChecked
-                    ? '<br><span style="font-size:10px;color:#888;">Last checked: ' + escapeHtml(lastChecked) + '</span>'
-                    : '<br><span style="font-size:10px;color:' + statusColor + ';font-weight:600;">⏳ Queued for auto-update</span>')
-                : '';
+            const noUpdateFound = p.lastUpdateResult === 'no-update';
+            let autoStatus = '';
+            if (expiresSoon) {
+                if (!lastChecked) {
+                    autoStatus = '<br><span style="font-size:10px;color:' + statusColor + ';font-weight:600;">⏳ Queued for auto-update</span>';
+                } else if (noUpdateFound) {
+                    autoStatus = '<br><span style="font-size:10px;color:#888;">Checked: ' + escapeHtml(lastChecked) + ' — no newer found, retries 2nd Sunday</span>';
+                } else {
+                    autoStatus = '<br><span style="font-size:10px;color:#888;">Last checked: ' + escapeHtml(lastChecked) + '</span>';
+                }
+            }
             return '<div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:12px;margin-bottom:8px;border-left:3px solid ' + statusColor + ';' + (expiresSoon ? 'box-shadow:inset 0 0 0 1px ' + statusColor + '33;' : '') + '">' +
                 '<div style="display:flex;justify-content:space-between;align-items:start;">' +
                 '<div style="flex:1;min-width:0;">' +
@@ -6484,14 +6508,29 @@
                 if (data.signal_word && data.signal_word !== 'unknown') victorProducts[index].signal_word = data.signal_word;
                 victorProducts[index].lastUpdated = new Date().toISOString().split('T')[0];
 
+                // Track update result for 2nd-Sunday retry logic
+                if (isNewer) {
+                    victorProducts[index].lastUpdateResult = 'updated';
+                    delete victorProducts[index].lastUpdateMonth;
+                } else {
+                    // Found same/older MSDS — schedule for 2nd Sunday retry
+                    victorProducts[index].lastUpdateResult = 'no-update';
+                    victorProducts[index].lastUpdateMonth = new Date().toISOString().substring(0, 7);
+                }
+
                 victorSaveProducts();
                 victorRenderProducts();
                 victorLog(isNewer
                     ? '✅ Updated ' + product.name + ' — new MSDS dated ' + newDate + ' (was ' + oldDate + ')'
-                    : '✅ Refreshed ' + product.name + ' — MSDS date: ' + newDate);
+                    : '✅ Refreshed ' + product.name + ' — MSDS date: ' + newDate + ' (no newer found — will retry 2nd Sunday next month)');
             } else {
+                // Search failed entirely — schedule for 2nd Sunday retry
+                victorProducts[index].lastUpdateResult = 'no-update';
+                victorProducts[index].lastUpdateMonth = new Date().toISOString().substring(0, 7);
+                victorProducts[index].lastUpdated = new Date().toISOString().split('T')[0];
+                victorSaveProducts();
                 if (btn) { btn.innerHTML = '❌ Not found'; setTimeout(() => { btn.innerHTML = origText; btn.disabled = false; }, 2000); }
-                victorLog('⚠️ Could not find updated MSDS for ' + product.name);
+                victorLog('⚠️ Could not find updated MSDS for ' + product.name + ' — will retry 2nd Sunday next month');
             }
         } catch (err) {
             if (btn) { btn.innerHTML = '❌ Error'; setTimeout(() => { btn.innerHTML = origText; btn.disabled = false; }, 2000); }
@@ -6509,13 +6548,27 @@
             return;
         }
 
-        // Build queue: products expiring within 12 months or already expired, not checked recently
+        // Build queue: products expiring within 12 months or already expired
+        // - First attempt: normal 7-day cooldown
+        // - If no newer MSDS was found: retry only on the 2nd Sunday of each month
         const now = Date.now();
+        const currentMonth = new Date().toISOString().substring(0, 7); // e.g. "2026-02"
+        const isRetryWindow = victorIsSecondSundayWindow();
         victorAutoUpdateQueue = [];
         victorProducts.forEach((p, i) => {
             if (!victorExpiresSoon(p.msds_date, 12)) return; // only expiring/expired
+
+            // If previous check found no update — only retry on 2nd Sunday of a NEW month
+            if (p.lastUpdateResult === 'no-update') {
+                if (p.lastUpdateMonth === currentMonth) return; // already tried this month
+                if (!isRetryWindow) return; // not the 2nd Sunday window
+                victorAutoUpdateQueue.push(i);
+                return;
+            }
+
+            // Normal cooldown for products not yet checked or previously updated
             const lastChecked = p.lastUpdated ? new Date(p.lastUpdated).getTime() : 0;
-            if ((now - lastChecked) < VICTOR_AUTO_UPDATE_COOLDOWN) return; // checked recently
+            if ((now - lastChecked) < VICTOR_AUTO_UPDATE_COOLDOWN) return;
             victorAutoUpdateQueue.push(i);
         });
 

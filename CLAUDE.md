@@ -10,6 +10,9 @@
 
 If the device auth system is rebuilt, these three devices must be hardcoded as always-approved. The Android is always admin.
 
+## ALWAYS Verify After Changes
+**Every time you make a fix or change, you MUST verify it works before saying it's done. If Chrome JS execution is broken, say so — do NOT pretend you verified. If you can't verify, do a deep local code trace. If not 100% sure, redo it.**
+
 ## Deployment
 
 - Firebase Hosting: https://jmart-steel-safety.web.app
