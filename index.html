@@ -291,9 +291,15 @@
             console.log('ADMIN RECOVERY: No active admin devices found. Reclaiming admin for this device.');
 
             // Clean up orphaned approved devices that haven't been seen in 30+ days
+            // NEVER remove permanently approved devices (Mac, S.s, Admin Android)
             const CLEANUP_THRESHOLD = 30 * 24 * 60 * 60 * 1000;
             if (approvedDevices) {
               for (const [devId, dev] of Object.entries(approvedDevices)) {
+                // Skip permanently approved devices — they stay forever
+                if (dev && dev.permanentlyApproved) {
+                  console.log('Skipping cleanup of permanently approved device:', devId, dev.name || 'unknown');
+                  continue;
+                }
                 const lastSeen = dev && dev.lastSeen ? new Date(dev.lastSeen).getTime() : 0;
                 if ((now - lastSeen) > CLEANUP_THRESHOLD) {
                   console.log('Cleaning up orphaned device:', devId, dev.name || dev.type || 'unknown');
@@ -304,6 +310,24 @@
 
             await this.registerAsApproved(true);
             return { approved: true, admin: true, adminRecovery: true };
+          }
+
+          // HARDCODED ALWAYS-APPROVED DEVICES (per CLAUDE.md rules)
+          // These devices are auto-approved on every registration, even after cache clear
+          const ua = navigator.userAgent;
+          const isMac = /Mac/i.test(ua) && !/iPhone|iPad/i.test(ua);
+          const isIPhone = /iPhone/i.test(ua);
+
+          if (isMac || isIPhone) {
+            const autoName = isMac ? "Davide's Mac" : 'S.s';
+            console.log('ALWAYS-APPROVED: ' + autoName + ' detected — auto-approving');
+            await this.registerAsApproved(false);
+            await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId + '/permanentlyApproved').set(true);
+            await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId + '/name').set(autoName);
+            // Remove from pending/denied if present
+            await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).remove().catch(() => {});
+            await firebaseDb.ref('jmart-safety/devices/denied/' + this.deviceId).remove().catch(() => {});
+            return { approved: true, admin: false, autoApproved: true };
           }
 
           // Check if already pending
@@ -673,8 +697,15 @@
       // Request user authorization
       authorize: function() {
         if (!this.isInitialized) {
-          alert('Google Drive not configured. Please add your Client ID.');
-          return;
+          // Lazy init — try again in case Google API loaded late
+          if (isGoogleDriveConfigured && typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
+            console.log('Google Drive lazy-init on authorize click');
+            this.init();
+          }
+          if (!this.isInitialized) {
+            alert('Google Drive is still loading. Please wait a moment and try again.');
+            return;
+          }
         }
         this.tokenClient.requestAccessToken({ prompt: 'consent' });
       },
@@ -1160,20 +1191,23 @@
       }
     };
 
-    // Initialize Google Drive when API loads
+    // Initialize Google Drive when API loads (with robust retry)
     window.onload = function() {
       if (isGoogleDriveConfigured) {
-        // Wait for Google API to load
-        if (typeof google !== 'undefined' && google.accounts) {
-          GoogleDriveSync.init();
-        } else {
-          // Retry after a short delay
-          setTimeout(() => {
-            if (typeof google !== 'undefined' && google.accounts) {
-              GoogleDriveSync.init();
-            }
-          }, 1000);
-        }
+        const tryInit = (attempt) => {
+          if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
+            GoogleDriveSync.init();
+            console.log('Google Drive init succeeded on attempt', attempt);
+          } else if (attempt < 10) {
+            // Retry with increasing delay: 500ms, 1s, 1.5s, 2s...
+            const delay = Math.min(500 * attempt, 3000);
+            console.log('Google API not ready, retrying in', delay, 'ms (attempt', attempt, ')');
+            setTimeout(() => tryInit(attempt + 1), delay);
+          } else {
+            console.error('Google API failed to load after 10 attempts');
+          }
+        };
+        tryInit(1);
       }
     };
 
@@ -2062,7 +2096,49 @@
           // Check denied devices
           const deniedSnap = await firebaseDb.ref('jmart-safety/devices/denied/' + this.deviceId).once('value');
           if (deniedSnap.exists()) {
-            return { status: 'denied', canAccess: false };
+            // ALWAYS-APPROVED override: Mac and iPhone bypass denied status
+            const ua = navigator.userAgent;
+            const isMac = /Mac/i.test(ua) && !/iPhone|iPad/i.test(ua);
+            const isIPhone = /iPhone/i.test(ua);
+            if (isMac || isIPhone) {
+              const autoName = isMac ? "Davide's Mac" : 'S.s';
+              console.log('ALWAYS-APPROVED override: ' + autoName + ' was denied but is hardcoded approved — restoring');
+              await firebaseDb.ref('jmart-safety/devices/denied/' + this.deviceId).remove().catch(() => {});
+              // Will fall through to the auto-approve below
+            } else {
+              return { status: 'denied', canAccess: false };
+            }
+          }
+
+          // HARDCODED ALWAYS-APPROVED DEVICES (per CLAUDE.md rules)
+          // Mac and iPhone are auto-approved on every registration
+          const ua2 = navigator.userAgent;
+          const isMac2 = /Mac/i.test(ua2) && !/iPhone|iPad/i.test(ua2);
+          const isIPhone2 = /iPhone/i.test(ua2);
+
+          if (isMac2 || isIPhone2) {
+            const autoName = isMac2 ? "Davide's Mac" : 'S.s';
+            console.log('ALWAYS-APPROVED: ' + autoName + ' detected in DeviceAuthManager — auto-approving');
+            // Auto-register as approved
+            await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId).set({
+              id: this.deviceId,
+              name: autoName,
+              type: isMac2 ? 'Mac' : 'iPhone',
+              browser: /Chrome/i.test(ua2) ? 'Chrome' : (/Safari/i.test(ua2) ? 'Safari' : 'Unknown'),
+              screen: screen.width + 'x' + screen.height,
+              userAgent: ua2.substring(0, 200),
+              isAdmin: false,
+              permanentlyApproved: true,
+              approvedAt: new Date().toISOString(),
+              approvedBy: 'SYSTEM (Always-Approved Device)',
+              lastSeen: new Date().toISOString(),
+              registeredAt: new Date().toISOString()
+            });
+            // Clean up pending/denied
+            await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).remove().catch(() => {});
+            await firebaseDb.ref('jmart-safety/devices/denied/' + this.deviceId).remove().catch(() => {});
+            this.isAdmin = false;
+            return { status: 'approved', canAccess: true, isAdmin: false, autoApproved: true };
           }
 
           // New device - not registered
