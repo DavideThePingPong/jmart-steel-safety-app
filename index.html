@@ -1220,7 +1220,7 @@
 
       start: function() {
         // Check every minute if it's 7pm
-        this.checkInterval = setInterval(() => this.checkAndBackup(), 60000);
+        this.checkInterval = IntervalRegistry.setInterval(() => this.checkAndBackup(), 60000, 'DailyBackupScheduler');
         console.log('Daily backup scheduler started - backups at 7:00 PM');
 
         // Also check immediately in case we missed today's backup
@@ -1286,6 +1286,48 @@
 
     // Start the scheduler
     DailyBackupScheduler.start();
+
+    // ========================================
+    // INTERVAL REGISTRY (Memory Leak Prevention)
+    // ========================================
+    // Tracks all setInterval/setTimeout calls for proper cleanup
+    const IntervalRegistry = {
+      intervals: [],
+      timeouts: [],
+
+      setInterval: function(fn, ms, label) {
+        const id = window.setInterval(fn, ms);
+        this.intervals.push({ id, label: label || 'unnamed', ms });
+        console.log('Registered interval:', label || 'unnamed', '(' + ms + 'ms)');
+        return id;
+      },
+
+      setTimeout: function(fn, ms, label) {
+        const self = this;
+        const id = window.setTimeout(function() {
+          fn();
+          self.timeouts = self.timeouts.filter(function(t) { return t.id !== id; });
+        }, ms);
+        this.timeouts.push({ id, label: label || 'unnamed' });
+        return id;
+      },
+
+      clearInterval: function(id) {
+        window.clearInterval(id);
+        this.intervals = this.intervals.filter(function(i) { return i.id !== id; });
+      },
+
+      clearAll: function() {
+        this.intervals.forEach(function(i) { window.clearInterval(i.id); });
+        this.timeouts.forEach(function(t) { window.clearTimeout(t.id); });
+        console.log('Cleaned up ' + this.intervals.length + ' intervals and ' + this.timeouts.length + ' timeouts');
+        this.intervals = [];
+        this.timeouts = [];
+      }
+    };
+
+    // Clean up all intervals/timeouts on page unload to prevent memory leaks
+    window.addEventListener('beforeunload', function() { IntervalRegistry.clearAll(); });
 
     // ========================================
     // STORAGE QUOTA MANAGER
@@ -1417,6 +1459,41 @@
         }
       }
     };
+
+    // Wire up StorageQuotaManager: patch localStorage.setItem for global quota protection
+    (function() {
+      const _origSetItem = Storage.prototype.setItem;
+      // Update safeSave to use original method (avoids recursion after patch)
+      StorageQuotaManager._origSetItem = function(key, value) {
+        _origSetItem.call(localStorage, key, value);
+      };
+      // Patch localStorage.setItem globally for quota awareness
+      Storage.prototype.setItem = function(key, value) {
+        try {
+          _origSetItem.call(this, key, value);
+          // After write, check if we're getting close to the limit
+          if (this === localStorage) {
+            var usage = StorageQuotaManager.getUsage();
+            if (usage.isWarning) {
+              StorageQuotaManager.notifyListeners(usage);
+            }
+          }
+        } catch (e) {
+          if (e.name === 'QuotaExceededError' && this === localStorage) {
+            console.error('Storage quota exceeded on key:', key, '- attempting cleanup');
+            StorageQuotaManager.cleanup();
+            try {
+              _origSetItem.call(this, key, value);
+            } catch (e2) {
+              StorageQuotaManager.notifyListeners({ error: 'quota_exceeded' });
+              throw new Error('Storage full! Please connect Google Drive to back up forms, then clear old data in Settings.');
+            }
+          } else {
+            throw e;
+          }
+        }
+      };
+    })();
 
     // ========================================
     // AUDIT LOG MANAGER
@@ -2025,8 +2102,8 @@
         return this.deviceId;
       },
 
-      // Hash password using SHA-256-like simple hash (for demo, use proper crypto in production)
-      hashPassword: function(password) {
+      // Legacy hash (DJB2) — kept only for migration verification
+      _legacyHash: function(password) {
         let hash = 0;
         const str = password + 'jmart_salt_2024';
         for (let i = 0; i < str.length; i++) {
@@ -2035,6 +2112,21 @@
           hash = hash & hash;
         }
         return 'hash_' + Math.abs(hash).toString(16);
+      },
+
+      // Hash password using browser's built-in SHA-256 (async)
+      hashPassword: async function(password) {
+        try {
+          const encoder = new TextEncoder();
+          const data = encoder.encode(password + 'jmart_salt_2024_v2');
+          const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+          const hashArray = Array.from(new Uint8Array(hashBuffer));
+          return 'sha256_' + hashArray.map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
+        } catch (e) {
+          // Fallback for environments without crypto.subtle (HTTP, old browsers)
+          console.warn('SHA-256 unavailable, falling back to legacy hash:', e.message);
+          return this._legacyHash(password);
+        }
       },
 
       // Initialize - check device status
@@ -2154,7 +2246,7 @@
       setPassword: async function(password) {
         if (!firebaseDb) return false;
 
-        const hash = this.hashPassword(password);
+        const hash = await this.hashPassword(password);
         try {
           await firebaseDb.ref('jmart-safety/config/appPasswordHash').set(hash);
           this.APP_PASSWORD_HASH = hash;
@@ -2165,10 +2257,28 @@
         }
       },
 
-      // Verify password
-      verifyPassword: function(password) {
-        const hash = this.hashPassword(password);
-        return hash === this.APP_PASSWORD_HASH;
+      // Verify password (with automatic migration from old hash format)
+      verifyPassword: async function(password) {
+        const newHash = await this.hashPassword(password);
+        if (newHash === this.APP_PASSWORD_HASH) {
+          return true;
+        }
+        // Migration: check if stored hash is old DJB2 format (starts with 'hash_')
+        if (this.APP_PASSWORD_HASH && this.APP_PASSWORD_HASH.startsWith('hash_')) {
+          const oldHash = this._legacyHash(password);
+          if (oldHash === this.APP_PASSWORD_HASH) {
+            // Password matches old format — migrate to SHA-256
+            console.log('Migrating password hash from DJB2 to SHA-256');
+            try {
+              await firebaseDb.ref('jmart-safety/config/appPasswordHash').set(newHash);
+              this.APP_PASSWORD_HASH = newHash;
+            } catch (e) {
+              console.warn('Hash migration failed (non-fatal):', e.message);
+            }
+            return true;
+          }
+        }
+        return false;
       },
 
       // Register this device (request access) - use same path as DeviceAuth
@@ -4272,7 +4382,7 @@
         setIsLoading(true);
         setError('');
 
-        if (DeviceAuthManager.verifyPassword(password)) {
+        if (await DeviceAuthManager.verifyPassword(password)) {
           // Password correct - grant access IMMEDIATELY
           onAuthenticated(true);
           // Fire-and-forget device registration
@@ -4618,17 +4728,17 @@
             setDeviceAuthStatus('pending');
 
             // Poll for approval every 5 seconds
-            const pollInterval = setInterval(async () => {
+            const pollInterval = IntervalRegistry.setInterval(async () => {
               const checkResult = await DeviceAuth.checkDeviceStatus();
               if (checkResult.approved) {
                 setDeviceAuthStatus('approved');
                 setIsDeviceAdmin(checkResult.admin);
-                clearInterval(pollInterval);
+                IntervalRegistry.clearInterval(pollInterval);
                 window.location.reload(); // Reload to fully initialize
               }
-            }, 5000);
+            }, 5000, 'DeviceApprovalPoll');
 
-            return () => clearInterval(pollInterval);
+            return () => IntervalRegistry.clearInterval(pollInterval);
           }
         };
 
@@ -5097,6 +5207,15 @@
             await GoogleDriveSync.uploadPDF(pdfBlob, filename, form.type);
             console.log('Uploaded new PDF to Drive:', form.type);
           }
+
+          // AUDIT LOG: Record form update
+          AuditLogManager.log('update', {
+            formId: form.id,
+            formType: formType,
+            site: formData.siteConducted || formData.site || 'Unknown',
+            version: form.version || 2,
+            action: 'Form updated'
+          });
 
           // Clear states and show success
           setUpdateConfirmModal(null);
