@@ -72,27 +72,27 @@
         }
       },
 
-      // Victor - MSDS products (synced across all devices)
+      // Victor - MSDS products (authenticated devices only)
       "victor": {
         "products": {
-          ".read": true,
-          ".write": true
+          ".read": "auth != null",
+          ".write": "auth != null"
         }
       },
 
-      // Frank - SWMS history (synced across all devices)
+      // Frank - SWMS history (authenticated devices only)
       "frank": {
         "history": {
-          ".read": true,
-          ".write": true
+          ".read": "auth != null",
+          ".write": "auth != null"
         }
       },
 
-      // Hanna - Receipts (synced across all devices)
+      // Hanna - Receipts (authenticated devices only)
       "hanna": {
         "receipts": {
-          ".read": true,
-          ".write": true
+          ".read": "auth != null",
+          ".write": "auth != null"
         }
       },
 
