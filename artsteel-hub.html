@@ -290,6 +290,89 @@
         .nav-tab.active {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         }
+
+        /* API Key Popover */
+        .api-popover {
+            display: none;
+            position: absolute;
+            top: 100%;
+            right: 0;
+            margin-top: 6px;
+            background: #1e1e2e;
+            border: 1px solid rgba(102,126,234,0.4);
+            border-radius: 10px;
+            padding: 14px;
+            width: 280px;
+            z-index: 100;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+        }
+        .api-popover.show { display: block; }
+        .api-popover-wrap { position: relative; display: inline-block; }
+
+        /* MSDS Smart Search Dropdown */
+        .msds-search-wrap { position: relative; }
+        .msds-search-wrap input {
+            width: 100%;
+            padding: 12px 40px 12px 14px;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 8px;
+            color: #fff;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        .msds-search-wrap input:focus {
+            outline: none;
+            border-color: rgba(102,126,234,0.6);
+            box-shadow: 0 0 0 2px rgba(102,126,234,0.15);
+        }
+        .msds-search-icon {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #888;
+            pointer-events: none;
+            font-size: 16px;
+        }
+        .msds-dropdown {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            margin-top: 4px;
+            background: #1e1e2e;
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 8px;
+            max-height: 320px;
+            overflow-y: auto;
+            z-index: 80;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+        }
+        .msds-dropdown.show { display: block; }
+        .msds-drop-item {
+            padding: 10px 14px;
+            cursor: pointer;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            transition: background 0.15s;
+        }
+        .msds-drop-item:hover { background: rgba(102,126,234,0.15); }
+        .msds-drop-item:last-child { border-bottom: none; }
+        .msds-drop-name { font-weight: 600; color: #fff; font-size: 13px; }
+        .msds-drop-mfr { color: #888; font-size: 11px; margin-top: 2px; }
+        .msds-drop-status { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; margin-left: 8px; }
+        .msds-drop-action {
+            padding: 12px 14px;
+            cursor: pointer;
+            background: rgba(102,126,234,0.1);
+            color: #667eea;
+            font-weight: 600;
+            font-size: 13px;
+            text-align: center;
+            border-top: 1px solid rgba(255,255,255,0.1);
+        }
+        .msds-drop-action:hover { background: rgba(102,126,234,0.25); }
         .nav-tab.offline {
             opacity: 0.5;
             position: relative;
@@ -1900,6 +1983,18 @@
         <button class="nav-tab" onclick="showSection('victor')">🔍 VICTOR</button>
         <button class="nav-tab" onclick="showSection('frank')">🦺 FRANK</button>
         <button class="nav-tab" onclick="showSection('settings')">⚙️</button>
+        <div class="api-popover-wrap">
+            <button class="nav-tab" onclick="toggleApiPopover(event)" id="apiNavBtn">🔑</button>
+            <div class="api-popover" id="apiPopover">
+                <div style="font-weight:600;color:#fff;margin-bottom:8px;font-size:13px;">🔑 AI API Key</div>
+                <div style="font-size:11px;color:#888;margin-bottom:10px;">Required for Victor & Frank</div>
+                <div style="display:flex;gap:6px;">
+                    <input type="password" id="apiKeyPopoverInput" placeholder="sk-ant-..." style="flex:1;padding:8px 10px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:6px;color:#fff;font-size:12px;">
+                    <button onclick="saveApiKeyFromPopover()" style="padding:8px 14px;background:linear-gradient(135deg,#667eea,#764ba2);border:none;border-radius:6px;color:#fff;cursor:pointer;font-weight:600;font-size:12px;">Save</button>
+                </div>
+                <p id="apiPopoverStatus" style="margin-top:6px;font-size:11px;color:#4CAF50;"></p>
+            </div>
+        </div>
     </div>
 
     <!-- HOBART Section -->
@@ -2556,31 +2651,27 @@
             <div id="victorActionNeeded" style="display:none;margin-top:10px;padding:8px 12px;background:rgba(242,153,74,0.1);border-radius:6px;font-size:12px;color:#aaa;text-align:center;"></div>
         </div>
 
-        <!-- All MSDS Register -->
+        <!-- MSDS Smart Search -->
         <div class="calc-card">
-            <h3>📋 All MSDS</h3>
-            <!-- Search & Filter Controls -->
-            <div style="margin-top:10px;">
-                <input type="text" id="victorFilterText" oninput="victorRenderProducts()" placeholder="Filter by product or manufacturer..." style="width:100%;padding:10px 14px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;font-size:13px;margin-bottom:10px;box-sizing:border-box;">
-                <div id="victorFilterButtons" style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;">
-                    <button onclick="victorSetFilter('all')" id="victorFilterAll" style="padding:6px 14px;border-radius:6px;border:1px solid rgba(255,255,255,0.2);background:rgba(102,126,234,0.3);color:#fff;cursor:pointer;font-size:12px;font-weight:600;">All</button>
-                    <button onclick="victorSetFilter('current')" id="victorFilterCurrent" style="padding:6px 14px;border-radius:6px;border:1px solid rgba(76,175,80,0.3);background:transparent;color:#4CAF50;cursor:pointer;font-size:12px;font-weight:600;">Current</button>
-                    <button onclick="victorSetFilter('expiring')" id="victorFilterExpiring" style="padding:6px 14px;border-radius:6px;border:1px solid rgba(242,153,74,0.3);background:transparent;color:#f2994a;cursor:pointer;font-size:12px;font-weight:600;">Expiring</button>
-                    <button onclick="victorSetFilter('expired')" id="victorFilterExpired" style="padding:6px 14px;border-radius:6px;border:1px solid rgba(244,67,54,0.3);background:transparent;color:#f44336;cursor:pointer;font-size:12px;font-weight:600;">Expired</button>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                <h3>📋 MSDS Register</h3>
+                <div id="victorFilterButtons" style="display:flex;gap:4px;flex-wrap:wrap;">
+                    <button onclick="victorSetFilter('all')" id="victorFilterAll" style="padding:4px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.2);background:rgba(102,126,234,0.3);color:#fff;cursor:pointer;font-size:11px;font-weight:600;">All</button>
+                    <button onclick="victorSetFilter('current')" id="victorFilterCurrent" style="padding:4px 10px;border-radius:6px;border:1px solid rgba(76,175,80,0.3);background:transparent;color:#4CAF50;cursor:pointer;font-size:11px;font-weight:600;">Current</button>
+                    <button onclick="victorSetFilter('expiring')" id="victorFilterExpiring" style="padding:4px 10px;border-radius:6px;border:1px solid rgba(242,153,74,0.3);background:transparent;color:#f2994a;cursor:pointer;font-size:11px;font-weight:600;">Expiring</button>
+                    <button onclick="victorSetFilter('expired')" id="victorFilterExpired" style="padding:4px 10px;border-radius:6px;border:1px solid rgba(244,67,54,0.3);background:transparent;color:#f44336;cursor:pointer;font-size:11px;font-weight:600;">Expired</button>
                 </div>
             </div>
-            <div id="victorProductList" style="margin-top:4px;"></div>
-            <p id="victorEmptyMsg" style="color:#666;font-size:13px;margin-top:8px;">No products tracked yet. Search below to add.</p>
-        </div>
-
-        <!-- Add New MSDS -->
-        <div class="calc-card">
-            <h3>➕ Add New MSDS</h3>
-            <div style="margin-top:10px;">
-                <input type="text" id="victorProductName" placeholder="Product name (e.g. HIT-HY 200 Hilti)" style="width:100%;padding:12px 14px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;font-size:14px;margin-bottom:10px;box-sizing:border-box;">
-                <input type="text" id="victorManufacturer" placeholder="Manufacturer (optional - auto-detected)" style="width:100%;padding:12px 14px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#fff;font-size:14px;margin-bottom:10px;box-sizing:border-box;">
-                <button onclick="victorSearch()" style="width:100%;padding:14px;background:linear-gradient(135deg,#667eea,#764ba2);border:none;border-radius:8px;color:#fff;cursor:pointer;font-weight:600;font-size:16px;">🔍 Find MSDS</button>
+            <div class="msds-search-wrap">
+                <input type="text" id="victorFilterText" placeholder="Search product name or part..." oninput="victorOnSearchInput()" onfocus="victorOnSearchFocus()" autocomplete="off">
+                <span class="msds-search-icon">🔍</span>
+                <div class="msds-dropdown" id="victorSearchDropdown"></div>
             </div>
+            <!-- Hidden inputs for backwards compatibility with victorSearch() -->
+            <input type="hidden" id="victorProductName">
+            <input type="hidden" id="victorManufacturer">
+            <div id="victorProductList" style="margin-top:12px;"></div>
+            <p id="victorEmptyMsg" style="color:#666;font-size:13px;margin-top:8px;">No products tracked yet. Search above to add.</p>
         </div>
 
         <div id="victorSearching" style="display:none;text-align:center;padding:30px;">
@@ -6281,6 +6372,151 @@
     }
 
     // Set active filter and re-render
+    // ═══════════════════════════════════════
+    // API KEY POPOVER
+    // ═══════════════════════════════════════
+    function toggleApiPopover(e) {
+        e.stopPropagation();
+        var pop = document.getElementById('apiPopover');
+        var isOpen = pop.classList.contains('show');
+        pop.classList.toggle('show');
+        if (!isOpen) {
+            // Show current status
+            var key = getApiKey();
+            var status = document.getElementById('apiPopoverStatus');
+            if (key) {
+                status.textContent = 'Configured (sk-...' + key.slice(-4) + ')';
+                status.style.color = '#4CAF50';
+            } else {
+                status.textContent = 'No API key set';
+                status.style.color = '#f2994a';
+            }
+        }
+    }
+    function saveApiKeyFromPopover() {
+        var key = document.getElementById('apiKeyPopoverInput').value.trim();
+        if (!key.startsWith('sk-')) {
+            document.getElementById('apiPopoverStatus').textContent = 'Invalid — must start with sk-';
+            document.getElementById('apiPopoverStatus').style.color = '#f44336';
+            return;
+        }
+        localStorage.setItem('steel-api-key', key);
+        document.getElementById('apiKeyPopoverInput').value = '';
+        document.getElementById('apiPopoverStatus').textContent = 'Saved (sk-...' + key.slice(-4) + ')';
+        document.getElementById('apiPopoverStatus').style.color = '#4CAF50';
+        // Sync with settings page input
+        loadApiKeyStatus();
+    }
+    // Close popover when clicking outside
+    document.addEventListener('click', function(e) {
+        var pop = document.getElementById('apiPopover');
+        if (pop && pop.classList.contains('show') && !pop.contains(e.target) && e.target.id !== 'apiNavBtn') {
+            pop.classList.remove('show');
+        }
+        // Also close MSDS dropdown when clicking outside
+        var dd = document.getElementById('victorSearchDropdown');
+        var input = document.getElementById('victorFilterText');
+        if (dd && dd.classList.contains('show') && !dd.contains(e.target) && e.target !== input) {
+            dd.classList.remove('show');
+        }
+    });
+
+    // ═══════════════════════════════════════
+    // MSDS SMART SEARCH DROPDOWN
+    // ═══════════════════════════════════════
+    function victorOnSearchInput() {
+        victorRenderProducts();
+        victorShowDropdown();
+    }
+
+    function victorOnSearchFocus() {
+        victorShowDropdown();
+    }
+
+    function victorShowDropdown() {
+        var input = document.getElementById('victorFilterText');
+        var dd = document.getElementById('victorSearchDropdown');
+        if (!input || !dd) return;
+        var query = input.value.toLowerCase().trim();
+        if (query.length === 0) {
+            dd.classList.remove('show');
+            return;
+        }
+
+        // Find matches in existing products
+        var matches = [];
+        victorProducts.forEach(function(p, i) {
+            var nameMatch = (p.name || '').toLowerCase().indexOf(query) >= 0;
+            var mfrMatch = (p.manufacturer || '').toLowerCase().indexOf(query) >= 0;
+            var summaryMatch = (p.summary || '').toLowerCase().indexOf(query) >= 0;
+            if (nameMatch || mfrMatch || summaryMatch) {
+                matches.push({ p: p, i: i, compliance: victorCalcCompliance(p.msds_date) });
+            }
+        });
+
+        // Sort matches alphabetically
+        matches.sort(function(a, b) { return a.p.name.localeCompare(b.p.name); });
+
+        var html = '';
+        if (matches.length > 0) {
+            matches.forEach(function(m) {
+                var statusColor = m.compliance === 'current' ? '#4CAF50' : m.compliance === 'expiring' ? '#f2994a' : m.compliance === 'expired' ? '#f44336' : '#888';
+                var statusBg = m.compliance === 'current' ? 'rgba(76,175,80,0.15)' : m.compliance === 'expiring' ? 'rgba(242,153,74,0.15)' : m.compliance === 'expired' ? 'rgba(244,67,54,0.15)' : 'rgba(255,255,255,0.05)';
+                html += '<div class="msds-drop-item" onclick="victorScrollToProduct(' + m.i + ')">';
+                html += '<div><span class="msds-drop-name">' + escapeHtml(m.p.name) + '</span>';
+                html += '<span class="msds-drop-status" style="color:' + statusColor + ';background:' + statusBg + ';">' + (m.compliance || 'unknown').toUpperCase() + '</span></div>';
+                html += '<div class="msds-drop-mfr">' + escapeHtml(m.p.manufacturer || '') + '</div>';
+                html += '</div>';
+            });
+        } else {
+            html += '<div style="padding:12px 14px;color:#888;font-size:12px;text-align:center;">No matching MSDS found in register</div>';
+        }
+        // Always show "Search online" action at bottom
+        html += '<div class="msds-drop-action" onclick="victorSearchFromDropdown()">🔍 Search online for &quot;' + escapeHtml(input.value.trim()) + '&quot;</div>';
+
+        dd.innerHTML = html;
+        dd.classList.add('show');
+    }
+
+    function victorScrollToProduct(idx) {
+        // Close dropdown
+        var dd = document.getElementById('victorSearchDropdown');
+        if (dd) dd.classList.remove('show');
+
+        // Clear filter to show all, then highlight the product
+        var input = document.getElementById('victorFilterText');
+        var productName = victorProducts[idx]?.name || '';
+        if (input) input.value = productName;
+        victorSetFilter('all');
+
+        // Scroll to the product card after render
+        setTimeout(function() {
+            var cards = document.querySelectorAll('#victorProductList > div');
+            cards.forEach(function(card) {
+                if (card.textContent.indexOf(productName) >= 0) {
+                    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    card.style.transition = 'box-shadow 0.3s';
+                    card.style.boxShadow = '0 0 0 2px #667eea';
+                    setTimeout(function() { card.style.boxShadow = ''; }, 2000);
+                }
+            });
+        }, 100);
+    }
+
+    function victorSearchFromDropdown() {
+        var input = document.getElementById('victorFilterText');
+        var dd = document.getElementById('victorSearchDropdown');
+        if (dd) dd.classList.remove('show');
+
+        // Set the hidden fields for backwards compatibility with victorSearch()
+        var nameInput = document.getElementById('victorProductName');
+        if (nameInput) nameInput.value = input ? input.value.trim() : '';
+        var mfrInput = document.getElementById('victorManufacturer');
+        if (mfrInput) mfrInput.value = '';
+
+        victorSearch();
+    }
+
     function victorSetFilter(filter) {
         victorActiveFilter = filter;
         // Update button styles
