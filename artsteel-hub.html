@@ -310,7 +310,7 @@
         .api-popover-wrap { position: relative; display: inline-block; }
 
         /* MSDS Smart Search Dropdown */
-        .msds-search-wrap { position: relative; }
+        .msds-search-wrap { position: relative; z-index: 90; }
         .msds-search-wrap input {
             width: 100%;
             padding: 12px 40px 12px 14px;
@@ -318,8 +318,9 @@
             border: 1px solid rgba(255,255,255,0.2);
             border-radius: 8px;
             color: #fff;
-            font-size: 14px;
+            font-size: 16px;
             box-sizing: border-box;
+            -webkit-appearance: none;
         }
         .msds-search-wrap input:focus {
             outline: none;
@@ -342,37 +343,39 @@
             left: 0;
             right: 0;
             margin-top: 4px;
-            background: #1e1e2e;
-            border: 1px solid rgba(255,255,255,0.15);
-            border-radius: 8px;
-            max-height: 320px;
+            background: #1a1a2e;
+            border: 2px solid rgba(102,126,234,0.5);
+            border-radius: 10px;
+            max-height: 60vh;
             overflow-y: auto;
-            z-index: 80;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            z-index: 9999;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.8);
+            -webkit-overflow-scrolling: touch;
         }
         .msds-dropdown.show { display: block; }
         .msds-drop-item {
-            padding: 10px 14px;
-            cursor: pointer;
-            border-bottom: 1px solid rgba(255,255,255,0.05);
-            transition: background 0.15s;
-        }
-        .msds-drop-item:hover { background: rgba(102,126,234,0.15); }
-        .msds-drop-item:last-child { border-bottom: none; }
-        .msds-drop-name { font-weight: 600; color: #fff; font-size: 13px; }
-        .msds-drop-mfr { color: #888; font-size: 11px; margin-top: 2px; }
-        .msds-drop-status { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; margin-left: 8px; }
-        .msds-drop-action {
             padding: 12px 14px;
             cursor: pointer;
-            background: rgba(102,126,234,0.1);
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            transition: background 0.15s;
+        }
+        .msds-drop-item:hover, .msds-drop-item:active { background: rgba(102,126,234,0.2); }
+        .msds-drop-item:last-child { border-bottom: none; }
+        .msds-drop-name { font-weight: 600; color: #fff; font-size: 14px; }
+        .msds-drop-mfr { color: #999; font-size: 12px; margin-top: 3px; }
+        .msds-drop-status { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; margin-left: 8px; text-transform: uppercase; }
+        .msds-drop-action {
+            padding: 14px;
+            cursor: pointer;
+            background: linear-gradient(135deg, rgba(102,126,234,0.15), rgba(118,75,162,0.15));
             color: #667eea;
-            font-weight: 600;
-            font-size: 13px;
+            font-weight: 700;
+            font-size: 14px;
             text-align: center;
             border-top: 1px solid rgba(255,255,255,0.1);
+            border-radius: 0 0 10px 10px;
         }
-        .msds-drop-action:hover { background: rgba(102,126,234,0.25); }
+        .msds-drop-action:hover, .msds-drop-action:active { background: linear-gradient(135deg, rgba(102,126,234,0.3), rgba(118,75,162,0.3)); }
         .nav-tab.offline {
             opacity: 0.5;
             position: relative;
@@ -2652,7 +2655,7 @@
         </div>
 
         <!-- MSDS Smart Search -->
-        <div class="calc-card">
+        <div class="calc-card" style="overflow:visible;position:relative;">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
                 <h3>📋 MSDS Register</h3>
                 <div id="victorFilterButtons" style="display:flex;gap:4px;flex-wrap:wrap;">
@@ -2663,7 +2666,7 @@
                 </div>
             </div>
             <div class="msds-search-wrap">
-                <input type="text" id="victorFilterText" placeholder="Search product name or part..." oninput="victorOnSearchInput()" onfocus="victorOnSearchFocus()" autocomplete="off">
+                <input type="text" id="victorFilterText" placeholder="Search product name or part..." oninput="victorOnSearchInput()" onkeyup="victorOnSearchInput()" onfocus="victorOnSearchFocus()" onclick="victorOnSearchFocus()" autocomplete="off" autocorrect="off" spellcheck="false">
                 <span class="msds-search-icon">🔍</span>
                 <div class="msds-dropdown" id="victorSearchDropdown"></div>
             </div>
