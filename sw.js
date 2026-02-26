@@ -9,7 +9,7 @@
  * - v4: Pinned CDN versions (supply-chain hardening)
  */
 
-const CACHE_VERSION = 'v20';
+const CACHE_VERSION = 'v29';
 const STATIC_CACHE = `jmart-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `jmart-dynamic-${CACHE_VERSION}`;
 const CDN_CACHE = `jmart-cdn-${CACHE_VERSION}`;
@@ -20,6 +20,43 @@ const OFFLINE_URL = 'offline.html';
 const STATIC_FILES = [
   './',
   './index.html',
+  './js/config.js',
+  './js/deviceAuth.js',
+  './js/googleDriveConfig.js',
+  './js/googleDriveSync.js',
+  './js/dailyBackupScheduler.js',
+  './js/intervalRegistry.js',
+  './js/storageQuotaManager.js',
+  './js/auditLogManager.js',
+  './js/firebaseSync.js',
+  './js/jobsManager.js',
+  './js/deviceAuthManager.js',
+  './js/photoUploadManager.js',
+  './js/offlinePhotoQueue.js',
+  './js/networkStatus.js',
+  './js/pdfConfig.js',
+  './js/pdfGenerator.js',
+  './js/trainingCourseData.js',
+  './js/trainingCertGenerator.js',
+  './js/formValidator.js',
+  './js/formConstants.js',
+  './js/components/shared.jsx',
+  './js/components/hooks.jsx',
+  './js/components/modals.jsx',
+  './js/components/auth.jsx',
+  './js/components/app.jsx',
+  './js/components/dashboard.jsx',
+  './js/components/training.jsx',
+  './js/components/form-prestart.jsx',
+  './js/components/form-incident.jsx',
+  './js/components/form-toolbox.jsx',
+  './js/components/form-inspection.jsx',
+  './js/components/form-itp.jsx',
+  './js/components/form-steel-itp.jsx',
+  './js/components/view-emergency.jsx',
+  './js/components/view-settings.jsx',
+  './js/components/view-recordings.jsx',
+  './js/components/bootstrap.jsx',
   './manifest.json',
   './offline.html',
   './icons/icon-192x192.png',
