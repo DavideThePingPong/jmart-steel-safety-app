@@ -183,6 +183,17 @@
   <!-- Form Validation Service (extracted to separate file) -->
   <script src="js/formValidator.js"></script>
 
+  <!-- Global error handler for debugging -->
+  <script>
+    window.__appErrors = [];
+    window.onerror = function(msg, src, line, col, err) {
+      var e = {msg:msg, src:src, line:line, col:col, stack: err && err.stack ? err.stack.substring(0,300) : ''};
+      window.__appErrors.push(e);
+      console.error('[GLOBAL ERROR]', msg, 'at', src, line+':'+col);
+      return false;
+    };
+  </script>
+
   <!-- React Components (split into files, loaded and compiled as one Babel block) -->
   <script>
     (async function loadComponents() {
@@ -206,19 +217,23 @@
         'js/components/bootstrap.jsx'
       ];
       try {
+        console.log('[LOADER] Fetching', files.length, 'component files...');
         const sources = await Promise.all(
           files.map(f => fetch(f).then(r => {
             if (!r.ok) throw new Error('Failed to load ' + f);
             return r.text();
           }))
         );
+        console.log('[LOADER] All files fetched, compiling with Babel...');
         const combined = sources.join('\n\n');
         const compiled = Babel.transform(combined, { presets: ['react'] }).code;
+        console.log('[LOADER] Babel compiled', compiled.length, 'chars. Appending script...');
         const script = document.createElement('script');
         script.textContent = compiled;
         document.body.appendChild(script);
+        console.log('[LOADER] Script appended. Root innerHTML length:', document.getElementById('root').innerHTML.length);
       } catch (err) {
-        console.error('Component loading error:', err);
+        console.error('[LOADER] Component loading error:', err);
         document.getElementById('root').innerHTML =
           '<div style="padding:20px;color:red;">Error loading app: ' + err.message + '</div>';
       }
