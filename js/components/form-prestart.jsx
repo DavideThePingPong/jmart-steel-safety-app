@@ -80,24 +80,19 @@ function PrestartView({ onSubmit, onUpdate, editingForm, previousPrestarts = [],
   const [validationErrors, setValidationErrors] = useState([]);
 
   const validateForm = () => {
+    // Use centralized validator for WHS-compliant checks
+    if (window.formValidator) {
+      return window.formValidator.validatePrestart({
+        supervisorName, siteConducted, builder, address,
+        highRiskWorks, worksCoveredBySWMS, isPlantEquipmentUsed,
+        siteHazards, signatures, checks,
+        checkType, checklistItems
+      });
+    }
+    // Fallback: basic inline validation if validator not loaded
     const errors = [];
-    const signedCount = Object.values(signatures).filter(s => s !== null).length;
-
-    // Required fields for WHS compliance
     if (!siteConducted) errors.push('Site/Location is required');
     if (!supervisorName) errors.push('Supervisor name is required');
-    if (siteHazards.value === '' && siteHazards.notes.length === 0) errors.push('Site hazards must be identified');
-    if (highRiskWorks === null) errors.push('High-risk works question must be answered');
-    if (worksCoveredBySWMS === null) errors.push('SWMS coverage question must be answered');
-    if (highRiskWorks === 'yes' && worksCoveredBySWMS !== 'yes') errors.push('High-risk works require SWMS coverage');
-    if (isPlantEquipmentUsed === null) errors.push('Plant/equipment question must be answered');
-    if (signedCount === 0) errors.push('At least one worker must sign on');
-
-    // Checklist completion check
-    const items = checklistItems[checkType] || [];
-    const completedItems = Object.keys(checks).length;
-    if (completedItems < items.length) errors.push(`All ${items.length} checklist items must be completed (${completedItems} done)`);
-
     return errors;
   };
 

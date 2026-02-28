@@ -66,7 +66,7 @@ window.formValidator = (function() {
     return errors;
   }
 
-  // Pre-start checklist validation
+  // Pre-start checklist validation (enhanced: checklist completion + hazard cross-validation)
   function validatePrestart(form) {
     const errors = [];
     if (!isPresent(form.supervisorName)) errors.push('Supervisor name is required');
@@ -76,22 +76,41 @@ window.formValidator = (function() {
     if (!isPresent(form.highRiskWorks)) errors.push('High Risk Works selection is required');
     if (!isPresent(form.worksCoveredBySWMS)) errors.push('SWMS coverage selection is required');
     if (!isPresent(form.isPlantEquipmentUsed)) errors.push('Plant/Equipment selection is required');
+    // Hazard cross-validation: high-risk works must have SWMS coverage
+    if (form.highRiskWorks === 'yes' && form.worksCoveredBySWMS !== 'yes') {
+      errors.push('High-risk works require SWMS coverage');
+    }
+    // Site hazards identification check
+    if (form.siteHazards) {
+      var hazVal = form.siteHazards.value || '';
+      var hazNotes = Array.isArray(form.siteHazards.notes) ? form.siteHazards.notes : [];
+      if (hazVal === '' && hazNotes.length === 0) errors.push('Site hazards must be identified');
+    }
+    // Checklist completion check
+    if (form.checkType && form.checklistItems && form.checks) {
+      var items = form.checklistItems[form.checkType] || [];
+      var completedItems = Object.keys(form.checks).length;
+      if (completedItems < items.length) {
+        errors.push('All ' + items.length + ' checklist items must be completed (' + completedItems + ' done)');
+      }
+    }
     const signedCount = form.signatures ? Object.values(form.signatures).filter(s => s !== null).length : 0;
     if (signedCount === 0) errors.push('At least one worker must sign on');
     return errors;
   }
 
-  // Incident report validation
+  // Incident report validation (enhanced: incidentTime check)
   function validateIncident(form) {
     const errors = [];
-    if (!isPresent(form.incidentType)) errors.push('Incident type is required');
-    if (!isPresent(form.incidentDate)) errors.push('Date of incident is required');
+    if (!isPresent(form.incidentType || form.type)) errors.push('Incident type is required');
+    if (!isPresent(form.incidentDate || form.date)) errors.push('Date of incident is required');
+    if (!isPresent(form.incidentTime || form.time)) errors.push('Time of incident is required');
     if (!isPresent(form.location)) errors.push('Location is required');
     if (!isPresent(form.description)) errors.push('Description is required');
     if (!isPresent(form.reportedBy)) errors.push('Reporter name is required');
     if (!isPresent(form.immediateActions)) errors.push('Immediate actions taken is required');
     if (!isPresent(form.reporterSignature)) errors.push('Reporter signature is required');
-    const dateErr = dateNotFuture(form.incidentDate);
+    const dateErr = dateNotFuture(form.incidentDate || form.date);
     if (dateErr) errors.push(dateErr);
     return errors;
   }

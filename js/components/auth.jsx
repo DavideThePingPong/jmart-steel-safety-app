@@ -18,8 +18,8 @@ function LoginScreen({ onAuthenticated, authStatus }) {
   }, []);
 
   const handleFirstSetup = async () => {
-    if (newPassword.length < 4) {
-      setError('Password must be at least 4 characters');
+    if (newPassword.length < 8) {
+      setError('Password must be at least 8 characters (use a mix of letters and numbers)');
       return;
     }
     if (newPassword !== confirmPassword) {

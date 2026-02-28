@@ -156,6 +156,19 @@ const DeviceAuth = {
         if (firebaseAuthUid) updates.authUid = firebaseAuthUid;
         await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId).update(updates);
 
+        // Migration: ensure admin auth UID is registered in adminAuthUids helper node
+        if (this.isAdmin && firebaseAuthUid) {
+          try {
+            const adminUidSnap = await firebaseDb.ref('jmart-safety/adminAuthUids/' + firebaseAuthUid).once('value');
+            if (!adminUidSnap.exists()) {
+              await firebaseDb.ref('jmart-safety/adminAuthUids/' + firebaseAuthUid).set(true);
+              console.log('Migrated admin auth UID to adminAuthUids:', firebaseAuthUid);
+            }
+          } catch (e) {
+            console.warn('Admin UID migration skipped (non-fatal):', e.message);
+          }
+        }
+
         this.notifyStatusListeners();
         console.log('Device approved, admin:', this.isAdmin, 'canViewDevices:', this.canViewDevices, 'canRevokeDevices:', this.canRevokeDevices);
         return { approved: true, admin: this.isAdmin, canViewDevices: this.canViewDevices, canRevokeDevices: this.canRevokeDevices };
@@ -176,7 +189,7 @@ const DeviceAuth = {
       // was cleared on all admin devices, leaving them orphaned in Firebase.
       const approvedDevices = allApprovedSnap.val();
       const now = Date.now();
-      const ORPHAN_THRESHOLD = 7 * 24 * 60 * 60 * 1000; // 7 days
+      const ORPHAN_THRESHOLD = 30 * 24 * 60 * 60 * 1000; // 30 days
       let hasActiveAdmin = false;
 
       if (approvedDevices) {
@@ -214,6 +227,20 @@ const DeviceAuth = {
         }
 
         await this.registerAsApproved(true);
+
+        // Log admin recovery event to audit trail
+        if (typeof AuditLogManager !== 'undefined') {
+          try {
+            AuditLogManager.log('admin_recovery', {
+              deviceId: this.deviceId,
+              deviceType: this.deviceInfo?.type || 'Unknown',
+              reason: 'All admin devices inactive for 30+ days',
+              orphanedAdminCount: approvedDevices ? Object.values(approvedDevices).filter(d => d && d.isAdmin).length : 0,
+              action: 'Admin access recovered by new device'
+            });
+          } catch (e) { /* non-fatal */ }
+        }
+
         return { approved: true, admin: true, adminRecovery: true };
       }
 
@@ -273,6 +300,16 @@ const DeviceAuth = {
 
     await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId).set(deviceData);
 
+    // Register admin auth UID for Firebase rules enforcement
+    if (isAdmin && firebaseAuthUid) {
+      try {
+        await firebaseDb.ref('jmart-safety/adminAuthUids/' + firebaseAuthUid).set(true);
+        console.log('Admin auth UID registered:', firebaseAuthUid);
+      } catch (e) {
+        console.warn('Could not register admin auth UID (non-fatal):', e.message);
+      }
+    }
+
     // Remove from pending if exists
     await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).remove();
 
@@ -309,6 +346,15 @@ const DeviceAuth = {
       // Move to approved
       await firebaseDb.ref('jmart-safety/devices/approved/' + deviceId).set(approvedData);
       await firebaseDb.ref('jmart-safety/devices/pending/' + deviceId).remove();
+
+      // If making admin, register their auth UID for Firebase rules
+      if (makeAdmin && approvedData.authUid) {
+        try {
+          await firebaseDb.ref('jmart-safety/adminAuthUids/' + approvedData.authUid).set(true);
+        } catch (e) {
+          console.warn('Could not register admin auth UID for approved device:', e.message);
+        }
+      }
 
       console.log('Device approved:', deviceId);
       return true;
@@ -360,6 +406,14 @@ const DeviceAuth = {
     }
 
     try {
+      // Remove admin auth UID if the revoked device was admin
+      const revokedSnap = await firebaseDb.ref('jmart-safety/devices/approved/' + deviceId).once('value');
+      if (revokedSnap.exists()) {
+        const revokedData = revokedSnap.val();
+        if (revokedData.isAdmin && revokedData.authUid) {
+          await firebaseDb.ref('jmart-safety/adminAuthUids/' + revokedData.authUid).remove().catch(() => {});
+        }
+      }
       await firebaseDb.ref('jmart-safety/devices/approved/' + deviceId).remove();
       console.log('Device revoked:', deviceId);
       return true;
@@ -515,8 +569,8 @@ const DeviceAuth = {
     return 'hash_' + Math.abs(hash).toString(16);
   },
 
-  // Hash password using browser's built-in SHA-256 (async)
-  hashPassword: async function(password) {
+  // Legacy SHA-256 hash — kept only for migration verification
+  _hashPasswordSHA256: async function(password) {
     try {
       const encoder = new TextEncoder();
       const data = encoder.encode(password + 'jmart_salt_2024_v2');
@@ -524,18 +578,60 @@ const DeviceAuth = {
       const hashArray = Array.from(new Uint8Array(hashBuffer));
       return 'sha256_' + hashArray.map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
     } catch (e) {
-      console.warn('SHA-256 unavailable, falling back to legacy hash:', e.message);
-      return this._legacyHash(password);
+      return null;
+    }
+  },
+
+  // Generate cryptographically random salt
+  generateSalt: function() {
+    const array = new Uint8Array(16);
+    crypto.getRandomValues(array);
+    return Array.from(array).map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
+  },
+
+  // PBKDF2 hash with random salt (current standard)
+  hashPasswordPBKDF2: async function(password, salt) {
+    const encoder = new TextEncoder();
+    const keyMaterial = await crypto.subtle.importKey(
+      'raw',
+      encoder.encode(password),
+      'PBKDF2',
+      false,
+      ['deriveBits']
+    );
+    const derivedBits = await crypto.subtle.deriveBits(
+      {
+        name: 'PBKDF2',
+        salt: encoder.encode(salt),
+        iterations: 100000,
+        hash: 'SHA-256'
+      },
+      keyMaterial,
+      256
+    );
+    const hashArray = Array.from(new Uint8Array(derivedBits));
+    return hashArray.map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
+  },
+
+  // Hash password — uses PBKDF2 (primary) with SHA-256 fallback for older browsers
+  hashPassword: async function(password) {
+    try {
+      const salt = this.generateSalt();
+      const hash = await this.hashPasswordPBKDF2(password, salt);
+      return JSON.stringify({ hash: hash, salt: salt, algorithm: 'pbkdf2', iterations: 100000 });
+    } catch (e) {
+      console.warn('PBKDF2 unavailable, falling back to SHA-256:', e.message);
+      return this._hashPasswordSHA256(password) || this._legacyHash(password);
     }
   },
 
   // Set initial password (first time setup)
   setPassword: async function(password) {
     if (!firebaseDb) return false;
-    const hash = await this.hashPassword(password);
     try {
-      await firebaseDb.ref('jmart-safety/config/appPasswordHash').set(hash);
-      this.APP_PASSWORD_HASH = hash;
+      const hashData = await this.hashPassword(password);
+      await firebaseDb.ref('jmart-safety/config/appPasswordHash').set(hashData);
+      this.APP_PASSWORD_HASH = hashData;
       return true;
     } catch (error) {
       console.error('Error setting password:', error);
@@ -543,23 +639,53 @@ const DeviceAuth = {
     }
   },
 
-  // Verify password (with automatic migration from old hash format)
+  // Verify password (handles PBKDF2 JSON, SHA-256 string, and legacy DJB2 formats)
   verifyPassword: async function(password) {
-    const newHash = await this.hashPassword(password);
-    if (newHash === this.APP_PASSWORD_HASH) return true;
+    if (!this.APP_PASSWORD_HASH) return false;
+
+    // Try PBKDF2 format (JSON string with salt)
+    try {
+      const stored = JSON.parse(this.APP_PASSWORD_HASH);
+      if (stored.algorithm === 'pbkdf2' && stored.salt && stored.hash) {
+        const hash = await this.hashPasswordPBKDF2(password, stored.salt);
+        return hash === stored.hash;
+      }
+    } catch (e) {
+      // Not JSON — fall through to legacy formats
+    }
+
+    // Try SHA-256 format (migration path)
+    try {
+      const sha256Hash = await this._hashPasswordSHA256(password);
+      if (sha256Hash && sha256Hash === this.APP_PASSWORD_HASH) {
+        console.log('Migrating password hash from SHA-256 to PBKDF2');
+        try {
+          const newHash = await this.hashPassword(password);
+          await firebaseDb.ref('jmart-safety/config/appPasswordHash').set(newHash);
+          this.APP_PASSWORD_HASH = newHash;
+        } catch (migErr) {
+          console.warn('Hash migration failed (non-fatal):', migErr.message);
+        }
+        return true;
+      }
+    } catch (e) { /* ignore */ }
+
+    // Try legacy DJB2 format (migration path)
     if (this.APP_PASSWORD_HASH && this.APP_PASSWORD_HASH.startsWith('hash_')) {
       const oldHash = this._legacyHash(password);
       if (oldHash === this.APP_PASSWORD_HASH) {
-        console.log('Migrating password hash from DJB2 to SHA-256');
+        console.log('Migrating password hash from DJB2 to PBKDF2');
         try {
+          const newHash = await this.hashPassword(password);
           await firebaseDb.ref('jmart-safety/config/appPasswordHash').set(newHash);
           this.APP_PASSWORD_HASH = newHash;
-        } catch (e) {
-          console.warn('Hash migration failed (non-fatal):', e.message);
+        } catch (migErr) {
+          console.warn('Hash migration failed (non-fatal):', migErr.message);
         }
         return true;
       }
     }
+
     return false;
   },
 
@@ -614,11 +740,16 @@ const DeviceAuth = {
         type: this.deviceInfo?.type || 'Unknown Device',
         browser: this.deviceInfo?.browser || 'Unknown Browser',
         screen: screen.width + 'x' + screen.height,
+        authUid: firebaseAuthUid || null,
         isAdmin: true,
         approvedAt: new Date().toISOString(),
         approvedBy: 'SYSTEM (First Device)',
         lastSeen: new Date().toISOString()
       });
+      // Register admin auth UID for Firebase rules enforcement
+      if (firebaseAuthUid) {
+        await firebaseDb.ref('jmart-safety/adminAuthUids/' + firebaseAuthUid).set(true);
+      }
       await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).remove();
       this.isAdmin = true;
       return true;

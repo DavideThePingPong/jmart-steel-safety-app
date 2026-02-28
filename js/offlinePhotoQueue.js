@@ -41,31 +41,99 @@ const OfflinePhotoQueue = {
     }
   },
 
-  // Add photo to queue (stores as base64)
+  // Compress image before storing — resizes to max 800px and reduces JPEG quality
+  compressImage: function(file, maxWidth, quality) {
+    maxWidth = maxWidth || 800;
+    quality = quality || 0.7;
+    return new Promise((resolve, reject) => {
+      // Skip compression for non-image files or very small files
+      if (!file.type.startsWith('image/') || file.size < 50000) {
+        resolve(file);
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          try {
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
+            // Scale down if wider than maxWidth
+            if (width > maxWidth) {
+              height = Math.round(height * (maxWidth / width));
+              width = maxWidth;
+            }
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            canvas.toBlob((blob) => {
+              if (blob) {
+                const compressed = new File([blob], file.name, { type: 'image/jpeg' });
+                console.log('[PhotoQueue] Compressed ' + file.name + ': ' + Math.round(file.size/1024) + 'KB -> ' + Math.round(blob.size/1024) + 'KB');
+                resolve(compressed);
+              } else {
+                resolve(file); // Fallback to original
+              }
+            }, 'image/jpeg', quality);
+          } catch (err) {
+            console.warn('[PhotoQueue] Compression failed, using original:', err.message);
+            resolve(file);
+          }
+        };
+        img.onerror = () => resolve(file); // Fallback
+        img.src = e.target.result;
+      };
+      reader.onerror = () => resolve(file);
+      reader.readAsDataURL(file);
+    });
+  },
+
+  // Add photo to queue (stores as compressed base64)
   addToQueue: async function(file, jobName) {
+    // Check storage quota before adding
+    if (typeof StorageQuotaManager !== 'undefined' && StorageQuotaManager.canStore) {
+      const estimatedSize = file.size * 1.37; // base64 overhead
+      if (!StorageQuotaManager.canStore(estimatedSize)) {
+        console.error('[PhotoQueue] Storage quota would be exceeded. Attempting cleanup...');
+        if (typeof StorageQuotaManager.cleanup === 'function') {
+          StorageQuotaManager.cleanup();
+        }
+        // Re-check after cleanup
+        if (!StorageQuotaManager.canStore(estimatedSize)) {
+          throw new Error('Not enough storage space for this photo. Please free up space or connect to WiFi to upload pending photos.');
+        }
+      }
+    }
+
+    // Compress the image first
+    const compressed = await this.compressImage(file);
+
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => {
         const item = {
           id: Date.now() + '-' + Math.random().toString(36).substr(2, 9),
           jobName,
-          filename: file.name,
-          type: file.type,
-          size: file.size,
+          filename: compressed.name,
+          type: compressed.type,
+          size: compressed.size,
+          originalSize: file.size,
           data: e.target.result, // base64
           queuedAt: new Date().toISOString()
         };
         this.queue.push(item);
         this.saveQueue();
         this.notifyListeners();
-        console.log(`Photo queued for offline upload: ${file.name}`);
+        console.log(`Photo queued for offline upload: ${compressed.name} (${Math.round(compressed.size/1024)}KB)`);
         resolve(item.id);
       };
       reader.onerror = (e) => {
-        console.error(`FileReader error for ${file.name}:`, reader.error);
+        console.error(`FileReader error for ${compressed.name}:`, reader.error);
         reject(reader.error || new Error('Failed to read file'));
       };
-      reader.readAsDataURL(file);
+      reader.readAsDataURL(compressed);
     });
   },
 

@@ -36,6 +36,12 @@
 .space-y-6 > :not([hidden]) ~ :not([hidden]) { margin-top: 1.5rem; }
 
   </style>
+  <!--
+    SRI (Subresource Integrity) — To generate hashes, run from a machine with network access:
+      curl -sL URL | openssl dgst -sha384 -binary | openssl base64 -A
+    Or use https://www.srihash.org/
+    Then add integrity="sha384-HASH" to each script tag below.
+  -->
   <script src="https://unpkg.com/react@18.2.0/umd/react.production.min.js" crossorigin="anonymous"></script>
   <script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
   <script src="https://unpkg.com/@babel/standalone@7.24.0/babel.min.js" crossorigin="anonymous"></script>
@@ -197,6 +203,31 @@
   <!-- React Components (split into files, loaded and compiled as one Babel block) -->
   <script>
     (async function loadComponents() {
+      // Ensure Babel is loaded — fallback to cdnjs if unpkg failed
+      if (typeof Babel === 'undefined') {
+        console.warn('[LOADER] Babel not loaded from primary CDN, trying fallback...');
+        try {
+          await new Promise(function(resolve, reject) {
+            var s = document.createElement('script');
+            s.src = 'https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.0/babel.min.js';
+            s.onload = resolve;
+            s.onerror = function() { reject(new Error('Babel fallback CDN also failed')); };
+            document.head.appendChild(s);
+          });
+          console.log('[LOADER] Babel loaded from fallback CDN');
+        } catch (fallbackErr) {
+          console.error('[LOADER] All Babel CDNs failed:', fallbackErr);
+          document.getElementById('root').innerHTML =
+            '<div style="padding:40px;text-align:center;font-family:system-ui;">' +
+            '<h2 style="color:#dc2626;">Failed to Load App</h2>' +
+            '<p style="color:#6b7280;">Could not load the Babel compiler from any CDN.</p>' +
+            '<p style="color:#6b7280;">Check your internet connection and try again.</p>' +
+            '<button onclick="window.location.reload()" style="margin-top:16px;padding:12px 24px;background:#ea580c;color:white;border:none;border-radius:8px;font-size:16px;cursor:pointer;">Retry</button>' +
+            '</div>';
+          return;
+        }
+      }
+
       const files = [
         'js/components/shared.jsx',
         'js/components/hooks.jsx',
@@ -235,7 +266,11 @@
       } catch (err) {
         console.error('[LOADER] Component loading error:', err);
         document.getElementById('root').innerHTML =
-          '<div style="padding:20px;color:red;">Error loading app: ' + err.message + '</div>';
+          '<div style="padding:40px;text-align:center;font-family:system-ui;">' +
+          '<h2 style="color:#dc2626;">Error Loading App</h2>' +
+          '<p style="color:#6b7280;">' + err.message + '</p>' +
+          '<button onclick="window.location.reload()" style="margin-top:16px;padding:12px 24px;background:#ea580c;color:white;border:none;border-radius:8px;font-size:16px;cursor:pointer;">Retry</button>' +
+          '</div>';
       }
     })();
   </script>

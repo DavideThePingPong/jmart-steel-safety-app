@@ -5,40 +5,58 @@
     ".write": false,
 
     "jmart-safety": {
-      // Config - authenticated devices can read, admins can write (or first setup)
+      // Admin Auth UIDs — maps Firebase auth UIDs to admin status
+      // Only writable by existing admins or during first-device setup (no approved devices yet)
+      "adminAuthUids": {
+        ".read": "auth != null",
+        "$uid": {
+          ".write": "auth != null && (root.child('jmart-safety/adminAuthUids/' + auth.uid).exists() || !root.child('jmart-safety/devices/approved').exists())",
+          ".validate": "newData.isBoolean()"
+        }
+      },
+
+      // Config - authenticated devices can read; only admins or first-time setup can write
       "config": {
         ".read": "auth != null",
-        ".write": "auth != null"
+        ".write": "auth != null && (!data.child('appPasswordHash').exists() || root.child('jmart-safety/adminAuthUids/' + auth.uid).exists())"
       },
 
       // Devices - hierarchical structure: devices/approved/{id}, devices/pending/{id}, devices/denied/{id}
-      // Any authenticated user can read device info and register/update their own
       "devices": {
         "approved": {
           ".read": "auth != null",
           "$deviceId": {
             ".read": "auth != null",
-            ".write": "auth != null"
+            // Allow write ONLY if:
+            //   (a) No approved devices exist yet (first-device setup), OR
+            //   (b) Writer is an existing admin (auth.uid in adminAuthUids), OR
+            //   (c) Writer is updating their own existing record (authUid matches)
+            ".write": "auth != null && (!root.child('jmart-safety/devices/approved').exists() || root.child('jmart-safety/adminAuthUids/' + auth.uid).exists() || (data.exists() && data.child('authUid').val() === auth.uid))"
           }
         },
         "pending": {
           ".read": "auth != null",
           "$deviceId": {
             ".read": "auth != null",
-            ".write": "auth != null"
+            // Allow write for:
+            //   (a) Self-registration (new data where authUid matches auth.uid), OR
+            //   (b) Admin operations (approve/deny/cleanup), OR
+            //   (c) Deletion (removing from pending after approval)
+            ".write": "auth != null && (root.child('jmart-safety/adminAuthUids/' + auth.uid).exists() || (newData.exists() && newData.child('authUid').val() === auth.uid) || !newData.exists())"
           }
         },
         "denied": {
           ".read": "auth != null",
           "$deviceId": {
             ".read": "auth != null",
-            ".write": "auth != null"
+            // Only admins can deny devices
+            ".write": "auth != null && root.child('jmart-safety/adminAuthUids/' + auth.uid).exists()"
           }
         },
-        // Legacy flat device entries (for migration)
+        // Legacy flat device entries (for migration) - admin or self-migration only
         "$deviceId": {
           ".read": "auth != null",
-          ".write": "auth != null"
+          ".write": "auth != null && (root.child('jmart-safety/adminAuthUids/' + auth.uid).exists() || (data.exists() && data.child('authUid').val() === auth.uid) || !root.child('jmart-safety/devices/approved').exists())"
         }
       },
 
@@ -94,6 +112,12 @@
           ".read": "auth != null",
           ".write": "auth != null"
         }
+      },
+
+      // Notifications - authenticated devices can read/write
+      "notifications": {
+        ".read": "auth != null",
+        ".write": "auth != null"
       },
 
       // Audit log - any authenticated user can read, append only (no deletes/updates)

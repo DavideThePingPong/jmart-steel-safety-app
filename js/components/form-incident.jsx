@@ -19,16 +19,11 @@ function IncidentView({ onSubmit }) {
   ];
 
   const handleIncidentSubmit = () => {
-    if (!reporterSignature) {
-      setValidationError('Signature is required to submit an incident report');
-      return;
-    }
-    if (!formData.reportedBy) {
-      setValidationError('Reporter name is required');
-      return;
-    }
-    if (!formData.immediateActions) {
-      setValidationError('Immediate actions taken must be documented');
+    // Use centralized validator for comprehensive WHS-compliant checks
+    const validationData = { ...formData, reporterSignature, incidentType: formData.type, incidentDate: formData.date, incidentTime: formData.time };
+    const errors = window.formValidator ? window.formValidator.validateIncident(validationData) : [];
+    if (errors.length > 0) {
+      setValidationError(errors.join('. '));
       return;
     }
     setValidationError('');

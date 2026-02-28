@@ -40,6 +40,11 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
     }
   };
 
+  // Signature reuse warning flag — components should show amber banner when using saved signatures
+  const signatureReuseWarning = Object.keys(savedSignatures).length > 0
+    ? 'Saved signatures are being reused. Ensure each signer is physically present and consents to signing.'
+    : null;
+
   // Add a new form
   const addForm = (formType, formData) => {
     try {
@@ -52,7 +57,8 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
         createdBy: DeviceAuthManager.deviceId || 'unknown',
         createdByName: localStorage.getItem('jmart-user-name') || 'Unknown User',
         version: 1,
-        status: 'completed'
+        status: 'completed',
+        locked: true  // Forms are locked after submission — only admins can edit
       };
       console.log('addForm called, current forms:', forms.length);
 
@@ -121,8 +127,32 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
     }
   };
 
+  // Unlock a locked form (admin only)
+  const unlockForm = (formId) => {
+    if (!DeviceAuthManager.isAdmin) {
+      alert('Only admins can unlock submitted forms for editing.');
+      return false;
+    }
+    setForms(prevForms => {
+      const updated = prevForms.map(f => f.id === formId ? { ...f, locked: false } : f);
+      localStorage.setItem('jmart-safety-forms', JSON.stringify(updated));
+      return updated;
+    });
+    AuditLogManager.log('unlock', { formId, action: 'Form unlocked for editing by admin' });
+    return true;
+  };
+
   // Show confirmation modal before updating
   const updateForm = (formId, formType, formData) => {
+    // Check if form is locked — only admins can edit locked forms
+    if (editingForm?.locked) {
+      if (!DeviceAuthManager.isAdmin) {
+        alert('This form has been submitted and locked. Only an admin can edit it.');
+        return;
+      }
+      // Admin can proceed — form will be unlocked during update
+      console.log('Admin editing locked form:', formId);
+    }
     console.log('updateForm called - showing confirmation for id:', formId);
     const updatedForm = {
       id: formId,
@@ -150,7 +180,7 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
     setUpdateConfirmModal(null);
   };
 
-  // Confirm and sync the update
+  // Confirm and sync the update — checks remote version before overwriting
   const confirmUpdate = async () => {
     if (!updateConfirmModal) return;
 
@@ -159,6 +189,27 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
     const siteName = formData.siteConducted || formData.site || '';
 
     try {
+      // Version check: read remote version from Firebase before writing
+      if (FirebaseSync.isConnected() && form.id) {
+        try {
+          const remoteSnap = await FirebaseSync.db.ref('jmart-safety/forms/' + form.id).once('value');
+          const remoteForm = remoteSnap.val();
+          if (remoteForm && remoteForm.version && originalForm && originalForm.version) {
+            if (remoteForm.version > originalForm.version) {
+              const overwrite = window.confirm(
+                'This form was updated by another device (v' + remoteForm.version + ' vs your v' + originalForm.version + '). Overwrite with your changes?'
+              );
+              if (!overwrite) {
+                setIsUpdating(false);
+                return;
+              }
+            }
+          }
+        } catch (versionErr) {
+          console.warn('Version check skipped (non-fatal):', versionErr.message);
+        }
+      }
+
       if (GoogleDriveSync.isConnected() && siteName) {
         console.log('Searching for old PDFs to delete...');
         await GoogleDriveSync.deleteOldFormPDFs(form.id, siteName);
@@ -287,6 +338,7 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
     // Functions
     addForm,
     updateForm,
+    unlockForm,
     confirmUpdate,
     continueEditing,
     cancelUpdate,
@@ -295,7 +347,8 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
     closeSuccessModal,
     markAsBackedUp,
     isFormBackedUp,
-    updateSignatures
+    updateSignatures,
+    signatureReuseWarning
   };
 }
 
@@ -684,8 +737,73 @@ function usePWAInstall() {
   return { showInstallPrompt, handleInstall, dismissInstall };
 }
 
+// =============================================
+// useAutoSave - Auto-save form drafts to localStorage
+// =============================================
+function useAutoSave(formKey, formData, intervalMs) {
+  const saveInterval = intervalMs || 30000; // default 30 seconds
+  const draftKey = 'jmart-draft-' + formKey;
+
+  // Save draft periodically
+  useEffect(() => {
+    if (!formData || !formKey) return;
+    const timer = setInterval(() => {
+      try {
+        localStorage.setItem(draftKey, JSON.stringify({ data: formData, savedAt: Date.now() }));
+        console.log('[AutoSave] Draft saved for', formKey);
+      } catch (e) {
+        console.warn('[AutoSave] Could not save draft:', e.message);
+      }
+    }, saveInterval);
+    return () => clearInterval(timer);
+  }, [formData, formKey]);
+
+  // Load existing draft
+  const loadDraft = () => {
+    try {
+      const saved = localStorage.getItem(draftKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const ageMinutes = Math.round((Date.now() - parsed.savedAt) / 60000);
+        if (ageMinutes < 1440) { // Discard drafts older than 24 hours
+          return { data: parsed.data, ageMinutes };
+        }
+        localStorage.removeItem(draftKey); // Expired draft
+      }
+    } catch (e) {
+      console.warn('[AutoSave] Could not load draft:', e.message);
+    }
+    return null;
+  };
+
+  // Clear draft (after successful submission)
+  const clearDraft = () => {
+    localStorage.removeItem(draftKey);
+  };
+
+  return { loadDraft, clearDraft };
+}
+
+// =============================================
+// useBeforeUnload - Warn when form has unsaved data
+// =============================================
+function useBeforeUnload(hasUnsavedData) {
+  useEffect(() => {
+    if (!hasUnsavedData) return;
+    const handler = (e) => {
+      e.preventDefault();
+      e.returnValue = 'You have unsaved form data. Are you sure you want to leave?';
+      return e.returnValue;
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [hasUnsavedData]);
+}
+
 // Export to window for cross-file access
 window.useFormManager = useFormManager;
 window.useDataSync = useDataSync;
 window.useDeviceAuth = useDeviceAuth;
 window.usePWAInstall = usePWAInstall;
+window.useAutoSave = useAutoSave;
+window.useBeforeUnload = useBeforeUnload;

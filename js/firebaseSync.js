@@ -8,6 +8,13 @@ const FirebaseSync = {
   retryDelays: [1000, 5000, 15000, 30000, 60000], // Exponential backoff
   syncListeners: [], // UI callbacks for sync status
 
+  // Circuit breaker — stops retry storms when storage is full or Firebase is down
+  circuitOpen: false,
+  consecutiveStorageErrors: 0,
+  CIRCUIT_BREAKER_THRESHOLD: 3,
+  circuitOpenedAt: null,
+  CIRCUIT_COOLDOWN_MS: 5 * 60 * 1000, // 5 minutes
+
   // Initialize - load pending queue from localStorage
   init: function() {
     try {
@@ -23,12 +30,21 @@ const FirebaseSync = {
     }
   },
 
-  // Save queue to localStorage
+  // Save queue to localStorage — tracks storage errors for circuit breaker
   saveQueue: function() {
     try {
       localStorage.setItem('jmart-sync-queue', JSON.stringify(this.pendingQueue));
+      // Reset consecutive error counter on success
+      this.consecutiveStorageErrors = 0;
     } catch (e) {
       console.error('Error saving sync queue:', e);
+      this.consecutiveStorageErrors++;
+      if (this.consecutiveStorageErrors >= this.CIRCUIT_BREAKER_THRESHOLD && !this.circuitOpen) {
+        this.circuitOpen = true;
+        this.circuitOpenedAt = Date.now();
+        console.error('CIRCUIT BREAKER OPEN — too many storage errors (' + this.consecutiveStorageErrors + '). Retries paused for 5 minutes.');
+        this.notifyListeners('circuit_open', { reason: 'storage_full', cooldownMs: this.CIRCUIT_COOLDOWN_MS });
+      }
     }
   },
 
@@ -45,8 +61,13 @@ const FirebaseSync = {
     this.syncListeners.forEach(cb => cb(status, details));
   },
 
-  // Add item to retry queue
+  // Add item to retry queue — blocked when circuit breaker is open
   addToQueue: function(type, data) {
+    if (this.circuitOpen) {
+      console.warn('Circuit breaker OPEN — cannot add to queue. Try again after cooldown.');
+      this.notifyListeners('circuit_open', { reason: 'queue_blocked' });
+      return null;
+    }
     const item = {
       id: Date.now() + '-' + Math.random().toString(36).substr(2, 9),
       type,
@@ -60,8 +81,21 @@ const FirebaseSync = {
     return item.id;
   },
 
-  // Process the retry queue
+  // Process the retry queue — respects circuit breaker
   processQueue: async function() {
+    // Circuit breaker check
+    if (this.circuitOpen) {
+      const elapsed = Date.now() - (this.circuitOpenedAt || 0);
+      if (elapsed < this.CIRCUIT_COOLDOWN_MS) {
+        console.log('Circuit breaker OPEN — queue processing blocked. Cooldown: ' + Math.round((this.CIRCUIT_COOLDOWN_MS - elapsed) / 1000) + 's remaining');
+        return;
+      }
+      // Half-open: try one cycle
+      console.log('Circuit breaker half-open — attempting recovery...');
+      this.circuitOpen = false;
+      this.consecutiveStorageErrors = 0;
+    }
+
     if (!navigator.onLine || !this.isConnected()) {
       console.log('Offline - queue processing deferred');
       return;
@@ -222,6 +256,15 @@ const FirebaseSync = {
   // Get pending queue count
   getPendingCount: function() {
     return this.pendingQueue.length;
+  },
+
+  // Reset circuit breaker manually (e.g. from settings UI)
+  resetCircuitBreaker: function() {
+    this.circuitOpen = false;
+    this.consecutiveStorageErrors = 0;
+    this.circuitOpenedAt = null;
+    console.log('Circuit breaker manually reset');
+    this.notifyListeners('circuit_reset', { pending: this.pendingQueue.length });
   },
 
   // Manual retry all pending items
