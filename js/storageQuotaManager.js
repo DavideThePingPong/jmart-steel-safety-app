@@ -113,7 +113,9 @@ const StorageQuotaManager = {
     }
 
     try {
-      localStorage.setItem(key, dataString);
+      // Use _origSetItem if available to avoid re-entering the patched setItem
+      const setter = this._origSetItem ? this._origSetItem.bind(this, key, dataString) : () => localStorage.setItem(key, dataString);
+      setter();
       const usage = this.getUsage();
       if (usage.isWarning) {
         this.notifyListeners(usage);
@@ -123,7 +125,8 @@ const StorageQuotaManager = {
       if (e.name === 'QuotaExceededError') {
         this.cleanup();
         // One more try after cleanup
-        localStorage.setItem(key, dataString);
+        const setter = this._origSetItem ? this._origSetItem.bind(this, key, dataString) : () => localStorage.setItem(key, dataString);
+        setter();
         return true;
       }
       throw e;

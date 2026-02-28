@@ -66,6 +66,36 @@ window.formValidator = (function() {
     return errors;
   }
 
+  // Pre-start checklist validation
+  function validatePrestart(form) {
+    const errors = [];
+    if (!isPresent(form.supervisorName)) errors.push('Supervisor name is required');
+    if (!isPresent(form.siteConducted)) errors.push('Site/Location is required');
+    if (!isPresent(form.builder)) errors.push('Builder is required');
+    if (!isPresent(form.address)) errors.push('Address is required');
+    if (!isPresent(form.highRiskWorks)) errors.push('High Risk Works selection is required');
+    if (!isPresent(form.worksCoveredBySWMS)) errors.push('SWMS coverage selection is required');
+    if (!isPresent(form.isPlantEquipmentUsed)) errors.push('Plant/Equipment selection is required');
+    const signedCount = form.signatures ? Object.values(form.signatures).filter(s => s !== null).length : 0;
+    if (signedCount === 0) errors.push('At least one worker must sign on');
+    return errors;
+  }
+
+  // Incident report validation
+  function validateIncident(form) {
+    const errors = [];
+    if (!isPresent(form.incidentType)) errors.push('Incident type is required');
+    if (!isPresent(form.incidentDate)) errors.push('Date of incident is required');
+    if (!isPresent(form.location)) errors.push('Location is required');
+    if (!isPresent(form.description)) errors.push('Description is required');
+    if (!isPresent(form.reportedBy)) errors.push('Reporter name is required');
+    if (!isPresent(form.immediateActions)) errors.push('Immediate actions taken is required');
+    if (!isPresent(form.reporterSignature)) errors.push('Reporter signature is required');
+    const dateErr = dateNotFuture(form.incidentDate);
+    if (dateErr) errors.push(dateErr);
+    return errors;
+  }
+
   // Check if incident is notifiable (WHS Act 2011)
   function isNotifiableIncident(incident) {
     const notifiable = ['death','serious injury','dangerous incident','hospitalization','amputation','serious burns','spinal injury','loss of consciousness'];
@@ -74,6 +104,8 @@ window.formValidator = (function() {
   }
 
   return {
+    validatePrestart: validatePrestart,
+    validateIncident: validateIncident,
     validateToolbox: validateToolbox,
     validateInspection: validateInspection,
     validateITP: validateITP,

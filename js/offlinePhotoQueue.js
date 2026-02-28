@@ -43,7 +43,7 @@ const OfflinePhotoQueue = {
 
   // Add photo to queue (stores as base64)
   addToQueue: async function(file, jobName) {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => {
         const item = {
@@ -60,6 +60,10 @@ const OfflinePhotoQueue = {
         this.notifyListeners();
         console.log(`Photo queued for offline upload: ${file.name}`);
         resolve(item.id);
+      };
+      reader.onerror = (e) => {
+        console.error(`FileReader error for ${file.name}:`, reader.error);
+        reject(reader.error || new Error('Failed to read file'));
       };
       reader.readAsDataURL(file);
     });

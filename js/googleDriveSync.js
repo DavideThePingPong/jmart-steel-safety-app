@@ -543,7 +543,8 @@ const GoogleDriveSync = {
 };
 
 // Initialize Google Drive when API loads (with robust retry)
-window.onload = function() {
+// Use addEventListener instead of window.onload to avoid overwriting other handlers
+window.addEventListener('load', function() {
   if (isGoogleDriveConfigured) {
     const tryInit = (attempt) => {
       if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
@@ -560,4 +561,4 @@ window.onload = function() {
     };
     tryInit(1);
   }
-};
+});

@@ -23,17 +23,21 @@ const isFirebaseConfigured = firebaseConfig.apiKey !== "YOUR_API_KEY_HERE";
 let firebaseApp = null;
 let firebaseDb = null;
 let firebaseAuthUid = null;
+// Promise that resolves when Firebase auth is ready (or immediately if not configured)
+let firebaseAuthReady = Promise.resolve(null);
 
 if (isFirebaseConfigured) {
   try {
     firebaseApp = firebase.initializeApp(firebaseConfig);
     firebaseDb = firebase.database();
     // Sign in anonymously so security rules can use auth.uid
-    firebase.auth().signInAnonymously().then(cred => {
+    firebaseAuthReady = firebase.auth().signInAnonymously().then(cred => {
       firebaseAuthUid = cred.user.uid;
       console.log('Firebase connected, auth uid:', firebaseAuthUid);
+      return cred.user.uid;
     }).catch(err => {
       console.warn('Anonymous auth failed (app still works):', err.message);
+      return null;
     });
     console.log('Firebase connected successfully!');
   } catch (error) {

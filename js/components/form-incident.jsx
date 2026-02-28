@@ -42,7 +42,15 @@ function IncidentView({ onSubmit }) {
         <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 text-4xl">✅</div>
         <h2 className="text-2xl font-bold text-gray-800 mb-2">Report Submitted!</h2>
         <p className="text-gray-600 mb-6">Reference: INC-{Date.now().toString().slice(-6)}</p>
-        <button onClick={() => setStep(1)} className="bg-orange-600 text-white px-6 py-3 rounded-lg font-semibold">Submit Another</button>
+        <button onClick={() => {
+          setStep(1);
+          setFormData({
+            type: '', date: new Date().toISOString().split('T')[0], time: new Date().toTimeString().slice(0, 5),
+            location: '', description: '', injuries: 'none', injuryDetails: '', witnesses: '', immediateActions: '', reportedBy: '',
+          });
+          setReporterSignature(null);
+          setValidationError('');
+        }} className="bg-orange-600 text-white px-6 py-3 rounded-lg font-semibold">Submit Another</button>
       </div>
     );
   }

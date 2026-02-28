@@ -65,9 +65,6 @@ const STATIC_FILES = [
 
 // Critical CDN resources - ALL must be cached for offline
 const CDN_RESOURCES = [
-  // Tailwind CSS
-  'https://cdn.tailwindcss.com',
-
   // React (CRITICAL — pinned versions)
   'https://unpkg.com/react@18.2.0/umd/react.production.min.js',
   'https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js',
@@ -219,39 +216,39 @@ async function staleWhileRevalidate(request, cacheName) {
  * Install event - pre-cache critical resources
  */
 self.addEventListener('install', (event) => {
-  console.log('[SW v3] Installing...');
+  console.log('[SW v4] Installing...');
 
   event.waitUntil(
     Promise.all([
       // Cache static files
       caches.open(STATIC_CACHE).then(async (cache) => {
-        console.log('[SW v3] Caching static files');
+        console.log('[SW v4] Caching static files');
         for (const file of STATIC_FILES) {
           try {
             await cache.add(file);
           } catch (e) {
-            console.warn(`[SW v3] Failed to cache: ${file}`, e);
+            console.warn(`[SW v4] Failed to cache: ${file}`, e);
           }
         }
       }),
 
       // Cache CDN resources (CRITICAL)
       caches.open(CDN_CACHE).then(async (cache) => {
-        console.log('[SW v3] Caching CDN resources');
+        console.log('[SW v4] Caching CDN resources');
         for (const url of CDN_RESOURCES) {
           try {
             const response = await fetch(url, { mode: 'cors' });
             if (response.ok) {
               await cache.put(url, response);
-              console.log(`[SW v3] Cached: ${url}`);
+              console.log(`[SW v4] Cached: ${url}`);
             }
           } catch (e) {
-            console.warn(`[SW v3] Failed to cache CDN: ${url}`, e);
+            console.warn(`[SW v4] Failed to cache CDN: ${url}`, e);
           }
         }
       })
     ]).then(() => {
-      console.log('[SW v3] Install complete');
+      console.log('[SW v4] Install complete');
       return self.skipWaiting();
     })
   );
@@ -261,7 +258,7 @@ self.addEventListener('install', (event) => {
  * Activate event - clean old caches
  */
 self.addEventListener('activate', (event) => {
-  console.log('[SW v3] Activating...');
+  console.log('[SW v4] Activating...');
 
   event.waitUntil(
     caches.keys().then((cacheNames) => {
@@ -272,12 +269,12 @@ self.addEventListener('activate', (event) => {
             return name.startsWith('jmart-') && !name.endsWith(CACHE_VERSION);
           })
           .map((name) => {
-            console.log('[SW v3] Deleting old cache:', name);
+            console.log('[SW v4] Deleting old cache:', name);
             return caches.delete(name);
           })
       );
     }).then(() => {
-      console.log('[SW v3] Activation complete');
+      console.log('[SW v4] Activation complete');
       return self.clients.claim();
     })
   );
@@ -312,7 +309,7 @@ self.addEventListener('fetch', (event) => {
             return await staleWhileRevalidate(event.request, cacheName);
         }
       } catch (error) {
-        console.error('[SW v3] Fetch error:', error);
+        console.error('[SW v4] Fetch error:', error);
 
         // Last resort - offline page
         if (event.request.mode === 'navigate') {
@@ -333,7 +330,7 @@ self.addEventListener('fetch', (event) => {
  * Background sync for form submissions
  */
 self.addEventListener('sync', (event) => {
-  console.log('[SW v3] Background sync:', event.tag);
+  console.log('[SW v4] Background sync:', event.tag);
 
   if (event.tag === 'sync-forms') {
     event.waitUntil(syncPendingForms());
@@ -354,9 +351,9 @@ async function syncPendingForms() {
     if (clients.length > 0) {
       clients[0].postMessage({ type: 'PROCESS_SYNC_QUEUE' });
     }
-    console.log('[SW v3] Form sync triggered');
+    console.log('[SW v4] Form sync triggered');
   } catch (error) {
-    console.error('[SW v3] Form sync failed:', error);
+    console.error('[SW v4] Form sync failed:', error);
   }
 }
 
@@ -369,9 +366,9 @@ async function syncPendingDriveUploads() {
     if (clients.length > 0) {
       clients[0].postMessage({ type: 'PROCESS_DRIVE_QUEUE' });
     }
-    console.log('[SW v3] Drive sync triggered');
+    console.log('[SW v4] Drive sync triggered');
   } catch (error) {
-    console.error('[SW v3] Drive sync failed:', error);
+    console.error('[SW v4] Drive sync failed:', error);
   }
 }
 
@@ -441,7 +438,7 @@ self.addEventListener('notificationclick', (event) => {
  * Handle messages from main thread
  */
 self.addEventListener('message', (event) => {
-  console.log('[SW v3] Message received:', event.data);
+  console.log('[SW v4] Message received:', event.data);
 
   switch (event.data?.type) {
     case 'SKIP_WAITING':
@@ -484,4 +481,4 @@ self.addEventListener('message', (event) => {
   }
 });
 
-console.log('[SW v3] Service Worker loaded - Enhanced offline support');
+console.log('[SW v4] Service Worker loaded - Enhanced offline support');

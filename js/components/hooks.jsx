@@ -72,7 +72,7 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
               const keysToRemove = [];
               for (let i = 0; i < localStorage.length; i++) {
                 const key = localStorage.key(i);
-                if (key && key.includes('backup') || key.includes('temp')) {
+                if (key && (key.includes('backup') || key.includes('temp'))) {
                   keysToRemove.push(key);
                 }
               }
@@ -236,38 +236,42 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
     setCurrentView('dashboard');
   };
 
-  // Delete form (with backup check)
+  // Delete form (with backup check) — uses setForms callback to avoid stale closure
   const deleteForm = (formId) => {
-    const deletedForm = forms.find(f => f.id === formId);
-    const updatedForms = forms.filter(f => f.id !== formId);
-    setForms(updatedForms);
     setDeleteConfirmModal(null);
     setViewFormModal(null);
 
-    AuditLogManager.log('delete', {
-      formId: formId,
-      formType: deletedForm?.type || 'unknown',
-      site: deletedForm?.data?.siteConducted || deletedForm?.data?.site || 'Unknown',
-      originalCreatedBy: deletedForm?.createdBy,
-      originalCreatedAt: deletedForm?.createdAt,
-      action: 'Form deleted'
-    });
+    setForms(prevForms => {
+      const deletedForm = prevForms.find(f => f.id === formId);
+      const updatedForms = prevForms.filter(f => f.id !== formId);
 
-    localStorage.setItem('jmart-safety-forms', JSON.stringify(updatedForms));
-    console.log('Form deleted, saved to localStorage:', updatedForms.length, 'forms remaining');
-
-    deletingFormRef.current = true;
-
-    if (FirebaseSync.isConnected()) {
-      FirebaseSync.syncForms(updatedForms).then(() => {
-        console.log('Deletion synced to Firebase');
-      }).catch(err => {
-        console.error('Failed to sync deletion to Firebase:', err);
-        deletingFormRef.current = false;
+      AuditLogManager.log('delete', {
+        formId: formId,
+        formType: deletedForm?.type || 'unknown',
+        site: deletedForm?.data?.siteConducted || deletedForm?.data?.site || 'Unknown',
+        originalCreatedBy: deletedForm?.createdBy,
+        originalCreatedAt: deletedForm?.createdAt,
+        action: 'Form deleted'
       });
-    } else {
-      deletingFormRef.current = false;
-    }
+
+      localStorage.setItem('jmart-safety-forms', JSON.stringify(updatedForms));
+      console.log('Form deleted, saved to localStorage:', updatedForms.length, 'forms remaining');
+
+      deletingFormRef.current = true;
+
+      if (FirebaseSync.isConnected()) {
+        FirebaseSync.syncForms(updatedForms).then(() => {
+          console.log('Deletion synced to Firebase');
+        }).catch(err => {
+          console.error('Failed to sync deletion to Firebase:', err);
+          deletingFormRef.current = false;
+        });
+      } else {
+        deletingFormRef.current = false;
+      }
+
+      return updatedForms;
+    });
   };
 
   return {
@@ -369,7 +373,14 @@ function useDataSync({ setForms, setSites, deletingFormRef }) {
             formMap.set(form.id, { ...form, source: 'firebase' });
           });
 
-          localForms.forEach(localForm => {
+          // Re-read localStorage to avoid stale closure over initial localForms
+          let currentLocalForms = localForms;
+          try {
+            const freshLocal = localStorage.getItem('jmart-safety-forms');
+            if (freshLocal) currentLocalForms = JSON.parse(freshLocal);
+          } catch (e) { /* use original localForms */ }
+
+          currentLocalForms.forEach(localForm => {
             const existingForm = formMap.get(localForm.id);
             if (!existingForm) {
               formMap.set(localForm.id, { ...localForm, source: 'local' });

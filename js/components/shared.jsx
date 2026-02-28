@@ -12,7 +12,7 @@ const {
   Shield, ClipboardCheck, AlertTriangle, Users, Plus, ChevronRight, ChevronLeft,
   Check, X, Calendar, User, MapPin, Building, Wrench, AlertCircle, CheckCircle,
   Home, Menu, Bell, Settings, Trash2, Phone, Edit3, Copy, Clock, Download,
-  FileText, Camera, Image, StickyNote, Clipboard
+  FileText, Camera, Image: LucideImage, StickyNote, Clipboard
 } = lucide;
 
 // Icon component wrapper
@@ -476,6 +476,6 @@ window.Clock = Clock;
 window.Download = Download;
 window.FileText = FileText;
 window.Camera = Camera;
-window.Image = Image;
+window.LucideImage = LucideImage;
 window.StickyNote = StickyNote;
 window.Clipboard = Clipboard;

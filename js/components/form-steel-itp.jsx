@@ -124,7 +124,22 @@ function SteelITPView({ onSubmit, sites = [] }) {
           <div className="text-6xl mb-4">✅</div>
           <h2 className="text-2xl font-bold">Steel ITP Submitted!</h2>
         </div>
-        <button onClick={() => { setSubmitted(false); setStep(1); }} className="w-full bg-orange-600 text-white p-4 rounded-xl font-semibold">
+        <button onClick={() => {
+          setSubmitted(false); setStep(1);
+          // Reset all form fields
+          setSiteConducted(''); setPreparedBy(''); setLocation(''); setJobStructure('');
+          setPreConstMeeting(''); setHighRiskWorkshop(''); setShopdrawingsApproved(''); setAllItemsSignedOff('');
+          setMaterialsOrdered(''); setMaterialsCorrect(''); setVisualCheck(''); setShopdrawingsCurrent('');
+          setSetoutCorrect(''); setTackWeld(''); setFullyWelded(''); setPackLoad('');
+          setFinishConfirmed(''); setDeliveryBooked(''); setSentToPainter(''); setDeliveryVehicle(''); setAfterDeliveryFinish('');
+          setDrawingsConfirmed(''); setSurveyorMeasurements(''); setSurveyorName(''); setClashesDetected('');
+          setChemicalAnchors(''); setAnchorsInstalled(''); setLevelPlumb(''); setBoltsTorqued(''); setWeldingCompleted('');
+          setGroutingCompleted(''); setItemsChecked(''); setFinishAcceptable(''); setFixingsTorqued('');
+          setWeldTestingBooked(''); setTestingIssues(''); setWeldsPassed('');
+          setColourConfirmed(''); setDefectsChecked(''); setHandoverAccepted('');
+          setManagerName(''); setManagerSignature(null); setBuilderName(''); setBuilderSignature(null);
+          setValidationErrors([]);
+        }} className="w-full bg-orange-600 text-white p-4 rounded-xl font-semibold">
           Start New Steel ITP
         </button>
       </div>
@@ -344,5 +359,4 @@ window.IncidentView = IncidentView;
 window.ToolboxView = ToolboxView;
 window.SubcontractorInspectionView = SubcontractorInspectionView;
 window.ITPFormView = ITPFormView;
-window.SteelITPView = SteelITPView;
 window.SteelITPView = SteelITPView;

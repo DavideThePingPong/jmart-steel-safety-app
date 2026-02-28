@@ -119,7 +119,8 @@ const TrainingCertGenerator = {
       doc.setFontSize(11);
       doc.setTextColor(...white);
       doc.setFont(undefined, 'bold');
-      doc.text('PASSED  •  100%', pageWidth / 2, y, { align: 'center' });
+      const scoreText = typeof calculateScore === 'number' ? 'PASSED  •  ' + Math.round(calculateScore) + '%' : 'PASSED  •  100%';
+      doc.text(scoreText, pageWidth / 2, y, { align: 'center' });
       y += 14;
 
       // === INFO ROW ===

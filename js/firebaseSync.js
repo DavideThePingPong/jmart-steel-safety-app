@@ -79,7 +79,8 @@ const FirebaseSync = {
       } catch (error) {
         item.attempts++;
         if (item.attempts >= this.maxRetries) {
-          console.error(`Max retries reached for ${item.type}, keeping in queue for manual retry`);
+          console.error(`Max retries reached for ${item.type}, removing from queue`);
+          this.pendingQueue = this.pendingQueue.filter(i => i.id !== item.id);
           this.notifyListeners('failed', { pending: this.pendingQueue.length, error: error.message });
         } else {
           const delay = this.retryDelays[Math.min(item.attempts - 1, this.retryDelays.length - 1)];

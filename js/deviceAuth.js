@@ -217,23 +217,8 @@ const DeviceAuth = {
         return { approved: true, admin: true, adminRecovery: true };
       }
 
-      // HARDCODED ALWAYS-APPROVED DEVICES (per CLAUDE.md rules)
-      // These devices are auto-approved on every registration, even after cache clear
-      const ua = navigator.userAgent;
-      const isMac = /Mac/i.test(ua) && !/iPhone|iPad/i.test(ua);
-      const isIPhone = /iPhone/i.test(ua);
-
-      if (isMac || isIPhone) {
-        const autoName = isMac ? "Davide's Mac" : 'S.s';
-        console.log('ALWAYS-APPROVED: ' + autoName + ' detected — auto-approving');
-        await this.registerAsApproved(false);
-        await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId + '/permanentlyApproved').set(true);
-        await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId + '/name').set(autoName);
-        // Remove from pending/denied if present
-        await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).remove().catch(() => {});
-        await firebaseDb.ref('jmart-safety/devices/denied/' + this.deviceId).remove().catch(() => {});
-        return { approved: true, admin: false, autoApproved: true };
-      }
+      // Auto-approve removed for security — all new devices must go through
+      // the standard pending/approval workflow regardless of user-agent.
 
       // Check if already pending
       const pendingSnap = await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).once('value');
@@ -248,10 +233,10 @@ const DeviceAuth = {
 
     } catch (error) {
       console.error('Error checking device status:', error);
-      // On error, allow access (don't lock out users due to network issues)
-      // This matches STEEL Command Center behavior
-      this.isApproved = true;
-      return { approved: true, error: error.message };
+      // On error, deny access for safety - device must be verified
+      // Users can retry when network is available
+      this.isApproved = false;
+      return { approved: false, error: error.message, networkError: true };
     }
   },
 
