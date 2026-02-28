@@ -11,8 +11,14 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
   const [updateConfirmModal, setUpdateConfirmModal] = useState(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const [backedUpForms, setBackedUpForms] = useState(() => {
-    const saved = localStorage.getItem('jmart-backed-up-forms');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem('jmart-backed-up-forms');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return Array.isArray(parsed) ? parsed : Object.values(parsed || {});
+      }
+    } catch (e) { console.warn('Could not parse backed-up forms:', e); }
+    return [];
   });
   const [savedSignatures, setSavedSignatures] = useState(() => {
     const saved = localStorage.getItem('jmart-team-signatures');
