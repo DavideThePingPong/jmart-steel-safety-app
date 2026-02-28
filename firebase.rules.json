@@ -10,7 +10,10 @@
       "adminAuthUids": {
         ".read": "auth != null",
         "$uid": {
-          ".write": "auth != null && (root.child('jmart-safety/adminAuthUids/' + auth.uid).exists() || !root.child('jmart-safety/devices/approved').exists())",
+          // Allow write if: (a) writer is existing admin in adminAuthUids, OR
+          // (b) no approved devices exist (first-device setup), OR
+          // (c) adminAuthUids node is empty (migration bootstrap — existing admins can self-register)
+          ".write": "auth != null && (root.child('jmart-safety/adminAuthUids/' + auth.uid).exists() || !root.child('jmart-safety/devices/approved').exists() || !root.child('jmart-safety/adminAuthUids').exists())",
           ".validate": "newData.isBoolean()"
         }
       },
