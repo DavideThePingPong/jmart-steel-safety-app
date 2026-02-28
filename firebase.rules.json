@@ -124,17 +124,18 @@
       "auditLog": {
         ".read": "auth != null",
         "$logId": {
-          ".write": "!data.exists()",
+          ".write": "auth != null && !data.exists()",
           ".validate": "newData.hasChildren(['action', 'deviceId', 'timestamp']) && newData.child('action').isString() && newData.child('action').val().length < 500 && newData.child('deviceId').isString() && newData.child('timestamp').isNumber()"
         }
       }
     },
 
     // Signatures - any authenticated device can read/write
+    // Parent-level write allowed for bulk set() from hooks.jsx; child-level validates structure
     "signatures": {
+      ".read": "auth != null",
+      ".write": "auth != null",
       "$signatureId": {
-        ".read": "auth != null",
-        ".write": "auth != null && newData.child('ownerId').val() === auth.uid",
         ".validate": "newData.hasChildren(['ownerId', 'data']) && newData.child('ownerId').isString() && newData.child('data').isString() && newData.child('data').val().length < 500000"
       }
     }
