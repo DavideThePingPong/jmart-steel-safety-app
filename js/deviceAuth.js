@@ -189,7 +189,7 @@ const DeviceAuth = {
       // was cleared on all admin devices, leaving them orphaned in Firebase.
       const approvedDevices = allApprovedSnap.val();
       const now = Date.now();
-      const ORPHAN_THRESHOLD = 30 * 24 * 60 * 60 * 1000; // 30 days
+      const ORPHAN_THRESHOLD = 7 * 24 * 60 * 60 * 1000; // 7 days (tightened from 30 for security)
       let hasActiveAdmin = false;
 
       if (approvedDevices) {
@@ -210,7 +210,7 @@ const DeviceAuth = {
 
         // Clean up orphaned approved devices that haven't been seen in 30+ days
         // NEVER remove permanently approved devices (Mac, S.s, Admin Android)
-        const CLEANUP_THRESHOLD = 30 * 24 * 60 * 60 * 1000;
+        const CLEANUP_THRESHOLD = 7 * 24 * 60 * 60 * 1000;
         if (approvedDevices) {
           for (const [devId, dev] of Object.entries(approvedDevices)) {
             // Skip permanently approved devices — they stay forever

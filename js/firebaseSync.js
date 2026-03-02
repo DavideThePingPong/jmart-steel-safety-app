@@ -13,7 +13,7 @@ const FirebaseSync = {
   consecutiveStorageErrors: 0,
   CIRCUIT_BREAKER_THRESHOLD: 3,
   circuitOpenedAt: null,
-  CIRCUIT_COOLDOWN_MS: 5 * 60 * 1000, // 5 minutes
+  CIRCUIT_COOLDOWN_MS: 2 * 60 * 1000, // 2 minutes (reduced from 5 for faster recovery)
 
   // Initialize - load pending queue from localStorage
   init: function() {

@@ -1973,19 +1973,27 @@
 <body>
     <div class="header">
         <h1>🔩 J&M Artsteel Hub</h1>
-        <p>AI-Powered Tools for J&M Artsteel</p>
+        <p>AI-Powered Steel Operations Centre</p>
+        <!-- Live connection indicators -->
+        <div id="hubStatusBar" style="display:flex;gap:14px;justify-content:center;margin-top:8px;font-size:11px;opacity:0.8;">
+            <span id="hubFirebaseStatus" style="color:#4CAF50;">🔥 Firebase</span>
+            <span id="hubApiStatus" style="color:#888;">🔑 API</span>
+            <span id="hubNetStatus" style="color:#4CAF50;">🌐 Online</span>
+            <span id="hubStorageStatus" style="color:#888;">💾 --</span>
+        </div>
     </div>
 
     <!-- Navigation -->
     <div class="nav-tabs">
-        <button class="nav-tab active" onclick="showSection('hobart')">🔩 HOBART</button>
-        <button class="nav-tab" onclick="showSection('igor')">⚖️ IGOR</button>
-        <button class="nav-tab" onclick="showSection('chuck')">🧪 CHUCK</button>
-        <button class="nav-tab" onclick="showSection('brittany')">💪 BRITTANY</button>
-        <button class="nav-tab" onclick="showSection('hanna')">🧾 HANNA</button>
-        <button class="nav-tab" onclick="showSection('victor')">🔍 VICTOR</button>
-        <button class="nav-tab" onclick="showSection('frank')">🦺 FRANK</button>
-        <button class="nav-tab" onclick="showSection('settings')">⚙️</button>
+        <button class="nav-tab active" onclick="showSection('dashboard')" title="Ctrl+0">📊 HUB</button>
+        <button class="nav-tab" onclick="showSection('hobart')" title="Ctrl+1">🔩 HOBART</button>
+        <button class="nav-tab" onclick="showSection('igor')" title="Ctrl+2">⚖️ IGOR</button>
+        <button class="nav-tab" onclick="showSection('chuck')" title="Ctrl+3">🧪 CHUCK</button>
+        <button class="nav-tab" onclick="showSection('brittany')" title="Ctrl+4">💪 BRITTANY</button>
+        <button class="nav-tab" onclick="showSection('hanna')" title="Ctrl+5">🧾 HANNA</button>
+        <button class="nav-tab" onclick="showSection('victor')" title="Ctrl+6">🔍 VICTOR</button>
+        <button class="nav-tab" onclick="showSection('frank')" title="Ctrl+7">🦺 FRANK</button>
+        <button class="nav-tab" onclick="showSection('settings')" title="Ctrl+8">⚙️</button>
         <div class="api-popover-wrap">
             <button class="nav-tab" onclick="toggleApiPopover(event)" id="apiNavBtn">🔑</button>
             <div class="api-popover" id="apiPopover">
@@ -2000,8 +2008,91 @@
         </div>
     </div>
 
+    <!-- DASHBOARD - Operations Overview -->
+    <div id="dashboard" class="agent-section active">
+        <div class="agent-header">
+            <div class="agent-icon">📊</div>
+            <div class="agent-title">
+                <h2>Operations Dashboard</h2>
+                <p>Live overview — click any card to jump to that agent</p>
+            </div>
+        </div>
+
+        <!-- Quick Stats Row -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:20px;">
+            <div onclick="showSection('victor')" style="cursor:pointer;background:rgba(76,175,80,0.12);border:1px solid rgba(76,175,80,0.25);border-radius:12px;padding:14px;text-align:center;transition:transform 0.15s;" onmouseover="this.style.transform='scale(1.03)'" onmouseout="this.style.transform='scale(1)'">
+                <div style="font-size:26px;font-weight:700;color:#4CAF50;" id="dashMsdsOk">-</div>
+                <div style="font-size:11px;color:#aaa;margin-top:4px;">MSDS Current</div>
+            </div>
+            <div onclick="showSection('victor')" style="cursor:pointer;background:rgba(244,67,54,0.12);border:1px solid rgba(244,67,54,0.25);border-radius:12px;padding:14px;text-align:center;transition:transform 0.15s;" onmouseover="this.style.transform='scale(1.03)'" onmouseout="this.style.transform='scale(1)'">
+                <div style="font-size:26px;font-weight:700;color:#f44336;" id="dashMsdsAlert">-</div>
+                <div style="font-size:11px;color:#aaa;margin-top:4px;">MSDS Expiring/Expired</div>
+            </div>
+            <div onclick="showSection('frank')" style="cursor:pointer;background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.25);border-radius:12px;padding:14px;text-align:center;transition:transform 0.15s;" onmouseover="this.style.transform='scale(1.03)'" onmouseout="this.style.transform='scale(1)'">
+                <div style="font-size:26px;font-weight:700;color:#10b981;" id="dashSwmsCount">-</div>
+                <div style="font-size:11px;color:#aaa;margin-top:4px;">SWMS Generated</div>
+            </div>
+            <div onclick="showSection('hanna')" style="cursor:pointer;background:rgba(168,85,247,0.12);border:1px solid rgba(168,85,247,0.25);border-radius:12px;padding:14px;text-align:center;transition:transform 0.15s;" onmouseover="this.style.transform='scale(1.03)'" onmouseout="this.style.transform='scale(1)'">
+                <div style="font-size:26px;font-weight:700;color:#a855f7;" id="dashReceiptMonth">-</div>
+                <div style="font-size:11px;color:#aaa;margin-top:4px;">Receipts This Month</div>
+            </div>
+            <div onclick="showSection('hanna')" style="cursor:pointer;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.25);border-radius:12px;padding:14px;text-align:center;transition:transform 0.15s;" onmouseover="this.style.transform='scale(1.03)'" onmouseout="this.style.transform='scale(1)'">
+                <div style="font-size:26px;font-weight:700;color:#3b82f6;" id="dashSpendMonth">-</div>
+                <div style="font-size:11px;color:#aaa;margin-top:4px;">Spend This Month</div>
+            </div>
+        </div>
+
+        <!-- Agent Quick-Launch Grid -->
+        <h3 style="color:#60a5fa;font-size:14px;margin-bottom:10px;">Agents</h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:20px;">
+            <div onclick="showSection('hobart')" style="cursor:pointer;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:14px;transition:all 0.2s;" onmouseover="this.style.borderColor='rgba(102,126,234,0.5)';this.style.background='rgba(255,255,255,0.07)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.08)';this.style.background='rgba(255,255,255,0.04)'">
+                <div style="display:flex;align-items:center;gap:10px;"><span style="font-size:22px;">🔩</span><strong style="color:#fff;font-size:14px;">HOBART</strong></div>
+                <p style="color:#888;font-size:12px;margin-top:6px;">Hollo-Bolt reference, grip ranges, tube finder</p>
+                <div style="color:#667eea;font-size:10px;margin-top:6px;">Ctrl+1</div>
+            </div>
+            <div onclick="showSection('igor')" style="cursor:pointer;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:14px;transition:all 0.2s;" onmouseover="this.style.borderColor='rgba(102,126,234,0.5)';this.style.background='rgba(255,255,255,0.07)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.08)';this.style.background='rgba(255,255,255,0.04)'">
+                <div style="display:flex;align-items:center;gap:10px;"><span style="font-size:22px;">⚖️</span><strong style="color:#fff;font-size:14px;">IGOR</strong></div>
+                <p style="color:#888;font-size:12px;margin-top:6px;">Steel weight calculator, Excel export, pricing</p>
+                <div style="color:#667eea;font-size:10px;margin-top:6px;">Ctrl+2</div>
+            </div>
+            <div onclick="showSection('chuck')" style="cursor:pointer;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:14px;transition:all 0.2s;" onmouseover="this.style.borderColor='rgba(102,126,234,0.5)';this.style.background='rgba(255,255,255,0.07)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.08)';this.style.background='rgba(255,255,255,0.04)'">
+                <div style="display:flex;align-items:center;gap:10px;"><span style="font-size:22px;">🧪</span><strong style="color:#fff;font-size:14px;">CHUCK</strong></div>
+                <p style="color:#888;font-size:12px;margin-top:6px;">Hilti anchor calc, cure times, temp adjust</p>
+                <div style="color:#667eea;font-size:10px;margin-top:6px;">Ctrl+3</div>
+            </div>
+            <div onclick="showSection('brittany')" style="cursor:pointer;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:14px;transition:all 0.2s;" onmouseover="this.style.borderColor='rgba(102,126,234,0.5)';this.style.background='rgba(255,255,255,0.07)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.08)';this.style.background='rgba(255,255,255,0.04)'">
+                <div style="display:flex;align-items:center;gap:10px;"><span style="font-size:22px;">💪</span><strong style="color:#fff;font-size:14px;">BRITTANY</strong></div>
+                <p style="color:#888;font-size:12px;margin-top:6px;">Anchor design calc, AS5216 eng reports</p>
+                <div style="color:#667eea;font-size:10px;margin-top:6px;">Ctrl+4</div>
+            </div>
+            <div onclick="showSection('hanna')" style="cursor:pointer;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:14px;transition:all 0.2s;" onmouseover="this.style.borderColor='rgba(102,126,234,0.5)';this.style.background='rgba(255,255,255,0.07)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.08)';this.style.background='rgba(255,255,255,0.04)'">
+                <div style="display:flex;align-items:center;gap:10px;"><span style="font-size:22px;">🧾</span><strong style="color:#fff;font-size:14px;">HANNA</strong></div>
+                <p style="color:#888;font-size:12px;margin-top:6px;">AI receipt scanner, expense tracking, GST</p>
+                <div style="color:#667eea;font-size:10px;margin-top:6px;">Ctrl+5</div>
+            </div>
+            <div onclick="showSection('victor')" style="cursor:pointer;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:14px;transition:all 0.2s;" onmouseover="this.style.borderColor='rgba(102,126,234,0.5)';this.style.background='rgba(255,255,255,0.07)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.08)';this.style.background='rgba(255,255,255,0.04)'">
+                <div style="display:flex;align-items:center;gap:10px;"><span style="font-size:22px;">🔍</span><strong style="color:#fff;font-size:14px;">VICTOR</strong></div>
+                <p style="color:#888;font-size:12px;margin-top:6px;">MSDS register, compliance, auto-update</p>
+                <div style="color:#667eea;font-size:10px;margin-top:6px;">Ctrl+6</div>
+            </div>
+            <div onclick="showSection('frank')" style="cursor:pointer;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:14px;transition:all 0.2s;" onmouseover="this.style.borderColor='rgba(102,126,234,0.5)';this.style.background='rgba(255,255,255,0.07)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.08)';this.style.background='rgba(255,255,255,0.04)'">
+                <div style="display:flex;align-items:center;gap:10px;"><span style="font-size:22px;">🦺</span><strong style="color:#fff;font-size:14px;">FRANK</strong></div>
+                <p style="color:#888;font-size:12px;margin-top:6px;">AI SWMS generator, WHS compliance</p>
+                <div style="color:#667eea;font-size:10px;margin-top:6px;">Ctrl+7</div>
+            </div>
+        </div>
+
+        <!-- Recent Activity Feed -->
+        <div style="background:rgba(0,0,0,0.2);border-radius:10px;padding:14px;border:1px solid rgba(255,255,255,0.06);">
+            <h3 style="color:#60a5fa;margin-bottom:10px;font-size:14px;">Recent Activity</h3>
+            <div id="dashActivityFeed" style="font-size:13px;color:#aaa;">Loading...</div>
+        </div>
+
+        <div class="console" id="dashboardConsole">📊 Hub loaded — Ctrl+0-8 to switch agents</div>
+    </div>
+
     <!-- HOBART Section -->
-    <div id="hobart" class="agent-section active">
+    <div id="hobart" class="agent-section">
         <div class="agent-header">
             <div class="agent-icon">🔩</div>
             <div class="agent-title">
@@ -3011,17 +3102,146 @@
     // ═══════════════════════════════════════════════════════════════════════════
     // NAVIGATION
     // ═══════════════════════════════════════════════════════════════════════════
+    // Section name-to-index map for keyboard nav
+    const NAV_SECTIONS = ['dashboard','hobart','igor','chuck','brittany','hanna','victor','frank','settings'];
+
     function showSection(id) {
         document.querySelectorAll('.agent-section').forEach(s => s.classList.remove('active'));
         document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
-        document.getElementById(id).classList.add('active');
-        event.target.classList.add('active');
+        const section = document.getElementById(id);
+        if (section) section.classList.add('active');
+        // Highlight correct nav tab
+        const navIdx = NAV_SECTIONS.indexOf(id);
+        const tabs = document.querySelectorAll('.nav-tabs > .nav-tab, .nav-tabs > button.nav-tab');
+        if (navIdx >= 0 && tabs[navIdx]) tabs[navIdx].classList.add('active');
         // Load settings data when settings tab is opened
-        if (id === 'settings') {
-            loadSettingsData();
-            loadApiKeyStatus();
+        if (id === 'settings') { loadSettingsData(); loadApiKeyStatus(); }
+        // Refresh dashboard stats when returning to it
+        if (id === 'dashboard') { dashboardRefresh(); }
+    }
+
+    // Keyboard shortcuts: Ctrl+0 through Ctrl+8
+    document.addEventListener('keydown', function(e) {
+        if (!e.ctrlKey || e.shiftKey || e.altKey || e.metaKey) return;
+        // Don't intercept when typing in inputs
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+        const num = parseInt(e.key);
+        if (num >= 0 && num <= 8 && NAV_SECTIONS[num]) {
+            e.preventDefault();
+            showSection(NAV_SECTIONS[num]);
+        }
+    });
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // DASHBOARD FUNCTIONS
+    // ═══════════════════════════════════════════════════════════════════════════
+    function dashboardRefresh() {
+        // MSDS stats
+        try {
+            let msdsOk = 0, msdsAlert = 0;
+            (typeof victorProducts !== 'undefined' ? victorProducts : []).forEach(function(p) {
+                var c = typeof victorCalcCompliance === 'function' ? victorCalcCompliance(p.msds_date) : 'unknown';
+                if (c === 'current') msdsOk++;
+                else if (c === 'expiring' || c === 'expired') msdsAlert++;
+            });
+            var elOk = document.getElementById('dashMsdsOk');
+            var elAlert = document.getElementById('dashMsdsAlert');
+            if (elOk) elOk.textContent = msdsOk;
+            if (elAlert) elAlert.textContent = msdsAlert;
+        } catch(e) {}
+
+        // SWMS count
+        try {
+            var swms = typeof frankHistory !== 'undefined' ? frankHistory.length : 0;
+            var elSwms = document.getElementById('dashSwmsCount');
+            if (elSwms) elSwms.textContent = swms;
+        } catch(e) {}
+
+        // Receipts this month + spend
+        try {
+            var now = new Date();
+            var monthReceipts = (typeof hannaReceipts !== 'undefined' ? hannaReceipts : []).filter(function(r) {
+                var d = new Date(r.saved_at);
+                return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+            });
+            var elRec = document.getElementById('dashReceiptMonth');
+            if (elRec) elRec.textContent = monthReceipts.length;
+            var monthSpend = monthReceipts.reduce(function(s, r) { return s + (r.total || 0); }, 0);
+            var elSpend = document.getElementById('dashSpendMonth');
+            if (elSpend) elSpend.textContent = '$' + monthSpend.toFixed(0);
+        } catch(e) {}
+
+        // Activity feed - combine recent SWMS + receipts
+        try {
+            var feed = [];
+            (typeof frankHistory !== 'undefined' ? frankHistory : []).slice(0, 5).forEach(function(h) {
+                feed.push({ time: h.date || '', icon: '🦺', text: 'SWMS: ' + (h.jobDesc || '').substring(0, 50), type: 'frank' });
+            });
+            (typeof hannaReceipts !== 'undefined' ? hannaReceipts : []).slice(0, 5).forEach(function(r) {
+                feed.push({ time: r.saved_at ? new Date(r.saved_at).toLocaleDateString('en-AU') : '', icon: '🧾', text: (r.store_name || 'Receipt') + ' $' + (r.total || 0).toFixed(2), type: 'hanna' });
+            });
+            // Sort newest first (rough sort by date string)
+            feed.sort(function(a, b) { return (b.time || '').localeCompare(a.time || ''); });
+            var feedEl = document.getElementById('dashActivityFeed');
+            if (feedEl) {
+                if (feed.length === 0) {
+                    feedEl.innerHTML = '<div style="color:#666;text-align:center;padding:12px;">No recent activity — start using the agents!</div>';
+                } else {
+                    feedEl.innerHTML = feed.slice(0, 8).map(function(f) {
+                        return '<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);display:flex;gap:8px;align-items:center;">' +
+                            '<span>' + f.icon + '</span>' +
+                            '<span style="flex:1;color:#ccc;">' + escapeHtml(f.text) + '</span>' +
+                            '<span style="color:#666;font-size:11px;white-space:nowrap;">' + escapeHtml(f.time) + '</span>' +
+                            '</div>';
+                    }).join('');
+                }
+            }
+        } catch(e) {}
+
+        // Status bar updates
+        dashboardUpdateStatus();
+    }
+
+    function dashboardUpdateStatus() {
+        // Firebase status
+        var fbEl = document.getElementById('hubFirebaseStatus');
+        if (fbEl) {
+            if (firebaseDb && firebaseAuthUid) { fbEl.style.color = '#4CAF50'; fbEl.textContent = '🔥 Connected'; }
+            else if (firebaseDb) { fbEl.style.color = '#f2994a'; fbEl.textContent = '🔥 No Auth'; }
+            else { fbEl.style.color = '#f44336'; fbEl.textContent = '🔥 Offline'; }
+        }
+        // API key status
+        var apiEl = document.getElementById('hubApiStatus');
+        if (apiEl) {
+            var hasKey = typeof getApiKey === 'function' && getApiKey();
+            apiEl.style.color = hasKey ? '#4CAF50' : '#888';
+            apiEl.textContent = hasKey ? '🔑 Ready' : '🔑 No Key';
+        }
+        // Network
+        var netEl = document.getElementById('hubNetStatus');
+        if (netEl) {
+            netEl.style.color = navigator.onLine ? '#4CAF50' : '#f44336';
+            netEl.textContent = navigator.onLine ? '🌐 Online' : '🌐 Offline';
+        }
+        // Storage usage
+        var stEl = document.getElementById('hubStorageStatus');
+        if (stEl) {
+            try {
+                var totalBytes = 0;
+                for (var key in localStorage) {
+                    if (localStorage.hasOwnProperty(key)) totalBytes += localStorage[key].length * 2;
+                }
+                var mb = (totalBytes / (1024 * 1024)).toFixed(1);
+                var pct = ((totalBytes / (1024 * 1024)) / 5 * 100).toFixed(0);
+                stEl.textContent = '💾 ' + mb + 'MB (' + pct + '%)';
+                stEl.style.color = pct > 80 ? '#f44336' : pct > 60 ? '#f2994a' : '#888';
+            } catch(e) { stEl.textContent = '💾 --'; }
         }
     }
+
+    // Update network status in real time
+    window.addEventListener('online', dashboardUpdateStatus);
+    window.addEventListener('offline', dashboardUpdateStatus);
 
     // ═══════════════════════════════════════════════════════════════════════════
     // HOBART FUNCTIONS
@@ -7363,6 +7583,11 @@
             victorRenderProducts();
         }
         if (!frankFirebaseListenerActive) { frankHistory = JSON.parse(localStorage.getItem('frank-history') || '[]'); frankRenderHistory(); }
+
+        // Initialize dashboard and status bar
+        dashboardRefresh();
+        // Refresh status bar every 30 seconds
+        setInterval(dashboardUpdateStatus, 30000);
 
         // Log access
         console.log('🔩 J&M Artsteel Hub loaded. Admin:', SteelAuth.isAdmin);

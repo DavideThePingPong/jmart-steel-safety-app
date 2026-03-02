@@ -1,0 +1,26 @@
+[debug] [2026-02-08T04:15:10.677Z] ----------------------------------------------------------------------
+[debug] [2026-02-08T04:15:10.678Z] Command:       /usr/bin/node /sessions/busy-epic-einstein/.npm-global/bin/firebase deploy --only database
+[debug] [2026-02-08T04:15:10.678Z] CLI Version:   15.5.1
+[debug] [2026-02-08T04:15:10.678Z] Platform:      linux
+[debug] [2026-02-08T04:15:10.678Z] Node Version:  v22.22.0
+[debug] [2026-02-08T04:15:10.679Z] Time:          Sun Feb 08 2026 04:15:10 GMT+0000 (Coordinated Universal Time)
+[debug] [2026-02-08T04:15:10.679Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-02-08T04:15:10.680Z] >>> [apiv2][query] GET https://firebase-public.firebaseio.com/cli.json [none]
+[debug] [2026-02-08T04:15:11.272Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-02-08T04:15:11.286Z] Error: Could not load the default credentials. Browse to https://cloud.google.com/docs/authentication/getting-started for more information.
+    at GoogleAuth.getApplicationDefaultAsync (/sessions/busy-epic-einstein/.npm-global/lib/node_modules/firebase-tools/node_modules/google-auth-library/build/src/auth/googleauth.js:287:15)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async GoogleAuth._GoogleAuth_determineClient (/sessions/busy-epic-einstein/.npm-global/lib/node_modules/firebase-tools/node_modules/google-auth-library/build/src/auth/googleauth.js:834:32)
+    at async GoogleAuth.getClient (/sessions/busy-epic-einstein/.npm-global/lib/node_modules/firebase-tools/node_modules/google-auth-library/build/src/auth/googleauth.js:698:20)
+    at async GoogleAuth.getAccessToken (/sessions/busy-epic-einstein/.npm-global/lib/node_modules/firebase-tools/node_modules/google-auth-library/build/src/auth/googleauth.js:722:24)
+    at async autoAuth (/sessions/busy-epic-einstein/.npm-global/lib/node_modules/firebase-tools/lib/requireAuth.js:28:19)
+    at async requireAuth (/sessions/busy-epic-einstein/.npm-global/lib/node_modules/firebase-tools/lib/requireAuth.js:90:20)
+    at async requirePermissions (/sessions/busy-epic-einstein/.npm-global/lib/node_modules/firebase-tools/lib/requirePermissions.js:17:5)
+    at async /sessions/busy-epic-einstein/.npm-global/lib/node_modules/firebase-tools/lib/command.js:264:17
+[error] 
+[error] Error: Failed to authenticate, have you run firebase login?
+[debug] [2026-02-08T04:15:11.288Z] <<< [apiv2][status] GET https://firebase-public.firebaseio.com/cli.json 403
+[debug] [2026-02-08T04:15:11.288Z] <<< [apiv2][body] GET https://firebase-public.firebaseio.com/cli.json "Connection blocked by network allowlist"
+[warn] ⚠  Unable to fetch the CLI MOTD and remote config. This is not a fatal error, but may indicate an issue with your network connection. 
+[debug] [2026-02-08T04:15:11.289Z] Failed to fetch MOTD FirebaseError: Unable to parse JSON: SyntaxError: Unexpected token 'C', "Connection"... is not valid JSON

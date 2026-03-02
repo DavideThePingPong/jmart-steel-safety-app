@@ -1,0 +1,15 @@
+[debug] [2026-02-06T04:23:41.864Z] ----------------------------------------------------------------------
+[debug] [2026-02-06T04:23:41.865Z] Command:       /usr/bin/node /sessions/youthful-confident-einstein/.npm-global/bin/firebase login --no-localhost
+[debug] [2026-02-06T04:23:41.866Z] CLI Version:   15.5.1
+[debug] [2026-02-06T04:23:41.866Z] Platform:      linux
+[debug] [2026-02-06T04:23:41.866Z] Node Version:  v22.22.0
+[debug] [2026-02-06T04:23:41.866Z] Time:          Fri Feb 06 2026 04:23:41 GMT+0000 (Coordinated Universal Time)
+[debug] [2026-02-06T04:23:41.866Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-02-06T04:23:41.867Z] >>> [apiv2][query] GET https://firebase-public.firebaseio.com/cli.json [none]
+[error] 
+[error] Error: Cannot run login in non-interactive mode. See login:ci to generate a token for use in non-interactive environments.
+[debug] [2026-02-06T04:23:42.042Z] <<< [apiv2][status] GET https://firebase-public.firebaseio.com/cli.json 403
+[debug] [2026-02-06T04:23:42.042Z] <<< [apiv2][body] GET https://firebase-public.firebaseio.com/cli.json "Connection blocked by network allowlist"
+[warn] ⚠  Unable to fetch the CLI MOTD and remote config. This is not a fatal error, but may indicate an issue with your network connection. 
+[debug] [2026-02-06T04:23:42.042Z] Failed to fetch MOTD FirebaseError: Unable to parse JSON: SyntaxError: Unexpected token 'C', "Connection"... is not valid JSON

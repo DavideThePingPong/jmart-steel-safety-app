@@ -51,21 +51,30 @@ const StorageQuotaManager = {
     };
   },
 
-  // Clean up old/unnecessary data to free space
+  // Clean up old/unnecessary data to free space (prioritized)
   cleanup: function() {
     const keysToRemove = [];
     const now = Date.now();
     const thirtyDaysAgo = now - (30 * 24 * 60 * 60 * 1000);
+    const sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000);
 
-    // Find old backup and temp keys
+    // Priority 1: temp/cache keys (lowest value)
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      if (key && (key.includes('backup') || key.includes('temp') || key.includes('cache'))) {
+      if (key && (key.includes('temp') || key.includes('cache'))) {
         keysToRemove.push(key);
       }
     }
 
-    // Remove old backed-up form records
+    // Priority 2: backup keys
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.includes('backup') && keysToRemove.indexOf(key) === -1) {
+        keysToRemove.push(key);
+      }
+    }
+
+    // Priority 3: trim old backed-up form tracking (> 30 days)
     try {
       const backedUp = JSON.parse(localStorage.getItem('jmart-backed-up-forms') || '{}');
       const recentBackups = {};
@@ -79,6 +88,27 @@ const StorageQuotaManager = {
       console.error('Error cleaning backup records:', e);
     }
 
+    // Priority 4: trim old sync queue entries (> 7 days)
+    try {
+      const queue = JSON.parse(localStorage.getItem('jmart-sync-queue') || '[]');
+      const recent = queue.filter(function(item) {
+        return item.timestamp && (new Date(item.timestamp).getTime() > sevenDaysAgo);
+      });
+      if (recent.length < queue.length) {
+        localStorage.setItem('jmart-sync-queue', JSON.stringify(recent));
+        console.log('Trimmed sync queue: ' + (queue.length - recent.length) + ' old entries removed');
+      }
+    } catch (e) { /* non-fatal */ }
+
+    // Priority 5: trim local audit log (keep last 500)
+    try {
+      const audit = JSON.parse(localStorage.getItem('jmart-audit-log') || '[]');
+      if (audit.length > 500) {
+        localStorage.setItem('jmart-audit-log', JSON.stringify(audit.slice(-500)));
+        console.log('Trimmed audit log: ' + (audit.length - 500) + ' old entries removed');
+      }
+    } catch (e) { /* non-fatal */ }
+
     // Remove identified keys
     keysToRemove.forEach(key => {
       try {
@@ -90,7 +120,7 @@ const StorageQuotaManager = {
     });
 
     const freed = keysToRemove.length;
-    console.log(`Storage cleanup complete: removed ${freed} items`);
+    console.log('Storage cleanup complete: removed ' + freed + ' items');
     this.notifyListeners(this.getUsage());
     return { cleaned: freed, usage: this.getUsage() };
   },

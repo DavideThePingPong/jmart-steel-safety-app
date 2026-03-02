@@ -1,43 +1,130 @@
 // ========================================
-// FORM VALIDATOR - WHS Compliance
+// FORM VALIDATOR - WHS Compliance + XSS Protection
 // Extracted from index.html for maintainability
-// Adapted from src-v3/services/formValidation.js
+// v2: Added sanitization, XSS protection, field-level validation
 // ========================================
 window.formValidator = (function() {
-  // Validate a value is present
+
+  // ========================================
+  // XSS SANITIZATION
+  // ========================================
+
+  // Strip HTML tags and dangerous patterns from user input
+  function sanitize(val) {
+    if (val === undefined || val === null) return val;
+    if (typeof val !== 'string') return val;
+    return val
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')  // Remove script tags
+      .replace(/<[^>]*on\w+\s*=/gi, '<')                  // Remove event handlers
+      .replace(/javascript\s*:/gi, '')                     // Remove javascript: URIs
+      .replace(/data\s*:\s*text\/html/gi, '')              // Remove data:text/html
+      .replace(/<iframe[^>]*>[\s\S]*?<\/iframe>/gi, '')    // Remove iframes
+      .replace(/<object[^>]*>[\s\S]*?<\/object>/gi, '')    // Remove objects
+      .replace(/<embed[^>]*>/gi, '')                        // Remove embeds
+      .replace(/<link[^>]*>/gi, '')                         // Remove link tags
+      .trim();
+  }
+
+  // HTML-escape for safe rendering (use when displaying user data)
+  function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  // Sanitize an entire form object (recursive, all string fields)
+  function sanitizeForm(form) {
+    if (!form || typeof form !== 'object') return form;
+    const clean = Array.isArray(form) ? [] : {};
+    for (const key of Object.keys(form)) {
+      const val = form[key];
+      if (typeof val === 'string') {
+        clean[key] = sanitize(val);
+      } else if (val && typeof val === 'object' && !(val instanceof Date)) {
+        clean[key] = sanitizeForm(val);
+      } else {
+        clean[key] = val;
+      }
+    }
+    return clean;
+  }
+
+  // ========================================
+  // FIELD VALIDATORS
+  // ========================================
+
   function isPresent(val) {
     if (val === undefined || val === null || val === '') return false;
     if (Array.isArray(val) && val.length === 0) return false;
+    if (typeof val === 'string' && val.trim() === '') return false;
     return true;
   }
 
-  // Validate date is not in future
   function dateNotFuture(dateStr) {
     if (!dateStr) return null;
     const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return 'Invalid date format';
     const today = new Date(); today.setHours(23,59,59,999);
     if (d > today) return 'Date cannot be in the future';
     return null;
   }
 
-  // Toolbox talk validation
+  function dateNotTooOld(dateStr, maxDaysAgo) {
+    if (!dateStr) return null;
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return null;
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - (maxDaysAgo || 365));
+    if (d < cutoff) return 'Date is too far in the past (max ' + maxDaysAgo + ' days)';
+    return null;
+  }
+
+  function maxLength(val, max, fieldName) {
+    if (!val || typeof val !== 'string') return null;
+    if (val.length > max) return fieldName + ' exceeds maximum length (' + max + ' characters)';
+    return null;
+  }
+
+  function validateEmail(email) {
+    if (!email) return null;
+    const pattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!pattern.test(email)) return 'Invalid email address';
+    return null;
+  }
+
+  function validatePhone(phone) {
+    if (!phone) return null;
+    const cleaned = phone.replace(/[\s\-\(\)\.]/g, '');
+    if (cleaned.length < 8 || cleaned.length > 15) return 'Invalid phone number';
+    if (!/^[\+]?[0-9]+$/.test(cleaned)) return 'Phone number contains invalid characters';
+    return null;
+  }
+
+  // ========================================
+  // FORM-SPECIFIC VALIDATORS
+  // ========================================
+
   function validateToolbox(form) {
     const errors = [];
     if (!isPresent(form.siteConducted)) errors.push('Site/Location is required');
     if (!isPresent(form.preparedBy)) errors.push('Presented By is required');
     if (!isPresent(form.topics || form.selectedTopics)) errors.push('At least one topic must be selected');
+    const lenErr = maxLength(form.siteConducted, 200, 'Site/Location');
+    if (lenErr) errors.push(lenErr);
     const signedCount = form.signatures ? Object.values(form.signatures).filter(s => s !== null).length : 0;
     if (signedCount === 0) errors.push('At least one attendee must sign on');
     return errors;
   }
 
-  // Inspection validation
   function validateInspection(form) {
     const errors = [];
     if (!isPresent(form.siteConducted)) errors.push('Site/Location is required');
     if (!isPresent(form.preparedBy)) errors.push('Prepared By is required');
     if (!isPresent(form.completedBy)) errors.push('Completed By is required');
-    // Check at least some inspection items answered
     if (form.inspectionItems) {
       const answered = Object.values(form.inspectionItems).filter(v => v !== null && v !== undefined).length;
       const total = Object.keys(form.inspectionItems).length;
@@ -46,7 +133,6 @@ window.formValidator = (function() {
     return errors;
   }
 
-  // ITP (Glass) validation
   function validateITP(form) {
     const errors = [];
     if (!isPresent(form.siteConducted)) errors.push('Site/Location is required');
@@ -56,7 +142,6 @@ window.formValidator = (function() {
     return errors;
   }
 
-  // Steel ITP validation
   function validateSteelITP(form) {
     const errors = [];
     if (!isPresent(form.siteConducted)) errors.push('Site/Location is required');
@@ -66,7 +151,6 @@ window.formValidator = (function() {
     return errors;
   }
 
-  // Pre-start checklist validation (enhanced: checklist completion + hazard cross-validation)
   function validatePrestart(form) {
     const errors = [];
     if (!isPresent(form.supervisorName)) errors.push('Supervisor name is required');
@@ -76,17 +160,22 @@ window.formValidator = (function() {
     if (!isPresent(form.highRiskWorks)) errors.push('High Risk Works selection is required');
     if (!isPresent(form.worksCoveredBySWMS)) errors.push('SWMS coverage selection is required');
     if (!isPresent(form.isPlantEquipmentUsed)) errors.push('Plant/Equipment selection is required');
-    // Hazard cross-validation: high-risk works must have SWMS coverage
+    // Field length checks
+    var lenErr = maxLength(form.address, 500, 'Address');
+    if (lenErr) errors.push(lenErr);
+    lenErr = maxLength(form.supervisorName, 100, 'Supervisor name');
+    if (lenErr) errors.push(lenErr);
+    // Hazard cross-validation
     if (form.highRiskWorks === 'yes' && form.worksCoveredBySWMS !== 'yes') {
       errors.push('High-risk works require SWMS coverage');
     }
-    // Site hazards identification check
+    // Site hazards
     if (form.siteHazards) {
       var hazVal = form.siteHazards.value || '';
       var hazNotes = Array.isArray(form.siteHazards.notes) ? form.siteHazards.notes : [];
       if (hazVal === '' && hazNotes.length === 0) errors.push('Site hazards must be identified');
     }
-    // Checklist completion check
+    // Checklist completion
     if (form.checkType && form.checklistItems && form.checks) {
       var items = form.checklistItems[form.checkType] || [];
       var completedItems = Object.keys(form.checks).length;
@@ -99,7 +188,6 @@ window.formValidator = (function() {
     return errors;
   }
 
-  // Incident report validation (enhanced: incidentTime check)
   function validateIncident(form) {
     const errors = [];
     if (!isPresent(form.incidentType || form.type)) errors.push('Incident type is required');
@@ -110,19 +198,58 @@ window.formValidator = (function() {
     if (!isPresent(form.reportedBy)) errors.push('Reporter name is required');
     if (!isPresent(form.immediateActions)) errors.push('Immediate actions taken is required');
     if (!isPresent(form.reporterSignature)) errors.push('Reporter signature is required');
+    // Field length checks
+    var lenErr = maxLength(form.description, 5000, 'Description');
+    if (lenErr) errors.push(lenErr);
+    lenErr = maxLength(form.immediateActions, 2000, 'Immediate actions');
+    if (lenErr) errors.push(lenErr);
+    // Date checks
     const dateErr = dateNotFuture(form.incidentDate || form.date);
     if (dateErr) errors.push(dateErr);
+    const oldErr = dateNotTooOld(form.incidentDate || form.date, 365);
+    if (oldErr) errors.push(oldErr);
     return errors;
   }
 
-  // Check if incident is notifiable (WHS Act 2011)
   function isNotifiableIncident(incident) {
     const notifiable = ['death','serious injury','dangerous incident','hospitalization','amputation','serious burns','spinal injury','loss of consciousness'];
     const text = ((incident.incidentType || '') + ' ' + (incident.severity || '') + ' ' + (incident.description || '')).toLowerCase();
     return notifiable.some(t => text.includes(t));
   }
 
+  // ========================================
+  // UNIVERSAL VALIDATE: sanitize + validate any form type
+  // ========================================
+  function validate(form) {
+    if (!form || !form.type) return { valid: false, errors: ['Form type is missing'], form: form };
+
+    // Sanitize all string fields first
+    const clean = sanitizeForm(form);
+
+    // Run type-specific validation
+    let errors = [];
+    switch (clean.type) {
+      case 'prestart':   errors = validatePrestart(clean); break;
+      case 'toolbox':    errors = validateToolbox(clean); break;
+      case 'incident':   errors = validateIncident(clean); break;
+      case 'inspection': errors = validateInspection(clean); break;
+      case 'itp':        errors = validateITP(clean); break;
+      case 'steel-itp':  errors = validateSteelITP(clean); break;
+      default: break; // Unknown type — no validation
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors: errors,
+      form: clean // Return sanitized form
+    };
+  }
+
   return {
+    validate: validate,
+    sanitize: sanitize,
+    sanitizeForm: sanitizeForm,
+    escapeHtml: escapeHtml,
     validatePrestart: validatePrestart,
     validateIncident: validateIncident,
     validateToolbox: validateToolbox,
@@ -131,6 +258,10 @@ window.formValidator = (function() {
     validateSteelITP: validateSteelITP,
     isNotifiableIncident: isNotifiableIncident,
     isPresent: isPresent,
-    dateNotFuture: dateNotFuture
+    dateNotFuture: dateNotFuture,
+    dateNotTooOld: dateNotTooOld,
+    maxLength: maxLength,
+    validateEmail: validateEmail,
+    validatePhone: validatePhone
   };
 })();

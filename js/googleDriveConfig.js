@@ -6,7 +6,10 @@
 // 2. Create project "JMart Safety App"
 // 3. Enable "Google Drive API"
 // 4. Go to "Credentials" → Create OAuth Client ID
-// 5. Add authorized origin: https://davidethepingpong.github.io
+// 5. Add BOTH authorized origins:
+//    - https://davidethepingpong.github.io
+//    - https://jmart-steel-safety.web.app
+//    - https://jmart-steel-safety.firebaseapp.com
 // 6. Copy Client ID below
 // ========================================
 const GOOGLE_CLIENT_ID = '920798274486-rh1p59hihjkj9k04qmn5e3rbs57g55q8.apps.googleusercontent.com';
