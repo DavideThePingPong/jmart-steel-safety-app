@@ -1,136 +1,100 @@
 // ========================================
-// FORM VALIDATOR - WHS Compliance
+// FORM VALIDATOR - WHS Compliance + XSS Protection
 // Extracted from index.html for maintainability
-// Adapted from src-v3/services/formValidation.js
+// v2: Added sanitization, XSS protection, field-level validation
 // ========================================
 window.formValidator = (function() {
-  // Validate a value is present
+
+  // ========================================
+  // XSS SANITIZATION
+  // ========================================
+
+  // Strip HTML tags and dangerous patterns from user input
+  function sanitize(val) {
+    if (val === undefined || val === null) return val;
+    if (typeof val !== 'string') return val;
+    return val
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')  // Remove script tags
+      .replace(/<[^>]*on\w+\s*=/gi, '<')                  // Remove event handlers
+      .replace(/javascript\s*:/gi, '')                     // Remove javascript: URIs
+      .replace(/data\s*:\s*text\/html/gi, '')              // Remove data:text/html
+      .replace(/<iframe[_>]*>[\s\S]*?<\/iframe>/gi, '')    // Remove iframes
+      .replace(/<object[^>]*>[\s\S]*?<\/object>/gi, '')    // Remove objects
+      .replace(/<embed[_>]*>/gi, '')                        // Remove embeds
+      .replace(/<link[^>]*>/gi, '')                         // Remove link tags
+      .trim();
+  }
+
+  // HTML-escape for safe rendering (use when displaying user data)
+  function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  // Sanitize an entire form object (recursive, all string fields)
+  function sanitizeForm(form) {
+    if (!form || typeof form !== 'object') return form;
+    const clean = Array.isArray(form) ? [] : {};
+    for (const key of Object.keys(form)) {
+      const val = form[key];
+      if (typeof val === 'string') {
+        clean[key] = sanitize(val);
+      } else if (val && typeof val === 'object' && !(val instanceof Date)) {
+        clean[key] = sanitizeForm(val);
+      } else {
+        clean[key] = val;
+      }
+    }
+    return clean;
+  }
+
+  // ========================================
+  // FIELD VALIDATORS
+  // ========================================
+
   function isPresent(val) {
     if (val === undefined || val === null || val === '') return false;
     if (Array.isArray(val) && val.length === 0) return false;
+    if (typeof val === 'string' && val.trim() === '') return false;
     return true;
   }
 
-  // Validate date is not in future
   function dateNotFuture(dateStr) {
     if (!dateStr) return null;
     const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return 'Invalid date format';
     const today = new Date(); today.setHours(23,59,59,999);
     if (d > today) return 'Date cannot be in the future';
     return null;
   }
 
-  // Toolbox talk validation
-  function validateToolbox(form) {
-    const errors = [];
-    if (!isPresent(form.siteConducted)) errors.push('Site/Location is required');
-    if (!isPresent(form.preparedBy)) errors.push('Presented By is required');
-    if (!isPresent(form.topics || form.selectedTopics)) errors.push('At least one topic must be selected');
-    const signedCount = form.signatures ? Object.values(form.signatures).filter(s => s !== null).length : 0;
-    if (signedCount === 0) errors.push('At least one attendee must sign on');
-    return errors;
+  function dateNotTooOld(dateStr, maxDaysAgo) {
+    if (!dateStr) return null;
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return null;
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - (maxDaysAgo || 365));
+    if (d < cutoff) return 'Date is too far in the past (max ' + maxDaysAgo + ' days)';
+    return null;
   }
 
-  // Inspection validation
-  function validateInspection(form) {
-    const errors = [];
-    if (!isPresent(form.siteConducted)) errors.push('Site/Location is required');
-    if (!isPresent(form.preparedBy)) errors.push('Prepared By is required');
-    if (!isPresent(form.completedBy)) errors.push('Completed By is required');
-    // Check at least some inspection items answered
-    if (form.inspectionItems) {
-      const answered = Object.values(form.inspectionItems).filter(v => v !== null && v !== undefined).length;
-      const total = Object.keys(form.inspectionItems).length;
-      if (answered < total) errors.push('All ' + total + ' inspection items must be completed (' + answered + ' done)');
-    }
-    return errors;
+  function maxLength(val, max, fieldName) {
+    if (!val || typeof val !== 'string') return null;
+    if (val.length > max) return fieldName + ' exceeds maximum length (' + max + ' characters)';
+    return null;
   }
 
-  // ITP (Glass) validation
-  function validateITP(form) {
-    const errors = [];
-    if (!isPresent(form.siteConducted)) errors.push('Site/Location is required');
-    if (!isPresent(form.preparedBy)) errors.push('Prepared By is required');
-    if (!isPresent(form.builderSignoffName)) errors.push('Builder name is required');
-    if (!isPresent(form.builderSignature)) errors.push('Builder signature is required');
-    return errors;
+  function validateEmail(email) {
+    if (!email) return null;
+    const pattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!pattern.test(email)) return 'Invalid email address';
+    return null;
   }
 
-  // Steel ITP validation
-  function validateSteelITP(form) {
-    const errors = [];
-    if (!isPresent(form.siteConducted)) errors.push('Site/Location is required');
-    if (!isPresent(form.preparedBy)) errors.push('Prepared By is required');
-    if (!isPresent(form.managerName)) errors.push('Manager name is required');
-    if (!isPresent(form.managerSignature)) errors.push('Manager signature is required');
-    return errors;
-  }
-
-  // Pre-start checklist validation (enhanced: checklist completion + hazard cross-validation)
-  function validatePrestart(form) {
-    const errors = [];
-    if (!isPresent(form.supervisorName)) errors.push('Supervisor name is required');
-    if (!isPresent(form.siteConducted)) errors.push('Site/Location is required');
-    if (!isPresent(form.builder)) errors.push('Builder is required');
-    if (!isPresent(form.address)) errors.push('Address is required');
-    if (!isPresent(form.highRiskWorks)) errors.push('High Risk Works selection is required');
-    if (!isPresent(form.worksCoveredBySWMS)) errors.push('SWMS coverage selection is required');
-    if (!isPresent(form.isPlantEquipmentUsed)) errors.push('Plant/Equipment selection is required');
-    // Hazard cross-validation: high-risk works must have SWMS coverage
-    if (form.highRiskWorks === 'yes' && form.worksCoveredBySWMS !== 'yes') {
-      errors.push('High-risk works require SWMS coverage');
-    }
-    // Site hazards identification check
-    if (form.siteHazards) {
-      var hazVal = form.siteHazards.value || '';
-      var hazNotes = Array.isArray(form.siteHazards.notes) ? form.siteHazards.notes : [];
-      if (hazVal === '' && hazNotes.length === 0) errors.push('Site hazards must be identified');
-    }
-    // Checklist completion check
-    if (form.checkType && form.checklistItems && form.checks) {
-      var items = form.checklistItems[form.checkType] || [];
-      var completedItems = Object.keys(form.checks).length;
-      if (completedItems < items.length) {
-        errors.push('All ' + items.length + ' checklist items must be completed (' + completedItems + ' done)');
-      }
-    }
-    const signedCount = form.signatures ? Object.values(form.signatures).filter(s => s !== null).length : 0;
-    if (signedCount === 0) errors.push('At least one worker must sign on');
-    return errors;
-  }
-
-  // Incident report validation (enhanced: incidentTime check)
-  function validateIncident(form) {
-    const errors = [];
-    if (!isPresent(form.incidentType || form.type)) errors.push('Incident type is required');
-    if (!isPresent(form.incidentDate || form.date)) errors.push('Date of incident is required');
-    if (!isPresent(form.incidentTime || form.time)) errors.push('Time of incident is required');
-    if (!isPresent(form.location)) errors.push('Location is required');
-    if (!isPresent(form.description)) errors.push('Description is required');
-    if (!isPresent(form.reportedBy)) errors.push('Reporter name is required');
-    if (!isPresent(form.immediateActions)) errors.push('Immediate actions taken is required');
-    if (!isPresent(form.reporterSignature)) errors.push('Reporter signature is required');
-    const dateErr = dateNotFuture(form.incidentDate || form.date);
-    if (dateErr) errors.push(dateErr);
-    return errors;
-  }
-
-  // Check if incident is notifiable (WHS Act 2011)
-  function isNotifiableIncident(incident) {
-    const notifiable = ['death','serious injury','dangerous incident','hospitalization','amputation','serious burns','spinal injury','loss of consciousness'];
-    const text = ((incident.incidentType || '') + ' ' + (incident.severity || '') + ' ' + (incident.description || '')).toLowerCase();
-    return notifiable.some(t => text.includes(t));
-  }
-
-  return {
-    validatePrestart: validatePrestart,
-    validateIncident: validateIncident,
-    validateToolbox: validateToolbox,
-    validateInspection: validateInspection,
-    validateITP: validateITP,
-    validateSteelITP: validateSteelITP,
-    isNotifiableIncident: isNotifiableIncident,
-    isPresent: isPresent,
-    dateNotFuture: dateNotFuture
-  };
-})();
+  function validatePhone(phone) {
+    if (!phone) return(¹Õ±°ì(€€€½¹ÍĞ±•…¹•€ôÁ¡½¹”¹É•Á±…” ½mqÍpµp¡p¥p¹t½œ°€œœ¤ì(€€€¥˜€¡±•…¹•¹±•¹Ñ €ğ€àñğ±•…¹•¹±•¹Ñ €ø€ÄÔ¤É•ÑÕÉ¸€%¹Ù…±¥Á¡½¹”¹Õµ‰•Èœì(€€€¥˜€ „½ymp­tılÀ´åt¬¼¹Ñ•ÍĞ¡±•…¹•¤¤É•ÑÕÉ¸€A¡½¹”¹Õµ‰•È½¹Ñ…¥¹Ì¥¹Ù…±¥¡…É…Ñ•ÉÌœì(€€€É•ÑÕÉ¸¹Õ±°ì(€ô((€€¼¼€ôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôô(€€¼¼=I4µMA%%Y1%Q=IL(€€¼¼€ôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôôô((€™Õ¹Ñ¥½¸Ù…±¥‘…Ñ•Q½½±‰½à¡™½É´¤ì(€€€½¹ÍĞ•ÉÉ½ÉÌ€ômtì(€€€¥˜€ …¥ÍAÉ•Í•¹Ğ¡™½É´¹Í¥Ñ•½¹‘ÕÑ•¤¤•ÉÉ½ÉÌ¹ÁÕÍ  M¥Ñ”½1½…Ñ¥½¸¥ÌÉ•ÅÕ¥É•œ¤ì(€€€¥˜€ …¥ÍAÉ•Í•¹Ğ¡™½É´¹ÁÉ•Á…É•‘	ä¤¤•ÉÉ½ÉÌ¹ÁÕÍ  AÉ•Í•¹Ñ•	ä¥ÌÉ•ÅÕ¥É•œ¤ì(€€€¥˜€ …¥ÍAÉ•Í•¹Ğ¡™½É´¹Ñ½Á¥Ìñğ™½É´¹Í•±•Ñ•‘Q½Á¥Ì¤¤•ÉÉ½ÉÌ¹ÁÕÍ  Ğ±•…ÍĞ½¹”Ñ½Á¥ŒµÕÍĞ‰”Í•±•Ñ•œ¤ì(€€€½¹ÍĞ±•¹ÉÈ€ôµ…á1•¹Ñ ¡™½É´¹Í¥Ñ•½¹‘ÕÑ•°€ÈÀÀ°€M¥Ñ”½1½…Ñ¥½¸œ¤ì(€€€¥˜€¡±•¹ÉÈ¤•ÉÉ½ÉÌ¹ÁÕÍ ¡±•¹ÉÈ¤ì(€€€½¹ÍĞÍ¥¹•‘½Õ¹Ğ€ô™½É´¹Í¥¹…ÑÕÉ•Ì€ü=‰©•Ğ¹Ù…±Õ•Ì¡™½É´¹Í¥¹…ÑÕÉ•Ì¤¹™¥±Ñ•È¡Ì€ôøÌ€„ôô¹Õ±°¤¹±•¹Ñ €è€Àì(€€€¥˜€¡Í¥¹•‘½Õ¹Ğ€ôôô€À¤•ÉÉ½ÉÌ¹ÁÕÍ  Ğ±•…ÍĞ½¹”…ÑÑ•¹‘•”µÕÍĞÍ¥¸½¸œ¤ì(€€€É•ÑÕÉ¸•ÉÉ½ÉÌì(€ô((€™Õ¹Ñ¥½¸Ù…±¥‘…Ñ•%¹ÍÁ•Ñ¥½¸¡™½É´¤ì(€€€½¹ÍĞ•ÉÉ½ÉÌ€ômtì(€€€¥˜€ …¥ÍAÉ•Í•¹Ğ¡™½É´¹Í¥Ñ•½¹‘ÕÑ•¤¤•ÉÉ½ÉÌ¹ÁÕÍ  M¥Ñ”½1½…Ñ¥½¸¥ÌÉ•ÅÕ¥É•œ¤ì(€€€¥˜€ …¥ÍAÉ•Í•¹Ğ¡™½É´¹ÁÉ•Á…É•‘	ä¤¤•ÉÉ½ÉÌ¹ÁÕÍ  AÉ•Á…É•	ä¥ÌÉ•ÅÕ¥É•œ¤ì(€€€¥˜€ …¥ÍAÉ•Í•¹Ğ¡™½É´¹½µÁ±•Ñ•‘	ä¤¤•ÉÉ½ÉÌ¹ÁÕÍ  ½µÁ±•Ñ•	ä¥ÌÉ•ÅÕ¥É•œ¤ì(€€€¥˜€¡™½É´¹¥¹ÍÁ•Ñ¥½¹%Ñ•µÌ¤ì(€€€€€½¹ÍĞ…¹Íİ•É•€ô=‰©•Ğ¹Ù…±Õ•Ì¡™½É´¹¥¹ÍÁ•Ñ¥½¹%Ñ•µÌ¤¹™¥±Ñ•È¡Ø€ôøØ€„ôô¹Õ±°€˜˜Ø€„ôôÕ¹‘•™¥¹•¤¹±•¹Ñ ì(€€€€€½¹ÍĞÑ½Ñ…°€ô=‰©•Ğ¹­•åÌ¡™½É´¹¥¹ÍÁ•Ñ¥½¹%Ñ•µÌ¤¹±•¹Ñ ì(€€€€€¥˜€¡…¹Íİ•É•€ğÑ½Ñ…°¤•ÉÉ½ÉÌ¹ÁÕÍ  ±°€œ€¬Ñ½Ñ…°€¬€œ¥¹ÍÁ•Ñ¥½¸¥Ñ•µÌµÕÍĞ‰”½µÁ±•Ñ•€ œ€¬…¹Íİ•É•€¬€œ‘½¹”¤œ¤ì(€€€ô(€€€É•ÑÕÉ¸•ÉÉ½ÉÌì(€ô((€™Õ¹Ñ¥½¸Ù…±¥‘…Ñ•%Q@¡™½É´¤ì(€€€½¹ÍĞ•ÉÉ½ÉÌ€ômtì(€€€¥˜€ …¥ÍAÉ•Í•¹Ğ¡™½É´¹Í¥Ñ•½¹‘ÕÑ•¤¤•ÉÉ½ÉÌ¹ÁÕÍ  M¥Ñ”½1½…Ñ¥½¸¥ÌÉ•ÅÕ¥É•œ¤ì(€€€¥˜€ …¥ÍAÉ•Í•¹Ğ¡™½É´¹ÁÉ•Á…É•‘	ä¤¤•ÉÉ½ÉÌ¹ÁÕÍ  AÉ•Á…É•	ä¥ÌÉ•ÅÕ¥É•œ¤ì(€€€¥˜€ …¥ÍAÉ•Í•¹Ğ¡™½É´¹‰Õ¥±‘•ÉM¥¹½™™9…µ”¤¤•ÉÉ½ÉÌ¹ÁÕÍ  	Õ¥±‘•È¹…µ”¥ÌÉ•ÅÕ¥É•œ¤ì(€€€¥˜€ …¥ÍAÉ•Í•¹Ğ¡™½É´¹‰Õ¥±‘•ÉM¥¹…ÑÕÉ”¤¤•ÉÉ½ÉÌ¹ÁÕÍ  	Õ¥±‘•ÈÍ¥¹…ÑÕÉ”¥ÌÉ•ÅÕ¥É•œ¤ì(€€€É•ÑÕÉ¸•ÉÉ½ÉÌì(€ô((€™Õ¹Ñ¥½¸Ù…±¥‘…Ñ•MÑ••±%Q@¡™½É´¤ì(€€€½¹ÍĞ•ÉÉ½ÉÌ€ômtì(€€€¥˜€ …¥ÍAÉ•Í•¹Ğ¡™½É´¹Í¥Ñ•½¹‘ÕÑ•¤¤•ÉÉ½ÉÌ¹ÁÕÍ  M¥Ñ”½1½…Ñ¥½¸¥ÌÉ•ÅÕ¥É•œ¤ì(€€€¥˜€ …¥ÍAÉ•Í•¹Ğ¡™½É´¹ÁÉ•Á…É•‘	ä¤¤•ÉÉ½ÉÌ¹ÁÕÍ  AÉ•Á…É•	ä¥ÌÉ•ÅÕ¥É•œ¤ì(€€€¥˜€ …¥ÍAÉ•Í•¹Ğ¡™½É´¹µ…¹…•É9…µ”¤¤•ÉÉ½ÉÌ¹ÁÕÍ  5…¹…•È¹…µ”¥ÌÉ•ÅÕ¥É•œ¤ì(€€€¥˜€ …¥ÍAÉ•Í•¹Ğ¡™½É´¹µ…¹…•ÉM¥¹…ÑÕÉ”¤¤•ÉÉ½ÉÌ¹ÁÕÍ  5…¹…•ÈÍ¥¹…ÑÕÉ”¥ÌÉ•ÅÕ¥É•œ¤ì(€€€É•ÑÕÉ¸•ÉÉ½ÉÌì(€ô((€™Õ¹Ñ¥½¸Ù…±¥‘…Ñ•AÉ•ÍÑ…ÉĞ¡™½É´¤ì(€€€½¹ÍĞ•ÉÉ½ÉÌ€ômtì(€€€¥˜€ …¥ÍAÉ•Í•¹Ğ¡™½É´¹ÍÕÁ•ÉÙ¥Í½É9…µ”¤¤•ÉÉ½ÉÌ¹ÁÕÍ  MÕÁ•ÉÙ¥Í½È¹…µ”¥ÌÉ•ÅÕ¥É•œ¤ì(€€€¥˜€ …¥ÍAÉ•Í•¹Ğ¡™½É´¹Í¥Ñ•½¹‘ÕÑ•¤¤•ÉÉ½ÉÌ¹ÁÕÍ  M¥Ñ”½1½…Ñ¥½¸¥ÌÉ•ÅÕ¥É•œ¤ì(€€€¥˜€ …¥ÍAÉ•Í•¹Ğ¡™½É´¹‰Õ¥±‘•È¤¤•ÉÉ½ÉÌ¹ÁÕÍ  	Õ¥±‘•È¥ÌÉ•ÅÕ¥É•œ¤ì(€€€¥˜€ …¥ÍAÉ•Í•¹Ğ¡™½É´¹…‘‘É•ÍÌ¤¤•ÉÉ½ÉÌ¹ÁÕÍ  ‘‘É•ÍÌ¥ÌÉ•ÅÕ¥É•œ¤ì(€€€¥˜€ …¥ÍAÉ•Í•¹Ğ¡™½É´¹¡¥¡I¥Í­]½É­Ì¤¤•ÉÉ½ÉÌ¹ÁÕÍ  !¥ I¥Í¬]½É­ÌÍ•±•Ñ¥½¸¥ÌÉ•ÅÕ¥É•œ¤ì(€€€¥˜€ …¥ÍAÉ•Í•¹Ğ¡™½É´¹İ½É­ÍÆ÷fW&VD'•5tÕ2’’W'&÷'2çW6‚‚u5tÕ26÷fW&vR6VÆV7F–öâ—2&WV—&VBr“°¢–b‚—5&W6VçB†f÷&Òæ—5ÆçDWV—ÖVçEW6VB’’W'&÷'2çW6‚‚uÆçBôWV—ÖVçB6VÆV7F–öâ—2&WV—&VBr“°¢òòf–VÆBÆVæwF‚6†V6·0¢f"ÆVäW'"ÒÖ„ÆVæwF‚†f÷&ÒæFG&W72ÂSÂtFG&W72r“°¢–b†ÆVäW'"’W'&÷'2çW6‚†ÆVäW'"“°¢ÆVäW'"ÒÖ„ÆVæwF‚†f÷&Òç7WW'f—6÷$æÖRÂÂu7WW'f—6÷"æÖRr“°¢–b†ÆVäW'"’W'&÷'2çW6‚†ÆVäW'"“°¢òò†¦&B7&÷72×fÆ–FF–öà¢–b†f÷&Òæ†–v…&—6µv÷&·2ÓÓÒw–W2rbbf÷&Òçv÷&·46÷fW&VD'•5tÕ2ÓÒw–W2r’°¢W'&÷'2çW6‚‚t†–v‚×&—6²v÷&·2&WV—&R5tÕ26÷fW&vRr“°¢Ğ¢òò6—FR†¦&G0¢–b†f÷&Òç6—FT†¦&G2’°¢f"†¥fÂÒf÷&Òç6—FT†¦&G2çfÇVRÇÂrs°¢f"†¤æ÷FW2Ò'&’æ—4'&’†f÷&Òç6—FT†¦&G2ææ÷FW2’òf÷&Òç6—FT†¦&G2ææ÷FW2¢µÓ°¢–b††¥fÂÓÓÒrrbb†¤æ÷FW2æÆVæwF‚ÓÓÒ’W'&÷'2çW6‚‚u6—FR†¦&G2×W7B&R–FVçF–f–VBr“°¢Ğ¢òò6†V6¶Æ—7B6ö×ÆWF–öà¢–b†f÷&Òæ6†V6µG—Rbbf÷&Òæ6†V6¶Æ—7D—FV×2bbf÷&Òæ6†V6·2’°¢f"—FV×2Òf÷&Òæ6†V6¶Æ—7D—FV×5¶f÷&Òæ6†V6µG—UÒÇÂµÓ°¢f"6ö×ÆWFVD—FV×2Òö&¦V7Bæ¶W—2†f÷&Òæ6†V6·2’æÆVæwFƒ°¢–b†6ö×ÆWFVD—FV×2Â—FV×2æÆVæwF‚’°¢W'&÷'2çW6‚‚tÆÂr²—FV×2æÆVæwF‚²r6†V6¶Æ—7B—FV×2×W7B&R6ö×ÆWFVB‚r²6ö×ÆWFVD—FV×2²rFöæR’r“°¢Ğ¢Ğ¢6öç7B6–væVD6÷VçBÒf÷&Òç6–væGW&W2òö&¦V7BçfÇVW2†f÷&Òç6–væGW&W2’æf–ÇFW"‡2Óâ2ÓÒçVÆÂ’æÆVæwF‚¢°¢–b‡6–væVD6÷VçBÓÓÒ’W'&÷'2çW6‚‚tBÆV7BöæRv÷&¶W"×W7B6–vâöâr“°¢&WGW&âW'&÷'3°¢Ğ ¢gVæ7F–öâfÆ–FFT–æ6–FVçB†f÷&Ò’°¢6öç7BW'&÷'2ÒµÓ°¢–b‚—5&W6VçB†f÷&Òæ–æ6–FVçEG—RÇÂf÷&ÒçG—R’’W'&÷'2çW6‚‚t–æ6–FVçBG—R—2&WV—&VBr“°¢–b‚—5&W6VçB†f÷&Òæ–æ6–FVçDFFRÇÂf÷&ÒæFFR’’W'&÷'2çW6‚‚tFFRöb–æ6–FVçB—2&WV—&VBr“°¢–b‚—5&W6VçB†f÷&Òæ–æ6–FVçEF–ÖRÇÂf÷&ÒçF–ÖR’’W'&÷'2çW6‚‚uF–ÖRöb–æ6–FVçB—2&WV—&VBr“°¢–b‚—5&W6VçB†f÷&ÒæÆö6F–öâ’’W'&÷'2çW6‚‚tÆö6F–öâ—2&WV—&VBr“°¢–b‚—5&W6VçB†f÷&ÒæFW67&—F–öâ’’W'&÷'2çW6‚‚tFW67&—F–öâ—2&WV—&VBr“°¢–b‚—5&W6VçB†f÷&Òç&W÷'FVD'’’’W'&÷'2çW6‚‚u&W÷'FW"æÖR—2&WV—&VBr“°¢–b‚—5&W6VçB†f÷&Òæ–ÖÖVF–FT7F–öç2’’W'&÷'2çW6‚‚t–ÖÖVF–FR7F–öç2F¶Vâ—2&WV—&VBr“°¢–b‚—5&W6VçB†f÷&Òç&W÷'FW%6–væGW&R’’W'&÷'2çW6‚‚u&W÷'FW"6–væGW&R—2&WV—&VBr“°¢òòf–VÆBÆVæwF‚6†V6·0¢f"ÆVäW'"ÒÖ„ÆVæwF‚†f÷&ÒæFW67&—F–öâÂSÂtFW67&—F–öâr“°¢–b†ÆVäW'"’W'&÷'2çW6‚†ÆVäW'"“°¢ÆVäW'"ÒÖ„ÆVæwF‚†f÷&Òæ–ÖÖVF–FT7F–öç2Â#Ât–ÖÖVF–FR7F–öç2r“°¢–b†ÆVäW'"’W'&÷'2çW6‚†ÆVäW'"“°¢òòFFR6†V6·0¢6öç7BFFTW'"ÒFFTæ÷DgWGW&R†f÷&Òæ–æ6–FVçDFFRÇÂf÷&ÒæFFR“°¢–b†FFTW'"’W'&÷'2çW6‚†FFTW'"“°¢6öç7BöÆDW'"ÒFFTæ÷EFöôöÆB†f÷&Òæ–æ6–FVçDFFRÇÂf÷&ÒæFFRÂ3cR“°¢–b†öÆDW'"’W'&÷'2çW6‚†öÆDW'"“°¢&WGW&âW'&÷'3°¢Ğ ¢gVæ7F–öâ—4æ÷F–f–&ÆT–æ6–FVçB†–æ6–FVçB’°¢6öç7Bæ÷F–f–&ÆRÒ²vFVF‚rÂw6W&–÷W2–æ§W'’rÂvFævW&÷W2–æ6–FVçBrÂv†÷7—FÆ—¦F–öârÂv×WFF–öârÂw6W&–÷W2'W&ç2rÂw7–æÂ–æ§W'’rÂvÆ÷72öb6öç66–÷W6æW72uÓ°¢6öç7BFW‡BÒ‚†–æ6–FVçBæ–æ6–FVçEG—RÇÂrr’²rr²†–æ6–FVçBç6WfW&—G’ÇÂrr’²rr²†–æ6–FVçBæFW67&—F–öâÇÂrr’’çFôÆ÷vW$66R‚“°¢&WGW&âæ÷F–f–&ÆRç6öÖR‡BÓâFW‡Bæ–æ6ÇVFW2‡B’“°¢Ğ ¢òòÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓĞ¢òòTä•dU%4ÂdÄ”DDS¢6æ—F—¦R²fÆ–FFRç’f÷&ÒG—P¢òòÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓÓĞ¢gVæ7F–öâfÆ–FFR†f÷&Ò’°¢–b‚f÷&ÒÇÂf÷&ÒçG—R’&WGW&â²fÆ–C¢fÇ6RÂW'&÷'3¢²tf÷&ÒG—R—2Ö—76–æruÒÂf÷&Ó¢f÷&ÒÓ° ¢òò6æ—F—¦RÆÂ7G&–ærf–VÆG2f—'7@¢6öç7B6ÆVâÒ6æ—F—¦Tf÷&Ò†f÷&Ò“° ¢òò'VâG—R×7V6–f–2fÆ–FF–öà¢ÆWBW'&÷'2ÒµÓ°¢7v—F6‚†6ÆVâçG—R’°¢66Rw&W7F'Bs¢W'&÷'2ÒfÆ–FFU&W7F'B†6ÆVâ“²'&V³°¢66RwFööÆ&÷‚s¢W'&÷'2ÒfÆ–FFUFööÆ&÷‚†6ÆVâ“²'&V³°¢66Rv–æ6–FVçBs¢W'&÷'2ÒfÆ–FFT–æ6–FVçB†6ÆVâ“²'&V³°¢66Rv–ç7V7F–öâs¢W'&÷'2ÒfÆ–FFT–ç7V7F–öâ†6ÆVâ“²'&V³°¢66Rv—Gs¢W'&÷'2ÒfÆ–FFT•E†6ÆVâ“²'&V³°¢66Rw7FVVÂÖ—Gs¢W'&÷'2ÒfÆ–FFU7FVVÄ•E†6ÆVâ“²'&V³°¢FVfVÇC¢'&V³²òòVæ¶æ÷vâG—R(	BæòfÆ–FF–öà¢Ğ ¢&WGW&â°¢fÆ–C¢W'&÷'2æÆVæwF‚ÓÓÒÀ¢W'&÷'3¢W'&÷'2À¢f÷&Ó¢6ÆVâòò&WGW&â6æ—F—¦VBf÷&Ğ¢Ó°¢Ğ ¢&WGW&â°¢fÆ–FFS¢fÆ–FFRÀ¢6æ—F—¦S¢6æ—F—¦RÀ¢6æ—F—¦Tf÷&Ó¢6æ—F—¦Tf÷&ÒÀ¢W66T‡FÖÃ¢W66T‡FÖÂÀ¢fÆ–FFU&W7F'C¢fÆ–FFU&W7F'BÀ¢fÆ–FFT–æ6–FVçC¢fÆ–FFT–æ6–FVçBÀ¢fÆ–FFUFööÆ&÷ƒ¢fÆ–FFUFööÆ&÷‚À¢fÆ–FFT–ç7V7F–öã¢fÆ–FFT–ç7V7F–öâÀ¢fÆ–FFT•E¢fÆ–FFT•EÀ¢fÆ–FFU7FVVÄ•E¢fÆ–FFU7FVVÄ•EÀ¢—4æ÷F–f–&ÆT–æ6–FVçC¢—4æ÷F–f–&ÆT–æ6–FVçBÀ¢—5&W6VçC¢—5&W6VçBÀ¢FFTæ÷DgWGW&S¢FFTæ÷DgWGW&RÀ¢FFTæ÷EFöôöÆC¢FFTæ÷EFöôöÆBÀ¢Ö„ÆVæwFƒ¢Ö„ÆVæwF‚À¢fÆ–FFTVÖ–Ã¢fÆ–FFTVÖ–ÂÀ¢fÆ–FFU†öæS¢fÆ–FFU†öæP¢Ó°§Ò’‚“° 

@@ -9,60 +9,29 @@ const FirebaseSync = {
   syncListeners: [], // UI callbacks for sync status
 
   // Circuit breaker â€” stops retry storms when storage is full or Firebase is down
-  circuitOpen: false,
-  consecutiveStorageErrors: 0,
-  CIRCUIT_BREAKER_THRESHOLD: 3,
-  circuitOpenedAt: null,
-  CIRCUIT_COOLDOWN_MS: 5 * 60 * 1000, // 5 minutes
+  CIMCTÂ•_OPU“Žˆ˜[ÙKˆÛÛœÙXÝ]]™TÝÜ˜YÙQ\œ›ÜœÎˆˆÒTÕRUÐ”‘PRÑT—Õ‘TÒÓˆËˆÚ\˜ÝZ]Ü[™Y]ˆ[ˆÒTÕRUÐÓÓÓÕÓ—ÓNˆˆ
+ˆŒ
+ˆLËÈˆZ[]\È
+™YXÙYœ›ÛHH›Üˆ˜\Ý\ˆ™XÛÝ™\žJB‚ˆËÈ[š]X[^™HHØY[™[™È]Y]YHœ›ÛHØØ[ÝÜ˜YÙBˆ[š]ˆ[˜Ý[ÛŠ
+HÂˆžHÂˆÛÛœÝØ]™YHØØ[ÝÜ˜YÙK™Ù]][J	Ú›X\\Þ[˜Ë\]Y]YIÊNÂˆ\Ëœ[™[™Ô]Y]YHHØ]™YÈ”ÓÓ‹œ\œÙJØ]™Y
+Hˆ×NÂˆYˆ
+\Ëœ[™[™Ô]Y]YK›[™Ýˆ
+HÂˆÛÛœÛÛK›ÙÊ›Ý[™	Ý\Ëœ[™[™Ô]Y]YK›[™ÝH[™[™ÈÞ[˜È][\Ø
+NÂˆ\Ëœ›ØÙ\ÜÔ]Y]YJ
+NÂˆBˆHØ]Ú
+JHÂˆÛÛœÛÛK™\œ›ÜŠ	Ñ\œ›ÜˆØY[™ÈÞ[˜È]Y]YN‰ËJNÂˆ\Ëœ[™[™Ô]Y]YHH×NÂˆBˆK‚ˆËÈØ]™H]Y]YHÈØØ[ÝÜ˜YÙH8¦%˜XÚÜÈÝÜ˜YÙH\œ›ÜœÈ›ÜˆÚ\˜ÝZ]œ™XZÙ\‚ˆØ]™T]Y]YNˆ[˜Ý[ÛŠ
+HÂˆžHÂˆØØ[ÝÜ˜YÙKœÙ]][J	Ú›X\\Þ[˜Ë\]Y]YIË”ÓÓ‹œÝš[™ÚYžJ\Ëœ[™[™Ô]Y]YJJNÂˆËÈ™\Ù]ÛÛœÙXÝ]]™H\œ›ÜˆÛÝ[\ˆÛˆÝXØÙ\ÜÂˆ\Ë˜ÛÛœÙXÝ]]™TÝÜ˜YÙQ\œ›ÜœÈHÂˆHØ]Ú
+JHÂˆÛÛœÛÛK™\œ›ÜŠ	Ñ\œ›ÜˆØ]š[™ÈÞ[˜È]Y]YN‰ËJNÂˆ\Ë˜ÛÛœÙXÝ]]™TÝÜ˜YÙQ\œ›ÜœÊÊÎÂˆYˆ
+\Ë˜ÛÛœÙXÝ]]™TÝÜ˜YÙQ\œ›ÜœÈH\ËÒTÕRUÐ”‘PRÑT—Õ‘TÒÓ	‰ˆ]\Ë˜Ú\˜ÝZ]Ü[ŠHÂˆ\Ë˜Ú\˜ÝZ]Ü[ˆHYNÂˆ\Ë˜Ú\˜ÝZ]Ü[™Y]H]K››ÝÊ
+NÂˆÛÛœÛÛK™\œ›ÜŠ	ÐÒTÕRU”‘PRÑTˆÔSˆ8 %ÛÈX[žHÝÜ˜YÙH\œ›ÜœÈ
+	È
+È\Ë˜ÛÛœÙXÝ]]™TÝÜ˜YÙQ\œ›ÜœÈ
+È	ÊKˆ™]šY\È]\ÙY›ÜˆHZ[]\Ë‰ÊNÂˆ\Ë››ÝYžS\Ý[™\œÊ	ØÚ\˜ÝZ]ÛÜ[‰ËÈ™X\ÛÛŽˆ	ÜÝÜ˜YÙWÙ[	ËÛÛÛÝÛ“\Îˆ\ËÒTÕRUÐÓÓÓÕÓ—ÓTÈJNÂˆBˆBˆK‚ˆËÈY\Ý[™\ˆ›ÜˆÞ[˜ÈÝ]\È\]\ÂˆÛ”Þ[˜ÔÝ]\ÐÚ[™ÙNˆ[˜Ý[ÛŠØ[˜XÚÊHÂˆ\ËœÞ[˜Ó\Ý[™\œËœ\Ú
+Ø[˜XÚÊNÂˆ™]\›ˆ
 
-  // Initialize - load pending queue from localStorage
-  init: function() {
-    try {
-      const saved = localStorage.getItem('jmart-sync-queue');
-      this.pendingQueue = saved ? JSON.parse(saved) : [];
-      if (this.pendingQueue.length > 0) {
-        console.log(`Found ${this.pendingQueue.length} pending sync items`);
-        this.processQueue();
-      }
-    } catch (e) {
-      console.error('Error loading sync queue:', e);
-      this.pendingQueue = [];
-    }
-  },
-
-  // Save queue to localStorage â€” tracks storage errors for circuit breaker
-  saveQueue: function() {
-    try {
-      localStorage.setItem('jmart-sync-queue', JSON.stringify(this.pendingQueue));
-      // Reset consecutive error counter on success
-      this.consecutiveStorageErrors = 0;
-    } catch (e) {
-      console.error('Error saving sync queue:', e);
-      this.consecutiveStorageErrors++;
-      if (this.consecutiveStorageErrors >= this.CIRCUIT_BREAKER_THRESHOLD && !this.circuitOpen) {
-        this.circuitOpen = true;
-        this.circuitOpenedAt = Date.now();
-        console.error('CIRCUIT BREAKER OPEN â€” too many storage errors (' + this.consecutiveStorageErrors + '). Retries paused for 5 minutes.');
-        this.notifyListeners('circuit_open', { reason: 'storage_full', cooldownMs: this.CIRCUIT_COOLDOWN_MS });
-      }
-    }
-  },
-
-  // Add listener for sync status updates
-  onSyncStatusChange: function(callback) {
-    this.syncListeners.push(callback);
-    return () => {
-      this.syncListeners = this.syncListeners.filter(cb => cb !== callback);
-    };
-  },
-
-  // Notify listeners of status change
-  notifyListeners: function(status, details) {
-    this.syncListeners.forEach(cb => cb(status, details));
-  },
-
-  // Add item to retry queue â€” blocked when circuit breaker is open
-  addToQueue: function(type, data) {
+HOˆÂˆ\ËœÞ[˜Ó\Ý[™\œÈH\ËœÞ[˜Ó\Ý[™\œË™š[\ŠØˆOˆØˆOOHØ[˜XÚÊNÂˆNÂˆK‚ˆËÈ›ÝYžH\Ý[™\œÈÙˆÝ]\ÈÚ[™ÙBˆ›ÝYžS\Ý[™\œÎˆ[˜Ý[ÛŠÝ]\Ë]Z[ÊHÂˆ\ËœÞ[˜Ó\Ý[™\œË™›Ü‘XXÚ
+ØˆOˆØŠÝ]\Ë]Z[ÊJNÂˆK‚ˆËÈY][HÈ™]žH]Y]YH8 %›ØÚÙYÚ[ˆÚ\˜ÝZ]œ™XZÙ\ˆ\ÈÜ[‚ˆQQÕ×ÔUEUQX@
+SHES‚: function(type, data) {
     if (this.circuitOpen) {
       console.warn('Circuit breaker OPEN â€” cannot add to queue. Try again after cooldown.');
       this.notifyListeners('circuit_open', { reason: 'queue_blocked' });
@@ -118,7 +87,7 @@ const FirebaseSync = {
           this.notifyListeners('failed', { pending: this.pendingQueue.length, error: error.message });
         } else {
           const delay = this.retryDelays[Math.min(item.attempts - 1, this.retryDelays.length - 1)];
-          console.log(`Retry ${item.attempts}/${this.maxRetries} for ${item.type} in ${delay}ms`);
+          console.lm¨`Retry ${item.attempts}/${this.maxRetries} for ${item.type} in ${delay}ms`);
           setTimeout(() => this.processQueue(), delay);
         }
         this.saveQueue();
@@ -150,184 +119,7 @@ const FirebaseSync = {
         await firebaseDb.ref('jmart-safety/forms').set(item.data);
         break;
       case 'sites': {
-        // Sanitize queued sites data â€” old queue entries may contain corrupted objects
+        // Sanitize queued sites data â€”"old queue entries may contain corrupted objects
         const raw = Array.isArray(item.data) ? item.data : Object.values(item.data || {});
         const clean = [...new Set(raw.map(s => {
-          if (typeof s === 'string') return s;
-          if (s && typeof s === 'object') {
-            const chars = Object.keys(s).filter(k => k !== '_lastModified' && !isNaN(k)).sort((a,b) => Number(a) - Number(b));
-            return chars.map(k => s[k]).join('');
-          }
-          return null;
-        }).filter(s => s && s.length > 1 && s !== 'undefined' && s !== 'null'))];
-        await firebaseDb.ref('jmart-safety/sites').set(clean);
-        break;
-      }
-      case 'training':
-        await firebaseDb.ref('jmart-safety/training').set(item.data);
-        break;
-      case 'signatures':
-        await firebaseDb.ref('signatures').set(item.data);
-        break;
-      default:
-        throw new Error(`Unknown sync type: ${item.type}`);
-    }
-  },
-
-  // Sync forms to Firebase - v3: granular per-form update() instead of full set()
-  syncForms: async function(forms) {
-    if (!firebaseDb || !isFirebaseConfigured) {
-      this.addToQueue('forms', forms);
-      return { success: false, queued: true };
-    }
-    try {
-      const deviceId = localStorage.getItem('jmart-device-id') || 'unknown';
-      const updates = {};
-      const formsArray = Array.isArray(forms) ? forms : Object.values(forms || {});
-      formsArray.forEach(form => {
-        const key = form.id || `form-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
-        updates[key] = {
-          ...form,
-          _lastModified: Date.now(),
-          _modifiedBy: deviceId
-        };
-      });
-      // Single atomic update of all forms (granular keys, no full overwrite)
-      await firebaseDb.ref('jmart-safety/forms').update(updates);
-      console.log('Forms synced to Firebase (granular):', formsArray.length, 'forms');
-      return { success: true };
-    } catch (error) {
-      console.error('Error syncing forms, adding to retry queue:', error);
-      this.addToQueue('forms', forms);
-      this.notifyListeners('error', { message: 'Sync failed - will retry automatically' });
-      return { success: false, queued: true, error: error.message };
-    }
-  },
-
-  // Sync sites to Firebase - v4: REPLACE entire sites array with set()
-  // v3 used update() which accumulated entries and spread strings into char objects
-  syncSites: async function(sites) {
-    if (!firebaseDb || !isFirebaseConfigured) {
-      this.addToQueue('sites', sites);
-      return { success: false, queued: true };
-    }
-    try {
-      // Ensure we're writing a clean array of plain strings (no objects, no duplicates)
-      const sitesArray = [...new Set(
-        (Array.isArray(sites) ? sites : Object.values(sites || {}))
-          .map(s => typeof s === 'string' ? s : (s && s.name ? s.name : String(s)))
-          .filter(s => s && s.length > 0 && s !== 'undefined' && s !== 'null')
-      )];
-
-      // Use set() to REPLACE the entire sites node â€” prevents accumulation
-      await firebaseDb.ref('jmart-safety/sites').set(sitesArray);
-      console.log('Sites synced to Firebase (clean replace):', sitesArray.length, 'sites');
-      return { success: true };
-    } catch (error) {
-      console.error('Error syncing sites, adding to retry queue:', error);
-      this.addToQueue('sites', sites);
-      return { success: false, queued: true, error: error.message };
-    }
-  },
-
-  // Sync training records to Firebase - v3: granular per-record update()
-  syncTraining: async function(training) {
-    if (!firebaseDb || !isFirebaseConfigured) {
-      this.addToQueue('training', training);
-      return { success: false, queued: true };
-    }
-    try {
-      const trainingArray = Array.isArray(training) ? training : Object.values(training || {});
-      const updates = {};
-      trainingArray.forEach((record, i) => {
-        const key = record.id || `training-${i}`;
-        updates[key] = { ...record, _lastModified: Date.now() };
-      });
-      await firebaseDb.ref('jmart-safety/training').update(updates);
-      console.log('Training synced to Firebase (granular):', trainingArray.length, 'records');
-      return { success: true };
-    } catch (error) {
-      console.error('Error syncing training, adding to retry queue:', error);
-      this.addToQueue('training', training);
-      return { success: false, queued: true, error: error.message };
-    }
-  },
-
-  // Get pending queue count
-  getPendingCount: function() {
-    return this.pendingQueue.length;
-  },
-
-  // Reset circuit breaker manually (e.g. from settings UI)
-  resetCircuitBreaker: function() {
-    this.circuitOpen = false;
-    this.consecutiveStorageErrors = 0;
-    this.circuitOpenedAt = null;
-    console.log('Circuit breaker manually reset');
-    this.notifyListeners('circuit_reset', { pending: this.pendingQueue.length });
-  },
-
-  // Manual retry all pending items
-  retryAll: function() {
-    this.pendingQueue.forEach(item => item.attempts = 0);
-    this.saveQueue();
-    this.processQueue();
-  },
-
-  // Listen for real-time form updates
-  onFormsChange: (callback) => {
-    if (!firebaseDb || !isFirebaseConfigured) return () => {};
-    const ref = firebaseDb.ref('jmart-safety/forms');
-    ref.on('value', (snapshot) => {
-      const data = snapshot.val();
-      if (data) callback(data);
-    }, (error) => {
-      console.error('Firebase listener error:', error);
-    });
-    return () => ref.off();
-  },
-
-  // Listen for real-time site updates
-  onSitesChange: (callback) => {
-    if (!firebaseDb || !isFirebaseConfigured) return () => {};
-    const ref = firebaseDb.ref('jmart-safety/sites');
-    ref.on('value', (snapshot) => {
-      const data = snapshot.val();
-      if (data) callback(data);
-    }, (error) => {
-      console.error('Firebase sites listener error:', error);
-    });
-    return () => ref.off();
-  },
-
-  // Listen for real-time training updates
-  onTrainingChange: (callback) => {
-    if (!firebaseDb || !isFirebaseConfigured) return () => {};
-    const ref = firebaseDb.ref('jmart-safety/training');
-    ref.on('value', (snapshot) => {
-      const data = snapshot.val();
-      if (data) callback(data);
-    }, (error) => {
-      console.error('Firebase training listener error:', error);
-    });
-    return () => ref.off();
-  },
-
-  // Check if Firebase is configured and connected
-  isConnected: () => isFirebaseConfigured && firebaseDb !== null,
-
-  // Firebase database reference (for direct access when needed)
-  db: firebaseDb
-};
-
-// Initialize sync queue on load
-FirebaseSync.init();
-
-// Expose processQueue for SW background sync triggers
-window.processSyncQueue = () => FirebaseSync.processQueue();
-
-// Process queue when coming back online
-window.addEventListener('online', () => {
-  console.log('Back online - processing sync queue');
-  FirebaseSync.processQueue();
-});
+          if (typeof s === 'string') return(Ìì(€€€€€€€€€¥˜€¡Ì€˜˜ÑåÁ•½˜Ì€ôôô€½‰©•Ðœ¤ì(€€€€€€€€€€€½¹ÍÐ¡…ÉÌ€ô=‰©•Ð¹­•åÌ¡Ì¤¹™¥±Ñ•È¡¬€ôø¬€„ôô€}±…ÍÑ5½‘¥™¥•œ€˜˜€…¥Í9…8¡¬¤¤¹Í½ÉÐ ¡„±ˆ¤€ôø9Õµ‰•È¡„¤€´9Õµ‰•È¡ˆ¤¤ì(€€€€€€€€€€€É•ÑÕÉ¸¡…ÉÌ¹µ…À¡¬€ôøÍm­t¤¹©½¥¸ œœ¤ì(€€€€€€€€€ô(€€€€€€€€€É•ÑÕÉ¸¹Õ±°ì(€€€€€€€ô¤¹™¥±Ñ•È¡Ì€ôøÌ€˜˜Ì¹±•¹Ñ €ø€Ä€˜˜Ì€„ôô€Õ¹‘•™¥¹•œ€˜˜Ì€„ôô€¹Õ±°œ¤¥tì(€€€€€€€…Ý…¥Ð™¥É•‰…Í•ˆ¹É•˜ ©µ…ÉÐµÍ…™•Ñä½Í¥Ñ•Ìœ¤¹Í•Ð¡±•…¸¤ì(€€€€€€€‰É•…¬ì(€€€€€ô(€€€€€…Í”€ÑÉ…¥¹¥¹œœè(€€€€€€€…Ý…¥Ð™¥É•‰…Í•ˆ¹É•˜ ©µ…ÉÐµÍ…™•Ñä½ÑÉ…¥¹¥¹œœ¤¹Í•Ð¡¥Ñ•´¹‘…Ñ„¤ì(€€€€€€€‰É•…¬ì(€€€€€…Í”€Í¥¹…ÑÕÉ•Ìœè(€€€€€€€…Ý…¥Ð™¥É•‰…Í•ˆ¹É•˜ Í¥¹…ÑÕÉ•Ìœ¤¹Í•Ð¡¥Ñ•´¹‘…Ñ„¤ì(€€€€€€€‰É•…¬ì(€€€€€‘•™…Õ±Ðè(€€€€€€€Ñ¡É½Ü¹•ÜÉÉ½È¡U¹­¹½Ý¸Íå¹ŒÑåÁ”è€‘í¥Ñ•´¹ÑåÁ•õ€¤ì(€€€ô(€ô°((€€¼¼Må¹Œ™½ÉµÌÑ¼¥É•‰…Í”€´ØÌèÉ…¹Õ±…ÈÁ•Èµ™½É´ÕÁ‘…Ñ” ¤¥¹ÍÑ•…½˜™Õ±°Í•Ð ¤(€Íå¹½ÉµÌè‚ý¹Íå¹Œ™Õ¹Ñ¥½¸¡™½ÉµÌ¤ì(€€€¥˜€ …™¥É•‰…Í•ˆñð€…¥Í¥É•‰…Í•½¹™¥ÕÉ•¤ì(€€€€€Ñ¡¥Ì¹…‘‘Q½EÕ•Õ” ™½ÉµÌœ°™½ÉµÌ¤ì(€€€€€É•ÑÕÉ¸ìÍÕ•ÍÌè™…±Í”°ÅÕ•Õ•èÑÉÕ”ôì(€€€ô(€€(€€€€€€€€€€€€€Ç)Rt±½Í•€)ô(
