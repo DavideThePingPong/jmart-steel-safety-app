@@ -51,6 +51,59 @@ const StorageQuotaManager = {
     };
   },
 
+  // Strip base64 photo data from forms to free space (keeps form metadata)
+  stripPhotosFromForms: function() {
+    var stripped = 0;
+    try {
+      var formsRaw = localStorage.getItem('jmart-safety-forms');
+      if (!formsRaw || formsRaw.length < 50000) return stripped; // Only if forms are big
+      var forms = JSON.parse(formsRaw);
+      var formsArray = Array.isArray(forms) ? forms : Object.values(forms || {});
+      formsArray.forEach(function(form) {
+        if (!form) return;
+        // Strip photo fields (base64 strings starting with data:image)
+        Object.keys(form).forEach(function(key) {
+          var val = form[key];
+          if (typeof val === 'string' && val.length > 1000 && (val.indexOf('data:image') === 0 || val.indexOf('data:application') === 0)) {
+            form[key] = '[photo stripped to save space]';
+            stripped++;
+          }
+          // Handle arrays of photos
+          if (Array.isArray(val)) {
+            for (var j = 0; j < val.length; j++) {
+              if (typeof val[j] === 'string' && val[j].length > 1000 && val[j].indexOf('data:image') === 0) {
+                val[j] = '[photo stripped to save space]';
+                stripped++;
+              }
+              // Handle photo objects with data field
+              if (val[j] && typeof val[j] === 'object' && val[j].data && typeof val[j].data === 'string' && val[j].data.length > 1000) {
+                val[j].data = '[photo stripped to save space]';
+                stripped++;
+              }
+            }
+          }
+          // Handle nested objects (e.g. checklist items with photos)
+          if (val && typeof val === 'object' && !Array.isArray(val)) {
+            Object.keys(val).forEach(function(subKey) {
+              var subVal = val[subKey];
+              if (typeof subVal === 'string' && subVal.length > 1000 && subVal.indexOf('data:image') === 0) {
+                val[subKey] = '[photo stripped to save space]';
+                stripped++;
+              }
+            });
+          }
+        });
+      });
+      if (stripped > 0) {
+        localStorage.setItem('jmart-safety-forms', JSON.stringify(Array.isArray(forms) ? formsArray : forms));
+        console.log('Stripped ' + stripped + ' photos from forms to free space');
+      }
+    } catch (e) {
+      console.error('Error stripping photos:', e);
+    }
+    return stripped;
+  },
+
   // Clean up old/unnecessary data to free space (prioritized)
   cleanup: function() {
     const keysToRemove = [];
@@ -100,12 +153,12 @@ const StorageQuotaManager = {
       }
     } catch (e) { /* non-fatal */ }
 
-    // Priority 5: trim local audit log (keep last 500)
+    // Priority 5: trim local audit log (keep last 200)
     try {
       const audit = JSON.parse(localStorage.getItem('jmart-audit-log') || '[]');
-      if (audit.length > 500) {
-        localStorage.setItem('jmart-audit-log', JSON.stringify(audit.slice(-500)));
-        console.log('Trimmed audit log: ' + (audit.length - 500) + ' old entries removed');
+      if (audit.length > 200) {
+        localStorage.setItem('jmart-audit-log', JSON.stringify(audit.slice(-200)));
+        console.log('Trimmed audit log: ' + (audit.length - 200) + ' old entries removed');
       }
     } catch (e) { /* non-fatal */ }
 
@@ -118,6 +171,13 @@ const StorageQuotaManager = {
         console.error('Error removing key:', key, e);
       }
     });
+
+    // Priority 6: If still over 90%, strip base64 photos from forms
+    var usageAfter = this.getUsage();
+    if (parseFloat(usageAfter.percentUsed) > 90) {
+      console.warn('Storage still at ' + usageAfter.percentUsed + '% after basic cleanup — stripping photos');
+      this.stripPhotosFromForms();
+    }
 
     const freed = keysToRemove.length;
     console.log('Storage cleanup complete: removed ' + freed + ' items');
@@ -197,4 +257,20 @@ const StorageQuotaManager = {
       }
     }
   };
+})();
+
+// EMERGENCY AUTO-CLEANUP ON BOOT
+// If storage is over 90%, run cleanup immediately before auth or anything else tries to write
+(function() {
+  try {
+    var usage = StorageQuotaManager.getUsage();
+    if (parseFloat(usage.percentUsed) > 90) {
+      console.warn('[BOOT] Storage at ' + usage.percentUsed + '% — running emergency cleanup before app init');
+      StorageQuotaManager.cleanup();
+      var after = StorageQuotaManager.getUsage();
+      console.log('[BOOT] Post-cleanup storage: ' + after.percentUsed + '% (' + after.megabytes + ' MB)');
+    }
+  } catch (e) {
+    console.error('[BOOT] Emergency cleanup failed:', e);
+  }
 })();
