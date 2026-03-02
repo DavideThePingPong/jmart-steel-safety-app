@@ -106,6 +106,15 @@ const DeviceAuth = {
       return { approved: true, admin: true, offline: true };
     }
 
+    // Wait for Firebase anonymous auth to complete before checking device status
+    // Without this, security rules block all reads (auth != null)
+    try {
+      await firebaseAuthReady;
+      console.log('Firebase auth ready, uid:', firebaseAuthUid);
+    } catch (e) {
+      console.warn('Firebase auth wait failed:', e.message);
+    }
+
     // Check if this device is approved
     const result = await this.checkDeviceStatus();
     return result;

@@ -51,6 +51,25 @@ const StorageQuotaManager = {
     };
   },
 
+  // Recursively strip base64 data from any object (photos, attachments, etc.)
+  _stripDeep: function(obj, depth) {
+    if (!obj || typeof obj !== 'object' || depth > 10) return 0;
+    var stripped = 0;
+    var keys = Array.isArray(obj) ? obj.map(function(_, i) { return i; }) : Object.keys(obj);
+    for (var i = 0; i < keys.length; i++) {
+      var key = keys[i];
+      var val = obj[key];
+      if (typeof val === 'string' && val.length > 1000 &&
+          (val.indexOf('data:image') === 0 || val.indexOf('data:application') === 0 || val.indexOf('/9j/') === 0 || val.indexOf('iVBOR') === 0)) {
+        obj[key] = '[stripped]';
+        stripped++;
+      } else if (val && typeof val === 'object') {
+        stripped += this._stripDeep(val, depth + 1);
+      }
+    }
+    return stripped;
+  },
+
   // Strip base64 photo data from forms to free space (keeps form metadata)
   stripPhotosFromForms: function() {
     var stripped = 0;
@@ -58,45 +77,10 @@ const StorageQuotaManager = {
       var formsRaw = localStorage.getItem('jmart-safety-forms');
       if (!formsRaw || formsRaw.length < 50000) return stripped; // Only if forms are big
       var forms = JSON.parse(formsRaw);
-      var formsArray = Array.isArray(forms) ? forms : Object.values(forms || {});
-      formsArray.forEach(function(form) {
-        if (!form) return;
-        // Strip photo fields (base64 strings starting with data:image)
-        Object.keys(form).forEach(function(key) {
-          var val = form[key];
-          if (typeof val === 'string' && val.length > 1000 && (val.indexOf('data:image') === 0 || val.indexOf('data:application') === 0)) {
-            form[key] = '[photo stripped to save space]';
-            stripped++;
-          }
-          // Handle arrays of photos
-          if (Array.isArray(val)) {
-            for (var j = 0; j < val.length; j++) {
-              if (typeof val[j] === 'string' && val[j].length > 1000 && val[j].indexOf('data:image') === 0) {
-                val[j] = '[photo stripped to save space]';
-                stripped++;
-              }
-              // Handle photo objects with data field
-              if (val[j] && typeof val[j] === 'object' && val[j].data && typeof val[j].data === 'string' && val[j].data.length > 1000) {
-                val[j].data = '[photo stripped to save space]';
-                stripped++;
-              }
-            }
-          }
-          // Handle nested objects (e.g. checklist items with photos)
-          if (val && typeof val === 'object' && !Array.isArray(val)) {
-            Object.keys(val).forEach(function(subKey) {
-              var subVal = val[subKey];
-              if (typeof subVal === 'string' && subVal.length > 1000 && subVal.indexOf('data:image') === 0) {
-                val[subKey] = '[photo stripped to save space]';
-                stripped++;
-              }
-            });
-          }
-        });
-      });
+      stripped = this._stripDeep(forms, 0);
       if (stripped > 0) {
-        localStorage.setItem('jmart-safety-forms', JSON.stringify(Array.isArray(forms) ? formsArray : forms));
-        console.log('Stripped ' + stripped + ' photos from forms to free space');
+        localStorage.setItem('jmart-safety-forms', JSON.stringify(forms));
+        console.log('Stripped ' + stripped + ' base64 items from forms to free space');
       }
     } catch (e) {
       console.error('Error stripping photos:', e);
