@@ -9,7 +9,7 @@
  * - v4: Pinned CDN versions (supply-chain hardening)
  */
 
-const CACHE_VERSION = 'v33';
+const CACHE_VERSION = 'v34';
 const STATIC_CACHE = `jmart-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `jmart-dynamic-${CACHE_VERSION}`;
 const CDN_CACHE = `jmart-cdn-${CACHE_VERSION}`;
@@ -112,9 +112,9 @@ function getStrategy(request) {
     return STRATEGIES.NETWORK_FIRST;
   }
 
-  // CDN resources - stale while revalidate (fast + fresh)
+  // CDN resources — cache-first for reliability (CDN versions are pinned, no freshness needed)
   if (url.hostname !== location.hostname) {
-    return STRATEGIES.STALE_WHILE_REVALIDATE;
+    return STRATEGIES.CACHE_FIRST;
   }
 
   // Static assets - cache first
@@ -237,18 +237,29 @@ self.addEventListener('install', (event) => {
         }
       }),
 
-      // Cache CDN resources (CRITICAL)
+      // Cache CDN resources (CRITICAL — retry up to 2 times on failure)
       caches.open(CDN_CACHE).then(async (cache) => {
         console.log('[SW v4] Caching CDN resources');
         for (const url of CDN_RESOURCES) {
-          try {
-            const response = await fetch(url, { mode: 'cors' });
-            if (response.ok) {
-              await cache.put(url, response);
-              console.log(`[SW v4] Cached: ${url}`);
+          let cached = false;
+          for (let attempt = 0; attempt < 3 && !cached; attempt++) {
+            try {
+              if (attempt > 0) {
+                await new Promise(r => setTimeout(r, 1000 * attempt)); // backoff
+                console.log(`[SW v4] Retry ${attempt} for: ${url}`);
+              }
+              const response = await fetch(url, { mode: 'cors' });
+              if (response.ok) {
+                await cache.put(url, response);
+                console.log(`[SW v4] Cached: ${url}`);
+                cached = true;
+              }
+            } catch (e) {
+              console.warn(`[SW v4] Attempt ${attempt + 1} failed for CDN: ${url}`, e.message);
             }
-          } catch (e) {
-            console.warn(`[SW v4] Failed to cache CDN: ${url}`, e);
+          }
+          if (!cached) {
+            console.error(`[SW v4] CRITICAL: Failed to cache CDN after 3 attempts: ${url}`);
           }
         }
       })
@@ -466,6 +477,30 @@ self.addEventListener('message', (event) => {
             caches.delete(name);
           }
         });
+      });
+      break;
+
+    case 'RECACHE_CDN':
+      // Re-cache CDN resources on demand (triggered when main thread detects missing libs)
+      caches.open(CDN_CACHE).then(async (cache) => {
+        console.log('[SW v4] Re-caching CDN resources on demand');
+        for (const url of CDN_RESOURCES) {
+          try {
+            const existing = await cache.match(url);
+            if (!existing) {
+              const response = await fetch(url, { mode: 'cors' });
+              if (response.ok) {
+                await cache.put(url, response);
+                console.log('[SW v4] Re-cached:', url);
+              }
+            }
+          } catch (e) {
+            console.warn('[SW v4] Re-cache failed:', url, e.message);
+          }
+        }
+        // Notify main thread to reload
+        const clients = await self.clients.matchAll();
+        clients.forEach(client => client.postMessage({ type: 'CDN_RECACHED' }));
       });
       break;
 

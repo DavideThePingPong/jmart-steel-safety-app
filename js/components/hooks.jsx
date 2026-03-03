@@ -534,8 +534,13 @@ function useDataSync({ setForms, setSites, deletingFormRef }) {
   // Save forms to localStorage and sync to Firebase
   const syncFormsEffect = (forms) => {
     if (!isInitialLoad.current) {
-      localStorage.setItem('jmart-safety-forms', JSON.stringify(forms));
-      localStorage.setItem('jmart-last-sync', new Date().toISOString());
+      try {
+        localStorage.setItem('jmart-safety-forms', JSON.stringify(forms));
+        localStorage.setItem('jmart-last-sync', new Date().toISOString());
+      } catch (storageErr) {
+        console.error('[syncFormsEffect] localStorage write failed:', storageErr.message, '— forms NOT lost, still in React state');
+        // Don't crash — forms are still in React state and can be synced to Firebase
+      }
       setLastSynced(new Date().toISOString());
       console.log('Forms saved to localStorage:', forms.length, 'forms');
 

@@ -227,16 +227,36 @@ const StorageQuotaManager = {
         }
       }
     } catch (e) {
-      if (e.name === 'QuotaExceededError' && this === localStorage) {
-        console.error('Storage quota exceeded on key:', key, '- attempting cleanup');
-        StorageQuotaManager.cleanup();
-        try {
-          _origSetItem.call(this, key, value);
-        } catch (e2) {
-          StorageQuotaManager.notifyListeners({ error: 'quota_exceeded' });
-          throw new Error('Storage full! Please connect Google Drive to back up forms, then clear old data in Settings.');
+      // Only handle genuine QuotaExceededError on localStorage
+      if (this === localStorage && (e.name === 'QuotaExceededError' || e.code === 22 || e.code === 1014)) {
+        var currentUsage = StorageQuotaManager.getUsage();
+        console.error('[StorageQuotaManager] Quota error on key:', key,
+          '| Usage:', currentUsage.megabytes, 'MB (' + currentUsage.percentUsed + '%)',
+          '| Error:', e.name, e.message);
+
+        // Only attempt cleanup if storage is actually getting full (>50%)
+        if (parseFloat(currentUsage.percentUsed) > 50) {
+          StorageQuotaManager.cleanup();
+          try {
+            _origSetItem.call(this, key, value);
+            return; // Success after cleanup
+          } catch (e2) {
+            if (e2.name === 'QuotaExceededError' || e2.code === 22 || e2.code === 1014) {
+              StorageQuotaManager.notifyListeners({ error: 'quota_exceeded', ...StorageQuotaManager.getUsage() });
+              throw new Error('Storage full! Please connect Google Drive to back up forms, then clear old data in Settings.');
+            }
+            // Non-quota error on retry — re-throw original error, not a misleading "Storage full!" message
+            console.error('[StorageQuotaManager] Non-quota error on retry:', e2.name, e2.message);
+            throw e2;
+          }
+        } else {
+          // Storage is NOT full but browser threw QuotaExceededError (e.g., private browsing, security restriction)
+          console.warn('[StorageQuotaManager] QuotaExceededError at only ' + currentUsage.percentUsed + '% usage — likely browser restriction, not actual quota. Key:', key);
+          // Re-throw with a more accurate message
+          throw e;
         }
       } else {
+        // Non-quota error — re-throw as-is (do NOT wrap in "Storage full!")
         throw e;
       }
     }

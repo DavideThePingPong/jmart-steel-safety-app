@@ -202,6 +202,44 @@
     };
   </script>
 
+  <!-- CDN Health Check: If critical libs failed, ask SW to re-cache and auto-reload (once) -->
+  <script>
+    (function() {
+      var criticalMissing = [];
+      if (typeof React === 'undefined') criticalMissing.push('React');
+      if (typeof ReactDOM === 'undefined') criticalMissing.push('ReactDOM');
+      if (typeof firebase === 'undefined') criticalMissing.push('Firebase');
+
+      if (criticalMissing.length > 0 && !sessionStorage.getItem('jmart-cdn-retry')) {
+        console.error('[CDN-CHECK] Missing critical libs:', criticalMissing.join(', '), '— requesting SW re-cache');
+        sessionStorage.setItem('jmart-cdn-retry', '1');
+
+        if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({ type: 'RECACHE_CDN' });
+          // Listen for completion then reload
+          navigator.serviceWorker.addEventListener('message', function handler(event) {
+            if (event.data && event.data.type === 'CDN_RECACHED') {
+              navigator.serviceWorker.removeEventListener('message', handler);
+              console.log('[CDN-CHECK] CDN re-cached, reloading...');
+              window.location.reload();
+            }
+          });
+          // Timeout: if re-cache takes >15s, reload anyway (might work from network)
+          setTimeout(function() { window.location.reload(); }, 15000);
+        } else {
+          // No SW controller — just try reloading once
+          setTimeout(function() { window.location.reload(); }, 2000);
+        }
+      } else if (criticalMissing.length > 0) {
+        // Already retried once — clear the flag for next session
+        sessionStorage.removeItem('jmart-cdn-retry');
+      } else {
+        // All CDN libs loaded fine — clear retry flag
+        sessionStorage.removeItem('jmart-cdn-retry');
+      }
+    })();
+  </script>
+
   <!-- React Components (split into files, loaded and compiled as one Babel block) -->
   <script>
     (async function loadComponents() {

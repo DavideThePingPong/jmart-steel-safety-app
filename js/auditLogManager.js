@@ -12,7 +12,8 @@ const AuditLogManager = {
       action: action, // 'create', 'update', 'delete', 'view', 'export'
       deviceId: DeviceAuthManager.deviceId || 'unknown',
       userName: localStorage.getItem('jmart-user-name') || 'Unknown User',
-      timestamp: new Date().toISOString(),
+      timestamp: Date.now(), // Must be number for Firebase validation rules
+      timestampISO: new Date().toISOString(), // Human-readable version
       details: details
     };
 

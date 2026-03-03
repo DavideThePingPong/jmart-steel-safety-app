@@ -96,6 +96,14 @@ const DeviceAuth = {
   init: async function() {
     this.generateDeviceId();
     this.getDeviceInfo();
+
+    // SAFETY: Validate device ID is not null/undefined/empty — regenerate if corrupted
+    if (!this.deviceId || this.deviceId === 'null' || this.deviceId === 'undefined' || this.deviceId.length < 5) {
+      console.error('[DeviceAuth] Invalid device ID detected:', this.deviceId, '— regenerating');
+      localStorage.removeItem('jmart-device-id');
+      this.deviceId = null;
+      this.generateDeviceId();
+    }
     console.log('Device ID:', this.deviceId);
 
     if (!firebaseDb || !isFirebaseConfigured) {
@@ -176,6 +184,11 @@ const DeviceAuth = {
           } catch (e) {
             console.warn('Admin UID migration skipped (non-fatal):', e.message);
           }
+        }
+
+        // SELF-HEALING: If this device is admin, clean up invalid entries in Firebase
+        if (this.isAdmin) {
+          this._cleanupInvalidDevices().catch(e => console.warn('Device cleanup skipped:', e.message));
         }
 
         this.notifyStatusListeners();
@@ -292,6 +305,53 @@ const DeviceAuth = {
 
     // Notify all admins of new device request
     this.notifyAdminsOfNewDevice(deviceData);
+  },
+
+  // Self-healing: Remove invalid device entries (null, undefined, empty IDs)
+  _cleanupInvalidDevices: async function() {
+    if (!firebaseDb) return;
+    try {
+      const approvedSnap = await firebaseDb.ref('jmart-safety/devices/approved').once('value');
+      const devices = approvedSnap.val();
+      if (!devices) return;
+
+      const invalidKeys = ['null', 'undefined', ''];
+      for (const key of invalidKeys) {
+        if (devices[key]) {
+          console.warn('[DeviceAuth] Removing invalid device entry:', JSON.stringify(key));
+          await firebaseDb.ref('jmart-safety/devices/approved/' + key).remove();
+
+          // Also remove any admin UID associated with invalid device
+          const invalidDev = devices[key];
+          if (invalidDev.authUid) {
+            await firebaseDb.ref('jmart-safety/adminAuthUids/' + invalidDev.authUid).remove();
+            console.warn('[DeviceAuth] Removed orphaned admin UID for invalid device:', invalidDev.authUid);
+          }
+
+          if (typeof AuditLogManager !== 'undefined') {
+            AuditLogManager.log('cleanup', {
+              action: 'Removed invalid device entry',
+              invalidDeviceId: key,
+              removedAuthUid: invalidDev.authUid || 'none'
+            });
+          }
+        }
+      }
+
+      // Also clean up pending devices with invalid IDs
+      const pendingSnap = await firebaseDb.ref('jmart-safety/devices/pending').once('value');
+      const pending = pendingSnap.val();
+      if (pending) {
+        for (const key of invalidKeys) {
+          if (pending[key]) {
+            await firebaseDb.ref('jmart-safety/devices/pending/' + key).remove();
+            console.warn('[DeviceAuth] Removed invalid pending device:', key);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[DeviceAuth] Cleanup failed (non-fatal):', e.message);
+    }
   },
 
   // Register device as approved

@@ -15,6 +15,86 @@ const {
   FileText, Camera, Image: LucideImage, StickyNote, Clipboard
 } = lucide;
 
+// =============================================
+// ErrorBoundary - Prevents full-app crashes from component errors
+// =============================================
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null, errorInfo: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('[ErrorBoundary] Caught error:', error, errorInfo);
+    this.setState({ errorInfo });
+
+    // Log to audit trail if available
+    if (typeof AuditLogManager !== 'undefined') {
+      try {
+        AuditLogManager.log('error', {
+          message: error.message,
+          stack: error.stack ? error.stack.substring(0, 500) : 'no stack',
+          component: errorInfo?.componentStack ? errorInfo.componentStack.substring(0, 200) : 'unknown'
+        });
+      } catch (e) { /* non-fatal */ }
+    }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return React.createElement('div', {
+        style: { minHeight: '100vh', backgroundColor: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }
+      },
+        React.createElement('div', {
+          style: { backgroundColor: 'white', borderRadius: '16px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', maxWidth: '400px', width: '100%', overflow: 'hidden' }
+        },
+          React.createElement('div', {
+            style: { padding: '24px', textAlign: 'center', backgroundColor: '#ea580c', color: 'white' }
+          },
+            React.createElement('div', { style: { fontSize: '48px', marginBottom: '12px' } }, '\u26A0\uFE0F'),
+            React.createElement('h2', { style: { fontSize: '20px', fontWeight: 'bold' } }, 'Something Went Wrong')
+          ),
+          React.createElement('div', { style: { padding: '24px' } },
+            React.createElement('p', { style: { color: '#4b5563', marginBottom: '12px', textAlign: 'center' } },
+              'The app encountered an error. Your data is safe in local storage.'
+            ),
+            React.createElement('div', {
+              style: { backgroundColor: '#fef3c7', border: '1px solid #fde68a', borderRadius: '8px', padding: '12px', marginBottom: '16px', fontSize: '13px', color: '#92400e', wordBreak: 'break-word' }
+            }, this.state.error ? this.state.error.message : 'Unknown error'),
+            React.createElement('button', {
+              onClick: function() { window.location.reload(); },
+              style: { width: '100%', backgroundColor: '#ea580c', color: 'white', padding: '12px', borderRadius: '12px', border: 'none', fontWeight: '600', fontSize: '16px', cursor: 'pointer' }
+            }, 'Reload App'),
+            React.createElement('button', {
+              onClick: function() {
+                try {
+                  // Clear potentially corrupted data, keep forms
+                  var keysToRemove = [];
+                  for (var i = 0; i < localStorage.length; i++) {
+                    var key = localStorage.key(i);
+                    if (key && (key.includes('temp') || key.includes('cache') || key.includes('draft'))) {
+                      keysToRemove.push(key);
+                    }
+                  }
+                  keysToRemove.forEach(function(k) { localStorage.removeItem(k); });
+                  window.location.reload();
+                } catch (e) { window.location.reload(); }
+              },
+              style: { width: '100%', backgroundColor: '#e5e7eb', color: '#374151', padding: '12px', borderRadius: '12px', border: 'none', fontWeight: '500', fontSize: '14px', cursor: 'pointer', marginTop: '8px' }
+            }, 'Clear Cache & Reload')
+          )
+        )
+      );
+    }
+    return this.props.children;
+  }
+}
+window.ErrorBoundary = ErrorBoundary;
+
 // Icon component wrapper
 function Icon({ icon, size = 24, className = "" }) {
   const ref = useRef(null);

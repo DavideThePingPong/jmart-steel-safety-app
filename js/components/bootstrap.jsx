@@ -4,8 +4,12 @@
 console.log('[BOOTSTRAP] Starting React render...');
 try {
   const root = ReactDOM.createRoot(document.getElementById('root'));
-  root.render(<AppWithAuth />);
-  console.log('[BOOTSTRAP] React render initiated successfully');
+  root.render(
+    <ErrorBoundary>
+      <AppWithAuth />
+    </ErrorBoundary>
+  );
+  console.log('[BOOTSTRAP] React render initiated successfully (with ErrorBoundary)');
 } catch (err) {
   console.error('[BOOTSTRAP] Render error:', err);
   document.getElementById('root').innerHTML =
