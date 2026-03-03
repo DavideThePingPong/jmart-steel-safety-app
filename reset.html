@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JMart Safety - Reset Cache</title>
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; background: #f3f4f6; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 16px; }
+    .card { background: white; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); max-width: 400px; width: 100%; overflow: hidden; }
+    .header { padding: 24px; text-align: center; background: #ea580c; color: white; }
+    .body { padding: 24px; }
+    .status { background: #fef3c7; border: 1px solid #fde68a; border-radius: 8px; padding: 12px; margin: 12px 0; font-size: 14px; color: #92400e; min-height: 60px; }
+    .status.done { background: #dcfce7; border-color: #bbf7d0; color: #166534; }
+    .status.error { background: #fee2e2; border-color: #fecaca; color: #991b1b; }
+    button { width: 100%; padding: 14px; border: none; border-radius: 12px; font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 8px; }
+    .btn-reset { background: #dc2626; color: white; }
+    .btn-go { background: #ea580c; color: white; }
+    .btn-go:disabled { background: #d1d5db; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div style="font-size:48px;margin-bottom:8px;">🔧</div>
+      <h2 style="margin:0;font-size:20px;">Cache Reset Tool</h2>
+      <p style="margin:4px 0 0;font-size:14px;opacity:0.9;">Fixes "Storage full" and loading errors</p>
+    </div>
+    <div class="body">
+      <div id="status" class="status">Ready. Tap "Reset Everything" to clear cached data and fix loading issues. Your saved forms in Firebase are safe.</div>
+      <button class="btn-reset" onclick="doReset()">Reset Everything</button>
+      <button class="btn-go" id="goBtn" onclick="window.location.href='./'" disabled>Open App</button>
+    </div>
+  </div>
+  <script>
+    async function doReset() {
+      var el = document.getElementById('status');
+      var steps = [];
+      try {
+        // 1. Unregister all service workers
+        el.textContent = 'Step 1/4: Removing service workers...';
+        var regs = await navigator.serviceWorker.getRegistrations();
+        for (var r of regs) { await r.unregister(); }
+        steps.push('Removed ' + regs.length + ' service worker(s)');
+
+        // 2. Delete all caches
+        el.textContent = 'Step 2/4: Clearing caches...';
+        var names = await caches.keys();
+        for (var n of names) { await caches.delete(n); }
+        steps.push('Deleted ' + names.length + ' cache(s)');
+
+        // 3. Clear problematic localStorage keys (keep forms safe)
+        el.textContent = 'Step 3/4: Cleaning localStorage...';
+        var keysToRemove = [];
+        for (var i = 0; i < localStorage.length; i++) {
+          var key = localStorage.key(i);
+          if (key && (key.includes('temp') || key.includes('cache') || key.includes('draft') || key.includes('cdn-retry'))) {
+            keysToRemove.push(key);
+          }
+        }
+        keysToRemove.forEach(function(k) { localStorage.removeItem(k); });
+        steps.push('Cleaned ' + keysToRemove.length + ' temp key(s)');
+
+        // 4. Clear sessionStorage
+        el.textContent = 'Step 4/4: Clearing session data...';
+        sessionStorage.clear();
+        steps.push('Session cleared');
+
+        el.className = 'status done';
+        el.innerHTML = '<strong>Done!</strong><br>' + steps.join('<br>') + '<br><br>Tap "Open App" to load the fixed version.';
+        document.getElementById('goBtn').disabled = false;
+      } catch (e) {
+        el.className = 'status error';
+        el.innerHTML = '<strong>Error:</strong> ' + e.message + '<br><br>Steps completed: ' + steps.join(', ');
+        document.getElementById('goBtn').disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>
