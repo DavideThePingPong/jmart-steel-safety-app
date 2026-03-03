@@ -31,12 +31,31 @@ function IncidentView({ onSubmit }) {
     setStep(4);
   };
 
+  const isNotifiable = formData.type === 'injury' || (formData.type === 'damage' && formData.description && formData.description.toLowerCase().match(/collapse|fall|electr|explos|gas|chemical|asbestos|confined|trench/));
+
   if (step === 4) {
     return (
       <div className="text-center py-12">
         <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 text-4xl">✅</div>
         <h2 className="text-2xl font-bold text-gray-800 mb-2">Report Submitted!</h2>
         <p className="text-gray-600 mb-6">Reference: INC-{Date.now().toString().slice(-6)}</p>
+        {isNotifiable && (
+          <div className="bg-red-50 border-2 border-red-400 rounded-xl p-4 mx-4 mb-6 text-left">
+            <div className="flex items-start gap-3">
+              <span className="text-2xl">⚠️</span>
+              <div>
+                <h3 className="font-bold text-red-800 text-lg">Possible Notifiable Incident</h3>
+                <p className="text-red-700 text-sm mt-1">Under the WHS Act 2011, serious injuries, dangerous incidents, and deaths must be reported to SafeWork NSW immediately.</p>
+                <div className="mt-3 space-y-1 text-sm text-red-800">
+                  <p className="font-semibold">You must:</p>
+                  <p>1. Call SafeWork NSW: <a href="tel:131050" className="underline font-bold">13 10 50</a></p>
+                  <p>2. Preserve the scene (do not disturb unless preventing further injury)</p>
+                  <p>3. Written notification within 48 hours</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
         <button onClick={() => {
           setStep(1);
           setFormData({

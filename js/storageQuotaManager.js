@@ -159,6 +159,28 @@ const StorageQuotaManager = {
       }
     } catch (e) { /* non-fatal */ }
 
+    // Priority 6: Data retention — archive forms older than 90 days from localStorage
+    // These forms are already in Firebase + Google Drive, so safe to trim locally
+    try {
+      const forms = JSON.parse(localStorage.getItem('jmart-safety-forms') || '[]');
+      const ninetyDaysAgo = now - (90 * 24 * 60 * 60 * 1000);
+      if (forms.length > 0) {
+        const recent = forms.filter(function(form) {
+          var created = form.createdAt || form.date;
+          if (!created) return true; // keep forms without dates (can't determine age)
+          var ts = new Date(created).getTime();
+          return isNaN(ts) || ts > ninetyDaysAgo;
+        });
+        if (recent.length < forms.length) {
+          var archived = forms.length - recent.length;
+          localStorage.setItem('jmart-safety-forms', JSON.stringify(recent));
+          console.log('Data retention: archived ' + archived + ' forms older than 90 days from localStorage (still in Firebase/Drive)');
+        }
+      }
+    } catch (e) {
+      console.error('Data retention cleanup failed:', e);
+    }
+
     // Remove identified keys
     keysToRemove.forEach(key => {
       try {
