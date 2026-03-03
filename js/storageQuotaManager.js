@@ -125,17 +125,30 @@ const StorageQuotaManager = {
       console.error('Error cleaning backup records:', e);
     }
 
-    // Priority 4: trim old sync queue entries (> 7 days)
+    // Priority 4: trim sync queue — also catch bloated/corrupt data
     try {
-      const queue = JSON.parse(localStorage.getItem('jmart-sync-queue') || '[]');
-      const recent = queue.filter(function(item) {
-        return item.timestamp && (new Date(item.timestamp).getTime() > sevenDaysAgo);
-      });
-      if (recent.length < queue.length) {
-        localStorage.setItem('jmart-sync-queue', JSON.stringify(recent));
-        console.log('Trimmed sync queue: ' + (queue.length - recent.length) + ' old entries removed');
+      const queueRaw = localStorage.getItem('jmart-sync-queue');
+      if (queueRaw && queueRaw.length > 500000) {
+        // Queue data is over 500KB — likely corrupt or massively bloated, nuke it
+        console.warn('Sync queue is bloated (' + Math.round(queueRaw.length / 1024) + 'KB) — clearing entirely');
+        localStorage.setItem('jmart-sync-queue', '[]');
+      } else if (queueRaw) {
+        const queue = JSON.parse(queueRaw);
+        const recent = queue.filter(function(item) {
+          return item.timestamp && (new Date(item.timestamp).getTime() > sevenDaysAgo);
+        });
+        // Also cap at 100 entries max regardless of age
+        const capped = recent.slice(-100);
+        if (capped.length < queue.length) {
+          localStorage.setItem('jmart-sync-queue', JSON.stringify(capped));
+          console.log('Trimmed sync queue: ' + (queue.length - capped.length) + ' entries removed');
+        }
       }
-    } catch (e) { /* non-fatal */ }
+    } catch (e) {
+      // If we can't even parse it, it's corrupt — reset it
+      console.error('Sync queue corrupt, resetting:', e.message);
+      try { localStorage.setItem('jmart-sync-queue', '[]'); } catch (e2) { /* give up */ }
+    }
 
     // Priority 5: trim local audit log (keep last 200)
     try {
@@ -264,11 +277,23 @@ const StorageQuotaManager = {
 })();
 
 // EMERGENCY AUTO-CLEANUP ON BOOT
-// If storage is over 90%, run cleanup immediately before auth or anything else tries to write
+// Check for bloated keys and high storage usage before auth or anything else tries to write
 (function() {
   try {
+    // First pass: nuke any single key over 1MB (almost certainly corrupt data)
+    for (var i = 0; i < localStorage.length; i++) {
+      var key = localStorage.key(i);
+      if (key && key !== 'jmart-safety-forms') { // Never nuke forms
+        var val = localStorage.getItem(key);
+        if (val && val.length > 1000000) { // > 1MB
+          console.warn('[BOOT] Bloated key detected:', key, '(' + Math.round(val.length / 1024) + 'KB) — clearing');
+          localStorage.setItem(key, key.includes('queue') || key.includes('log') ? '[]' : '');
+        }
+      }
+    }
+
     var usage = StorageQuotaManager.getUsage();
-    if (parseFloat(usage.percentUsed) > 90) {
+    if (parseFloat(usage.percentUsed) > 80) {
       console.warn('[BOOT] Storage at ' + usage.percentUsed + '% — running emergency cleanup before app init');
       StorageQuotaManager.cleanup();
       var after = StorageQuotaManager.getUsage();
