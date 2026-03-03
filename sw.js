@@ -9,7 +9,7 @@
  * - v4: Pinned CDN versions (supply-chain hardening)
  */
 
-const CACHE_VERSION = 'v37';
+const CACHE_VERSION = 'v38';
 const STATIC_CACHE = `jmart-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `jmart-dynamic-${CACHE_VERSION}`;
 const CDN_CACHE = `jmart-cdn-${CACHE_VERSION}`;
@@ -138,19 +138,27 @@ async function cacheFirst(request, cacheName) {
     return cached;
   }
 
+  // Cache miss — fetch from network
+  // Use a fresh Request with cors mode for CDN resources to avoid opaque response issues
   try {
-    const response = await fetch(request);
+    const url = request.url;
+    const isCDN = CDN_RESOURCES.some(cdn => url === cdn || url.startsWith(cdn.split('?')[0]));
+    const fetchRequest = isCDN ? new Request(url, { mode: 'cors' }) : request;
+    const response = await fetch(fetchRequest);
     if (response.ok) {
       const cache = await caches.open(cacheName);
       cache.put(request, response.clone());
     }
     return response;
   } catch (error) {
-    // Return offline page for navigation
+    console.warn('[SW] cacheFirst network fetch failed for:', request.url, error.message);
+    // For CDN scripts, return a more helpful error instead of generic 503
+    // so the page's fallback logic can handle it
     if (request.mode === 'navigate') {
       return caches.match(OFFLINE_URL);
     }
-    throw error;
+    // Don't throw — return a proper error response so the page can handle gracefully
+    return new Response('', { status: 504, statusText: 'CDN Unavailable' });
   }
 }
 
@@ -289,9 +297,33 @@ self.addEventListener('activate', (event) => {
             return caches.delete(name);
           })
       );
-    }).then(() => {
+    }).then(async () => {
       console.log('[SW v4] Activation complete');
-      return self.clients.claim();
+      await self.clients.claim();
+
+      // Verify CDN cache is populated — if empty, repopulate (handles cache-clear scenarios)
+      try {
+        const cdnCache = await caches.open(CDN_CACHE);
+        const firstCDN = await cdnCache.match(CDN_RESOURCES[0]);
+        if (!firstCDN) {
+          console.warn('[SW v4] CDN cache empty after activation — repopulating');
+          for (const url of CDN_RESOURCES) {
+            try {
+              const response = await fetch(url, { mode: 'cors' });
+              if (response.ok) {
+                await cdnCache.put(url, response);
+              }
+            } catch (e) {
+              console.warn('[SW v4] CDN repopulate failed:', url, e.message);
+            }
+          }
+          // Notify clients to reload with fresh cache
+          const clients = await self.clients.matchAll();
+          clients.forEach(client => client.postMessage({ type: 'CDN_RECACHED' }));
+        }
+      } catch (e) {
+        console.error('[SW v4] CDN cache verification failed:', e);
+      }
     })
   );
 });
