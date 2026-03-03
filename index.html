@@ -326,15 +326,33 @@
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js')
         .then(reg => {
-          console.log('✅ SW v3 registered, scope:', reg.scope);
-          // Listen for updates
+          console.log('✅ SW registered, scope:', reg.scope);
+
+          // Force-check for updates immediately (don't wait for browser's 24h cycle)
+          reg.update().catch(() => {});
+
+          // Listen for updates and auto-activate new SW
           reg.addEventListener('updatefound', () => {
             const newWorker = reg.installing;
             newWorker.addEventListener('statechange', () => {
-              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                console.log('🔄 New SW available — will activate on next reload');
+              if (newWorker.state === 'installed') {
+                if (navigator.serviceWorker.controller) {
+                  // New SW ready — tell it to take over immediately
+                  console.log('🔄 New SW available — activating immediately');
+                  newWorker.postMessage({ type: 'SKIP_WAITING' });
+                }
               }
             });
+          });
+
+          // When a new SW takes over, reload to get fresh code
+          var refreshing = false;
+          navigator.serviceWorker.addEventListener('controllerchange', () => {
+            if (!refreshing) {
+              refreshing = true;
+              console.log('🔄 New SW activated — reloading for fresh code');
+              window.location.reload();
+            }
           });
         })
         .catch(err => console.log('SW registration skipped:', err.message));
