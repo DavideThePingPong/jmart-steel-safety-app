@@ -37,53 +37,101 @@
 
   </style>
   <!--
-    SRI (Subresource Integrity) — To generate hashes, run from a machine with network access:
-      curl -sL URL | openssl dgst -sha384 -binary | openssl base64 -A
-    Or use https://www.srihash.org/
-    Then add integrity="sha384-HASH" to each script tag below.
+    CDN libraries loaded dynamically to avoid SW interception issues.
+    Sequential loading preserves dependency order (React before ReactDOM, etc.)
   -->
-  <script src="https://unpkg.com/react@18.2.0/umd/react.production.min.js" crossorigin="anonymous"></script>
-  <script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
-  <script src="https://unpkg.com/@babel/standalone@7.24.0/babel.min.js" crossorigin="anonymous"></script>
-  <script src="https://unpkg.com/lucide@0.344.0/dist/umd/lucide.min.js" crossorigin="anonymous"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" crossorigin="anonymous"></script>
+  <script>
+    (function() {
+      // CDN scripts to load IN ORDER (dependencies must load first)
+      var cdnScripts = [
+        'https://unpkg.com/react@18.2.0/umd/react.production.min.js',
+        'https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js',
+        'https://unpkg.com/@babel/standalone@7.24.0/babel.min.js',
+        'https://unpkg.com/lucide@0.344.0/dist/umd/lucide.min.js',
+        'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+        'https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js',
+        'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js',
+        'https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js'
+      ];
 
-  <!-- Firebase SDK for Cloud Sync (Database + Auth + photos via Google Drive) -->
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js" crossorigin="anonymous"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js" crossorigin="anonymous"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js" crossorigin="anonymous"></script>
+      // Load each script sequentially using fetch + eval to bypass SW script interception
+      function loadScript(url) {
+        return fetch(url, { mode: 'cors' }).then(function(r) {
+          if (!r.ok) throw new Error(url + ' returned ' + r.status);
+          return r.text();
+        }).then(function(code) {
+          try {
+            (0, eval)(code); // indirect eval runs in global scope
+          } catch (e) {
+            console.error('[CDN-LOADER] Error executing:', url, e.message);
+          }
+          console.log('[CDN-LOADER] Loaded:', url.split('/').pop());
+        });
+      }
 
-  <!-- Google API for Drive Integration -->
-  <script src="https://apis.google.com/js/api.js" crossorigin="anonymous"></script>
-  <script src="https://accounts.google.com/gsi/client" crossorigin="anonymous"></script>
+      // Chain them sequentially
+      window.__cdnReady = cdnScripts.reduce(function(chain, url) {
+        return chain.then(function() { return loadScript(url); });
+      }, Promise.resolve()).then(function() {
+        console.log('[CDN-LOADER] All CDN libraries loaded successfully');
+      }).catch(function(err) {
+        console.error('[CDN-LOADER] Failed to load CDN libraries:', err.message);
+        // Show error to user
+        var root = document.getElementById('root');
+        if (root) {
+          root.innerHTML =
+            '<div style="padding:40px;text-align:center;font-family:system-ui;">' +
+            '<h2 style="color:#dc2626;">Failed to Load Libraries</h2>' +
+            '<p style="color:#6b7280;">' + err.message + '</p>' +
+            '<button onclick="window.location.reload()" style="margin-top:16px;padding:12px 24px;background:#ea580c;color:white;border:none;border-radius:8px;font-size:16px;cursor:pointer;">Retry</button>' +
+            '</div>';
+        }
+      });
+    })();
+  </script>
+
+  <!-- Google API for Drive Integration (non-critical, loaded via script tags) -->
+  <script src="https://apis.google.com/js/api.js" crossorigin="anonymous" async></script>
+  <script src="https://accounts.google.com/gsi/client" crossorigin="anonymous" async></script>
 
 
-  <!-- Service Layer (extracted to separate files) -->
-  <script src="js/config.js"></script>
-  <script src="js/intervalRegistry.js"></script>
-  <script src="js/storageQuotaManager.js"></script>
-  <script src="js/deviceAuth.js"></script>
-  <script src="js/googleDriveConfig.js"></script>
-  <script src="js/googleDriveSync.js"></script>
-  <script src="js/dailyBackupScheduler.js"></script>
-  <script src="js/auditLogManager.js"></script>
-  <script src="js/firebaseSync.js"></script>
-  <script src="js/jobsManager.js"></script>
-  <script src="js/deviceAuthManager.js"></script>
-  <script src="js/photoUploadManager.js"></script>
-  <script src="js/offlinePhotoQueue.js"></script>
-  <script src="js/networkStatus.js"></script>
+  <!-- Service Layer — loaded dynamically after CDN libs are ready -->
+  <script>
+    // Service scripts that depend on Firebase and other CDN libs
+    var serviceScripts = [
+      'js/config.js', 'js/intervalRegistry.js', 'js/storageQuotaManager.js',
+      'js/deviceAuth.js', 'js/googleDriveConfig.js', 'js/googleDriveSync.js',
+      'js/dailyBackupScheduler.js', 'js/auditLogManager.js', 'js/firebaseSync.js',
+      'js/jobsManager.js', 'js/deviceAuthManager.js', 'js/photoUploadManager.js',
+      'js/offlinePhotoQueue.js', 'js/networkStatus.js',
+      'js/pdfConfig.js', 'js/pdfGenerator.js',
+      'js/trainingCourseData.js', 'js/trainingCertGenerator.js',
+      'js/formConstants.js'
+    ];
 
-  <!-- PDF Generator (config + generator) -->
-  <script src="js/pdfConfig.js"></script>
-  <script src="js/pdfGenerator.js"></script>
+    function loadScriptTag(url) {
+      return new Promise(function(resolve, reject) {
+        var s = document.createElement('script');
+        s.src = url;
+        s.onload = resolve;
+        s.onerror = function() {
+          console.warn('[SVC-LOADER] Failed to load:', url, '— continuing');
+          resolve(); // Don't reject — keep loading other scripts
+        };
+        document.head.appendChild(s);
+      });
+    }
 
-  <!-- Training Data & Certificate Generator -->
-  <script src="js/trainingCourseData.js"></script>
-  <script src="js/trainingCertGenerator.js"></script>
-
-  <!-- Form Constants (shared team members, builders, checklists) -->
-  <script src="js/formConstants.js"></script>
+    // Wait for CDN libs, then load service scripts sequentially
+    window.__servicesReady = window.__cdnReady.then(function() {
+      console.log('[SVC-LOADER] CDN ready, loading service scripts...');
+      return serviceScripts.reduce(function(chain, url) {
+        return chain.then(function() { return loadScriptTag(url); });
+      }, Promise.resolve());
+    }).then(function() {
+      console.log('[SVC-LOADER] All service scripts loaded');
+    });
+  </script>
 
   <style>
     /* Base styles */
@@ -186,11 +234,6 @@
 </head>
 <body>
   <div id="root"></div>
-  <!-- Form Validation Service (extracted to separate file) -->
-  <script src="js/formValidator.js"></script>
-  <!-- Toast Notification System -->
-  <script src="js/toastNotifier.js"></script>
-
   <!-- Global error handler for debugging -->
   <script>
     window.__appErrors = [];
@@ -202,70 +245,30 @@
     };
   </script>
 
-  <!-- CDN Health Check: If critical libs failed, ask SW to re-cache and auto-reload (once) -->
-  <script>
-    (function() {
-      var criticalMissing = [];
-      if (typeof React === 'undefined') criticalMissing.push('React');
-      if (typeof ReactDOM === 'undefined') criticalMissing.push('ReactDOM');
-      if (typeof firebase === 'undefined') criticalMissing.push('Firebase');
-
-      if (criticalMissing.length > 0 && !sessionStorage.getItem('jmart-cdn-retry')) {
-        console.error('[CDN-CHECK] Missing critical libs:', criticalMissing.join(', '), '— requesting SW re-cache');
-        sessionStorage.setItem('jmart-cdn-retry', '1');
-
-        if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-          navigator.serviceWorker.controller.postMessage({ type: 'RECACHE_CDN' });
-          // Listen for completion then reload
-          navigator.serviceWorker.addEventListener('message', function handler(event) {
-            if (event.data && event.data.type === 'CDN_RECACHED') {
-              navigator.serviceWorker.removeEventListener('message', handler);
-              console.log('[CDN-CHECK] CDN re-cached, reloading...');
-              window.location.reload();
-            }
-          });
-          // Timeout: if re-cache takes >15s, reload anyway (might work from network)
-          setTimeout(function() { window.location.reload(); }, 15000);
-        } else {
-          // No SW controller — just try reloading once
-          setTimeout(function() { window.location.reload(); }, 2000);
-        }
-      } else if (criticalMissing.length > 0) {
-        // Already retried once — clear the flag for next session
-        sessionStorage.removeItem('jmart-cdn-retry');
-      } else {
-        // All CDN libs loaded fine — clear retry flag
-        sessionStorage.removeItem('jmart-cdn-retry');
-      }
-    })();
-  </script>
-
-  <!-- React Components (split into files, loaded and compiled as one Babel block) -->
+  <!-- React Components — wait for CDN + services, then compile JSX -->
   <script>
     (async function loadComponents() {
-      // Ensure Babel is loaded — fallback to cdnjs if unpkg failed
-      if (typeof Babel === 'undefined') {
-        console.warn('[LOADER] Babel not loaded from primary CDN, trying fallback...');
-        try {
-          await new Promise(function(resolve, reject) {
-            var s = document.createElement('script');
-            s.src = 'https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.0/babel.min.js';
-            s.onload = resolve;
-            s.onerror = function() { reject(new Error('Babel fallback CDN also failed')); };
-            document.head.appendChild(s);
-          });
-          console.log('[LOADER] Babel loaded from fallback CDN');
-        } catch (fallbackErr) {
-          console.error('[LOADER] All Babel CDNs failed:', fallbackErr);
-          document.getElementById('root').innerHTML =
-            '<div style="padding:40px;text-align:center;font-family:system-ui;">' +
-            '<h2 style="color:#dc2626;">Failed to Load App</h2>' +
-            '<p style="color:#6b7280;">Could not load the Babel compiler from any CDN.</p>' +
-            '<p style="color:#6b7280;">Check your internet connection and try again.</p>' +
-            '<button onclick="window.location.reload()" style="margin-top:16px;padding:12px 24px;background:#ea580c;color:white;border:none;border-radius:8px;font-size:16px;cursor:pointer;">Retry</button>' +
-            '</div>';
-          return;
-        }
+      // Wait for CDN libraries AND service scripts to be ready
+      try {
+        await window.__servicesReady;
+      } catch (e) {
+        console.error('[LOADER] Services failed to load:', e.message);
+      }
+
+      // Load formValidator and toastNotifier (need to be after root div exists)
+      await loadScriptTag('js/formValidator.js');
+      await loadScriptTag('js/toastNotifier.js');
+
+      // Check that critical libs are available
+      if (typeof React === 'undefined' || typeof Babel === 'undefined') {
+        console.error('[LOADER] Critical CDN libs missing after dynamic load');
+        document.getElementById('root').innerHTML =
+          '<div style="padding:40px;text-align:center;font-family:system-ui;">' +
+          '<h2 style="color:#dc2626;">Failed to Load App</h2>' +
+          '<p style="color:#6b7280;">Could not load required libraries. Check your internet connection.</p>' +
+          '<button onclick="window.location.reload()" style="margin-top:16px;padding:12px 24px;background:#ea580c;color:white;border:none;border-radius:8px;font-size:16px;cursor:pointer;">Retry</button>' +
+          '</div>';
+        return;
       }
 
       const files = [
