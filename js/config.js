@@ -52,3 +52,55 @@ if (isFirebaseConfigured) {
 } else {
   console.log('Firebase not configured - running in local-only mode. See Firebase-Setup-Guide.docx for setup instructions.');
 }
+
+// ========================================
+// REST API HELPER — Reliable Firebase reads
+// ========================================
+// The Firebase JS SDK's WebSocket data channel can silently break
+// (once('value') hangs indefinitely) while the REST API works fine.
+// This helper provides a reliable fallback for critical reads.
+// ========================================
+async function firebaseRestRead(path) {
+  if (!isFirebaseConfigured) return null;
+  var user = firebase.auth().currentUser;
+  if (!user) {
+    try { await firebaseAuthReady; user = firebase.auth().currentUser; } catch(e) {}
+  }
+  if (!user) throw new Error('No Firebase auth user');
+  var token = await user.getIdToken();
+  var url = firebaseConfig.databaseURL + '/' + path + '.json?auth=' + token;
+  var response = await fetch(url);
+  if (!response.ok) throw new Error('REST read failed: HTTP ' + response.status);
+  return response.json();
+}
+
+// Wrapper: try SDK once() with timeout, fall back to REST
+async function firebaseRead(path, timeoutMs) {
+  timeoutMs = timeoutMs || 3000;
+  // Try SDK first (fast if working, hangs if broken)
+  if (firebaseDb) {
+    try {
+      var result = await Promise.race([
+        firebaseDb.ref(path).once('value'),
+        new Promise(function(_, reject) {
+          setTimeout(function() { reject(new Error('SDK_TIMEOUT')); }, timeoutMs);
+        })
+      ]);
+      return { exists: result.exists(), val: result.val(), source: 'sdk' };
+    } catch (e) {
+      if (e.message === 'SDK_TIMEOUT') {
+        console.warn('[firebaseRead] SDK timed out for', path, '— falling back to REST');
+      } else {
+        console.warn('[firebaseRead] SDK error for', path, ':', e.message, '— falling back to REST');
+      }
+    }
+  }
+  // REST fallback
+  try {
+    var data = await firebaseRestRead(path);
+    return { exists: data !== null, val: data, source: 'rest' };
+  } catch (e) {
+    console.error('[firebaseRead] REST also failed for', path, ':', e.message);
+    throw e;
+  }
+}

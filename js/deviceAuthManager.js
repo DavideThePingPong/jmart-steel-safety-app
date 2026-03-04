@@ -43,17 +43,17 @@ const DeviceAuthManager = {
       return { status: 'approved', canAccess: true, isAdmin: result.admin || false };
     }
     if (result.pending) {
-      // Check if device is in denied state
+      // Check if device is in denied state (uses REST fallback)
       try {
-        const deniedSnap = await firebaseDb.ref('jmart-safety/devices/denied/' + DeviceAuth.deviceId).once('value');
-        if (deniedSnap.exists()) {
+        const deniedResult = await firebaseRead('jmart-safety/devices/denied/' + DeviceAuth.deviceId);
+        if (deniedResult.exists) {
           return { status: 'denied', canAccess: false };
         }
       } catch (e) { /* ignore */ }
       // Check if pending
       try {
-        const pendingSnap = await firebaseDb.ref('jmart-safety/devices/pending/' + DeviceAuth.deviceId).once('value');
-        if (pendingSnap.exists()) {
+        const pendingResult = await firebaseRead('jmart-safety/devices/pending/' + DeviceAuth.deviceId);
+        if (pendingResult.exists) {
           return { status: 'pending', canAccess: false };
         }
       } catch (e) { /* ignore */ }

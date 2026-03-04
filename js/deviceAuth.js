@@ -123,26 +123,7 @@ const DeviceAuth = {
       console.warn('Firebase auth wait failed:', e.message);
     }
 
-    // Wait for Firebase DB WebSocket to actually connect (up to 8s)
-    // Auth completes via REST but DB reads need the WebSocket connection
-    try {
-      await new Promise(function(resolve, reject) {
-        var timeout = setTimeout(function() { resolve('timeout'); }, 8000);
-        var connRef = firebaseDb.ref('.info/connected');
-        var handler = connRef.on('value', function(snap) {
-          if (snap.val() === true) {
-            clearTimeout(timeout);
-            connRef.off('value', handler);
-            resolve('connected');
-          }
-        });
-      });
-      console.log('Firebase DB connected, checking device status');
-    } catch (e) {
-      console.warn('Firebase DB connection wait failed:', e.message);
-    }
-
-    // Check if this device is approved
+    // Check if this device is approved (uses REST API fallback if SDK hangs)
     const result = await this.checkDeviceStatus();
     return result;
   },
@@ -164,9 +145,9 @@ const DeviceAuth = {
       // MIGRATION: Check for device in old flat structure and migrate
       // Wrapped in its own try-catch so migration errors don't block auth
       try {
-        const oldDeviceSnap = await firebaseDb.ref('jmart-safety/devices/' + this.deviceId).once('value');
-        if (oldDeviceSnap.exists()) {
-          const oldData = oldDeviceSnap.val();
+        const oldDeviceResult = await firebaseRead('jmart-safety/devices/' + this.deviceId);
+        if (oldDeviceResult.exists) {
+          const oldData = oldDeviceResult.val;
           if (oldData.status && typeof oldData.status === 'string') {
             console.log('Migrating device from old path:', oldData.status);
             const targetPath = 'jmart-safety/devices/' + oldData.status + '/' + this.deviceId;
@@ -183,29 +164,25 @@ const DeviceAuth = {
         console.warn('Device migration skipped (non-fatal):', migrationErr.message);
       }
 
-      // Bulk migration removed — reading all devices at once is blocked by
-      // Firebase rules (only individual device reads are allowed).
-      // Old-format devices are migrated individually above when they connect.
-
-      // Check approved devices
-      const approvedSnap = await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId).once('value');
-      if (approvedSnap.exists()) {
-        const data = approvedSnap.val();
+      // Check approved devices (uses REST API fallback if SDK hangs)
+      const approvedResult = await firebaseRead('jmart-safety/devices/approved/' + this.deviceId);
+      if (approvedResult.exists) {
+        const data = approvedResult.val;
         this.isApproved = true;
         this.isAdmin = data.isAdmin || false;
         this.canViewDevices = data.canViewDevices || false;
         this.canRevokeDevices = data.canRevokeDevices || false;
 
-        // Update last seen and auth UID (links Firebase Auth to device)
+        // Update last seen and auth UID (fire-and-forget, non-blocking)
         const updates = { lastSeen: new Date().toISOString() };
         if (firebaseAuthUid) updates.authUid = firebaseAuthUid;
-        await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId).update(updates);
+        firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId).update(updates).catch(function() {});
 
         // Migration: ensure admin auth UID is registered in adminAuthUids helper node
         if (this.isAdmin && firebaseAuthUid) {
           try {
-            const adminUidSnap = await firebaseDb.ref('jmart-safety/adminAuthUids/' + firebaseAuthUid).once('value');
-            if (!adminUidSnap.exists()) {
+            const adminUidResult = await firebaseRead('jmart-safety/adminAuthUids/' + firebaseAuthUid);
+            if (!adminUidResult.exists) {
               await firebaseDb.ref('jmart-safety/adminAuthUids/' + firebaseAuthUid).set(true);
               console.log('Migrated admin auth UID to adminAuthUids:', firebaseAuthUid);
             }
@@ -214,7 +191,7 @@ const DeviceAuth = {
           }
         }
 
-        // SELF-HEALING: If this device is admin, clean up invalid entries in Firebase
+        // SELF-HEALING: If this device is admin, clean up invalid entries
         if (this.isAdmin) {
           this._cleanupInvalidDevices().catch(e => console.warn('Device cleanup skipped:', e.message));
         }
@@ -225,8 +202,10 @@ const DeviceAuth = {
       }
 
       // Check if any devices exist (first device becomes admin)
-      const allApprovedSnap = await firebaseDb.ref('jmart-safety/devices/approved').once('value');
-      if (!allApprovedSnap.exists() || allApprovedSnap.numChildren() === 0) {
+      const allApprovedResult = await firebaseRead('jmart-safety/devices/approved');
+      const allApprovedVal = allApprovedResult.val;
+      const allApprovedExists = allApprovedResult.exists && allApprovedVal && Object.keys(allApprovedVal).length > 0;
+      if (!allApprovedExists) {
         // First device - auto approve as admin
         console.log('First device - auto-approving as admin');
         await this.registerAsApproved(true);
@@ -234,12 +213,9 @@ const DeviceAuth = {
       }
 
       // ADMIN RECOVERY: Check if all approved devices are orphaned (no recent activity)
-      // If all admins have lastSeen older than 7 days and this device has verified the
-      // app password, it can reclaim admin. This handles the case where browser cache
-      // was cleared on all admin devices, leaving them orphaned in Firebase.
-      const approvedDevices = allApprovedSnap.val();
+      const approvedDevices = allApprovedVal;
       const now = Date.now();
-      const ORPHAN_THRESHOLD = 7 * 24 * 60 * 60 * 1000; // 7 days (tightened from 30 for security)
+      const ORPHAN_THRESHOLD = 7 * 24 * 60 * 60 * 1000;
       let hasActiveAdmin = false;
 
       if (approvedDevices) {
@@ -254,16 +230,11 @@ const DeviceAuth = {
       }
 
       if (!hasActiveAdmin) {
-        // All admin devices are orphaned — auto-approve this device as admin
-        // (user already passed the password gate to get here)
         console.log('ADMIN RECOVERY: No active admin devices found. Reclaiming admin for this device.');
 
-        // Clean up orphaned approved devices that haven't been seen in 30+ days
-        // NEVER remove permanently approved devices (Mac, S.s, Admin Android)
         const CLEANUP_THRESHOLD = 7 * 24 * 60 * 60 * 1000;
         if (approvedDevices) {
           for (const [devId, dev] of Object.entries(approvedDevices)) {
-            // Skip permanently approved devices — they stay forever
             if (dev && dev.permanentlyApproved) {
               console.log('Skipping cleanup of permanently approved device:', devId, dev.name || 'unknown');
               continue;
@@ -278,13 +249,12 @@ const DeviceAuth = {
 
         await this.registerAsApproved(true);
 
-        // Log admin recovery event to audit trail
         if (typeof AuditLogManager !== 'undefined') {
           try {
             AuditLogManager.log('admin_recovery', {
               deviceId: this.deviceId,
               deviceType: this.deviceInfo?.type || 'Unknown',
-              reason: 'All admin devices inactive for 30+ days',
+              reason: 'All admin devices inactive for 7+ days',
               orphanedAdminCount: approvedDevices ? Object.values(approvedDevices).filter(d => d && d.isAdmin).length : 0,
               action: 'Admin access recovered by new device'
             });
@@ -294,13 +264,9 @@ const DeviceAuth = {
         return { approved: true, admin: true, adminRecovery: true };
       }
 
-      // Auto-approve removed for security — all new devices must go through
-      // the standard pending/approval workflow regardless of user-agent.
-
       // Check if already pending
-      const pendingSnap = await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).once('value');
-      if (!pendingSnap.exists()) {
-        // Register as pending
+      const pendingResult = await firebaseRead('jmart-safety/devices/pending/' + this.deviceId);
+      if (!pendingResult.exists) {
         await this.registerAsPending();
       }
 
@@ -310,8 +276,6 @@ const DeviceAuth = {
 
     } catch (error) {
       console.error('Error checking device status:', error);
-      // On error, deny access for safety - device must be verified
-      // Users can retry when network is available
       this.isApproved = false;
       return { approved: false, error: error.message, networkError: true };
     }
@@ -786,12 +750,13 @@ const DeviceAuth = {
     return false;
   },
 
-  // Load password hash from Firebase
+  // Load password hash from Firebase (uses REST API fallback)
   loadPasswordHash: async function() {
-    if (!firebaseDb || !isFirebaseConfigured) return;
+    if (!isFirebaseConfigured) return;
     try {
-      const configSnap = await firebaseDb.ref('jmart-safety/config/appPasswordHash').once('value');
-      this.APP_PASSWORD_HASH = configSnap.val();
+      var result = await firebaseRead('jmart-safety/config/appPasswordHash');
+      this.APP_PASSWORD_HASH = result.val;
+      console.log('[loadPasswordHash] Loaded via', result.source);
     } catch (e) {
       console.warn('Could not load password hash:', e.message);
     }
