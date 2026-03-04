@@ -123,6 +123,25 @@ const DeviceAuth = {
       console.warn('Firebase auth wait failed:', e.message);
     }
 
+    // Wait for Firebase DB WebSocket to actually connect (up to 8s)
+    // Auth completes via REST but DB reads need the WebSocket connection
+    try {
+      await new Promise(function(resolve, reject) {
+        var timeout = setTimeout(function() { resolve('timeout'); }, 8000);
+        var connRef = firebaseDb.ref('.info/connected');
+        var handler = connRef.on('value', function(snap) {
+          if (snap.val() === true) {
+            clearTimeout(timeout);
+            connRef.off('value', handler);
+            resolve('connected');
+          }
+        });
+      });
+      console.log('Firebase DB connected, checking device status');
+    } catch (e) {
+      console.warn('Firebase DB connection wait failed:', e.message);
+    }
+
     // Check if this device is approved
     const result = await this.checkDeviceStatus();
     return result;
