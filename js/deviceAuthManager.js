@@ -21,11 +21,18 @@ const DeviceAuthManager = {
   // DeviceAuth returns: { approved, admin, pending, error, ... }
   // DeviceAuthManager returns: { status, canAccess, isAdmin }
   init: async function() {
+    // Ensure device ID is set before any Firebase operations
+    DeviceAuth.generateDeviceId();
+    DeviceAuth.getDeviceInfo();
+
     await DeviceAuth.loadPasswordHash();
 
     if (!firebaseDb || !isFirebaseConfigured) {
       return { status: 'no-firebase', canAccess: true };
     }
+
+    // Wait for Firebase auth before checking device status
+    try { await firebaseAuthReady; } catch(e) {}
 
     const result = await DeviceAuth.checkDeviceStatus();
 

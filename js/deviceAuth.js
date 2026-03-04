@@ -151,6 +151,15 @@ const DeviceAuth = {
   checkDeviceStatus: async function() {
     if (!firebaseDb) return { approved: false };
 
+    // Safety: ensure deviceId is set before querying Firebase
+    if (!this.deviceId) {
+      this.generateDeviceId();
+      if (!this.deviceId) {
+        console.error('[DeviceAuth] Cannot check status: no device ID');
+        return { approved: false, error: 'no-device-id' };
+      }
+    }
+
     try {
       // MIGRATION: Check for device in old flat structure and migrate
       // Wrapped in its own try-catch so migration errors don't block auth
