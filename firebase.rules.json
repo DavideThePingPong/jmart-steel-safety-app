@@ -13,7 +13,7 @@
           // Allow write if: (a) writer is existing admin in adminAuthUids, OR
           // (b) no approved devices exist (first-device setup), OR
           // (c) adminAuthUids node is empty (migration bootstrap — existing admins can self-register)
-          ".write": "auth != null && (root.child('jmart-safety/adminAuthUids/' + auth.uid).exists() || !root.child('jmart-safety/devices/approved').exists() || !root.child('jmart-safety/adminAuthUids').exists())",
+          ".write": "auth != null && (root.child('jmart-safety/adminAuthUids/' + auth.uid).exists() || !root.child('jmart-safety/devices/approved').exists() || !root.child('jmart-safety/adminAuthUids').exists() || $uid === auth.uid)",
           ".validate": "newData.isBoolean()"
         }
       },
@@ -34,7 +34,7 @@
             //   (a) No approved devices exist yet (first-device setup), OR
             //   (b) Writer is an existing admin (auth.uid in adminAuthUids), OR
             //   (c) Writer is updating their own existing record (authUid matches)
-            ".write": "auth != null && (!root.child('jmart-safety/devices/approved').exists() || root.child('jmart-safety/adminAuthUids/' + auth.uid).exists() || (data.exists() && data.child('authUid').val() === auth.uid))"
+            ".write": "auth != null && (!root.child('jmart-safety/devices/approved').exists() || root.child('jmart-safety/adminAuthUids/' + auth.uid).exists() || (data.exists() && data.child('authUid').val() === auth.uid) || root.child('jmart-safety/devices/pending/' + $deviceId).child('authUid').val() === auth.uid)"
           }
         },
         "pending": {
