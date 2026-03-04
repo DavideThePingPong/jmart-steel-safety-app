@@ -41,18 +41,23 @@
     CDN libraries loaded dynamically to avoid SW interception issues.
     Sequential loading preserves dependency order (React before ReactDOM, etc.)
   -->
+  <!--
+    Firebase SDK loaded via normal script tags (NOT fetch+eval).
+    fetch+eval breaks Firebase's internal WebSocket transport detection,
+    causing fallback to long-polling which returns 503.
+  -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
   <script>
     (function() {
-      // CDN scripts to load IN ORDER (dependencies must load first)
+      // Non-Firebase CDN scripts loaded via fetch+eval to bypass SW script interception
       var cdnScripts = [
         'https://unpkg.com/react@18.2.0/umd/react.production.min.js',
         'https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js',
         'https://unpkg.com/@babel/standalone@7.24.0/babel.min.js',
         'https://unpkg.com/lucide@0.344.0/dist/umd/lucide.min.js',
-        'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
-        'https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js',
-        'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js',
-        'https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js'
+        'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'
       ];
 
       // Load each script sequentially using fetch + eval to bypass SW script interception
