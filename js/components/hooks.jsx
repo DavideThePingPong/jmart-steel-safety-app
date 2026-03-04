@@ -639,7 +639,35 @@ function useDeviceAuth() {
 
   useEffect(() => {
     const initDeviceAuth = async () => {
-      const result = await DeviceAuth.init();
+      // Wait for Firebase DB WebSocket to connect before checking device auth.
+      // DeviceAuth.init() may fail if called before DB is ready (returns approved:false
+      // even though device IS approved). Retry once after a delay if initial check fails.
+      let result = await DeviceAuth.init();
+
+      if (!result.approved && typeof firebaseDb !== 'undefined' && firebaseDb) {
+        // First attempt failed — Firebase DB may not have been connected yet.
+        // Wait for connection and retry once.
+        try {
+          await new Promise(function(resolve) {
+            var timeout = setTimeout(resolve, 6000);
+            if (firebaseDb) {
+              var ref = firebaseDb.ref('.info/connected');
+              var handler = ref.on('value', function(snap) {
+                if (snap.val() === true) {
+                  clearTimeout(timeout);
+                  ref.off('value', handler);
+                  resolve();
+                }
+              });
+            } else {
+              resolve();
+            }
+          });
+          result = await DeviceAuth.checkDeviceStatus();
+        } catch (e) {
+          console.warn('DeviceAuth retry failed:', e.message);
+        }
+      }
 
       if (result.approved) {
         setDeviceAuthStatus('approved');

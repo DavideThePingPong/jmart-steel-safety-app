@@ -9,7 +9,7 @@
  * - v4: Pinned CDN versions (supply-chain hardening)
  */
 
-const CACHE_VERSION = 'v43';
+const CACHE_VERSION = 'v44';
 const STATIC_CACHE = `jmart-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `jmart-dynamic-${CACHE_VERSION}`;
 const CDN_CACHE = `jmart-cdn-${CACHE_VERSION}`;
@@ -238,7 +238,12 @@ self.addEventListener('install', (event) => {
         console.log('[SW v4] Caching static files');
         for (const file of STATIC_FILES) {
           try {
-            await cache.add(file);
+            // Use cache:'reload' to bypass browser HTTP cache on install
+            // This ensures the SW always caches the latest deployed version
+            const response = await fetch(file, { cache: 'reload' });
+            if (response.ok) {
+              await cache.put(file, response);
+            }
           } catch (e) {
             console.warn(`[SW v4] Failed to cache: ${file}`, e);
           }
