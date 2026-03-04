@@ -338,6 +338,9 @@ self.addEventListener('fetch', (event) => {
   // Skip chrome-extension and other non-http(s) requests
   if (!event.request.url.startsWith('http')) return;
 
+  // NEVER intercept reset.html — it must always load fresh from network
+  if (event.request.url.includes('reset.html')) return;
+
   const strategy = getStrategy(event.request);
   const url = new URL(event.request.url);
   const cacheName = url.hostname === location.hostname ? STATIC_CACHE : CDN_CACHE;

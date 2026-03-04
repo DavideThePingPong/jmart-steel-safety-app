@@ -19,6 +19,16 @@
   </style>
 </head>
 <body>
+  <script>
+    // IMMEDIATELY unregister SW on page load — don't wait for user interaction
+    // This ensures reset.html always works even if SW is serving stale content
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function(regs) {
+        regs.forEach(function(r) { r.unregister(); });
+        if (regs.length > 0) console.log('[RESET] Auto-unregistered ' + regs.length + ' SW(s) on page load');
+      });
+    }
+  </script>
   <div class="card">
     <div class="header">
       <div style="font-size:48px;margin-bottom:8px;">🔧</div>
