@@ -63,7 +63,7 @@
         var keysToRemove = [];
         for (var i = 0; i < localStorage.length; i++) {
           var key = localStorage.key(i);
-          if (key && (key.includes('temp') || key.includes('cache') || key.includes('draft') || key.includes('cdn-retry'))) {
+          if (key && (key.includes('temp') || key.includes('cache') || key.includes('draft') || key.includes('cdn-retry') || key.includes('firebase:previous_websocket_failure'))) {
             keysToRemove.push(key);
           }
         }

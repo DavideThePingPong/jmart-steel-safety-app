@@ -28,6 +28,12 @@ let firebaseAuthReady = Promise.resolve(null);
 
 if (isFirebaseConfigured) {
   try {
+    // Clear cached WebSocket failure flag — if a previous session had a transient
+    // WS error (e.g. CSP blocking), the SDK remembers it and permanently falls back
+    // to long-polling (which returns 503). Clearing on every startup forces a fresh
+    // WebSocket attempt each time the app loads.
+    try { localStorage.removeItem('firebase:previous_websocket_failure'); } catch(e) {}
+
     firebaseApp = firebase.initializeApp(firebaseConfig);
     firebaseDb = firebase.database();
     // Sign in anonymously so security rules can use auth.uid
