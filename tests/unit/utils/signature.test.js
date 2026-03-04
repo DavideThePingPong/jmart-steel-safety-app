@@ -77,7 +77,9 @@ describe('Signature Utilities', () => {
     });
 
     test('should reject invalid base64 characters', () => {
-      const result = validateSignatureData('data:image/png;base64,ABC!!!???');
+      // String must be >100 chars to pass length check, but contain invalid base64 chars
+      const invalidBase64 = 'A'.repeat(50) + '!!!???' + 'B'.repeat(50);
+      const result = validateSignatureData('data:image/png;base64,' + invalidBase64);
       expect(result.isValid).toBe(false);
       expect(result.error).toBe('Invalid base64 encoding');
     });

@@ -363,7 +363,8 @@ function NoteMediaBox({ label, iconName, value, notes, media, onValueChange, onA
         console.log('Processing file:', file.name, 'type:', file.type, 'size:', file.size);
 
         // Compress image before storing to avoid localStorage quota issues on mobile
-        const compressImage = (file, maxWidth = 1200, quality = 0.7) => {
+        // Aggressive settings: 800px max (construction photos don't need 4K), JPEG 0.6
+        const compressImage = (file, maxWidth = 800, quality = 0.6) => {
           return new Promise((resolve) => {
             const reader = new FileReader();
             reader.onload = (event) => {
@@ -450,8 +451,17 @@ function NoteMediaBox({ label, iconName, value, notes, media, onValueChange, onA
         compressImage(file).then(compressedData => {
           console.log('compressImage resolved, data:', compressedData ? 'yes' : 'no');
           if (compressedData) {
-            console.log('Calling onAddMedia with data');
-            onAddMedia({ name: file.name, type: 'image/jpeg', data: compressedData });
+            // If still over 200KB base64 (~150KB actual), re-compress more aggressively
+            const MAX_BASE64_SIZE = 200000;
+            if (compressedData.length > MAX_BASE64_SIZE) {
+              console.warn('Photo still large (' + Math.round(compressedData.length/1024) + 'KB base64), re-compressing at 600px/0.4 quality');
+              compressImage(file, 600, 0.4).then(smallerData => {
+                console.log('Re-compressed to:', Math.round((smallerData || compressedData).length/1024) + 'KB');
+                onAddMedia({ name: file.name, type: 'image/jpeg', data: smallerData || compressedData });
+              });
+            } else {
+              onAddMedia({ name: file.name, type: 'image/jpeg', data: compressedData });
+            }
           } else {
             console.error('No compressed data returned for', file.name);
           }

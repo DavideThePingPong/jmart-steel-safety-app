@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom';
 
-// Mock localStorage
+// Mock localStorage — use Object.defineProperty to override jsdom's built-in
 const localStorageMock = {
   getItem: jest.fn(),
   setItem: jest.fn(),
@@ -9,10 +9,10 @@ const localStorageMock = {
   length: 0,
   key: jest.fn()
 };
-global.localStorage = localStorageMock;
+Object.defineProperty(global, 'localStorage', { value: localStorageMock, writable: true });
 
 // Mock sessionStorage
-global.sessionStorage = localStorageMock;
+Object.defineProperty(global, 'sessionStorage', { value: localStorageMock, writable: true });
 
 // Mock navigator.onLine
 Object.defineProperty(navigator, 'onLine', {

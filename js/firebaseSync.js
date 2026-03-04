@@ -15,11 +15,20 @@ const FirebaseSync = {
   circuitOpenedAt: null,
   CIRCUIT_COOLDOWN_MS: 2 * 60 * 1000, // 2 minutes (reduced from 5 for faster recovery)
 
+  MAX_QUEUE_SIZE: 100,        // Hard cap — prevents localStorage bloat
+  MAX_QUEUE_BYTES: 500000,    // 500KB max — beyond this, oldest entries get dropped
+
   // Initialize - load pending queue from localStorage
   init: function() {
     try {
       const saved = localStorage.getItem('jmart-sync-queue');
       this.pendingQueue = saved ? JSON.parse(saved) : [];
+      // Enforce size cap on load (in case of corruption or old bloated data)
+      if (this.pendingQueue.length > this.MAX_QUEUE_SIZE) {
+        console.warn('[FirebaseSync] Queue over cap (' + this.pendingQueue.length + '), trimming to ' + this.MAX_QUEUE_SIZE);
+        this.pendingQueue = this.pendingQueue.slice(-this.MAX_QUEUE_SIZE);
+        this.saveQueue();
+      }
       if (this.pendingQueue.length > 0) {
         console.log(`Found ${this.pendingQueue.length} pending sync items`);
         this.processQueue();
@@ -33,7 +42,17 @@ const FirebaseSync = {
   // Save queue to localStorage — tracks storage errors for circuit breaker
   saveQueue: function() {
     try {
-      localStorage.setItem('jmart-sync-queue', JSON.stringify(this.pendingQueue));
+      // Enforce size cap before saving
+      if (this.pendingQueue.length > this.MAX_QUEUE_SIZE) {
+        this.pendingQueue = this.pendingQueue.slice(-this.MAX_QUEUE_SIZE);
+      }
+      var serialized = JSON.stringify(this.pendingQueue);
+      // Check byte size — if over limit, drop oldest entries until under
+      while (serialized.length > this.MAX_QUEUE_BYTES && this.pendingQueue.length > 1) {
+        this.pendingQueue.shift(); // drop oldest
+        serialized = JSON.stringify(this.pendingQueue);
+      }
+      localStorage.setItem('jmart-sync-queue', serialized);
       // Reset consecutive error counter on success
       this.consecutiveStorageErrors = 0;
     } catch (e) {

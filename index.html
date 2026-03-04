@@ -90,11 +90,6 @@
     })();
   </script>
 
-  <!-- Google API for Drive Integration (non-critical, loaded via script tags) -->
-  <script src="https://apis.google.com/js/api.js" crossorigin="anonymous" async></script>
-  <script src="https://accounts.google.com/gsi/client" crossorigin="anonymous" async></script>
-
-
   <!-- Service Layer — loaded dynamically after CDN libs are ready -->
   <script>
     // Service scripts that depend on Firebase and other CDN libs
@@ -122,9 +117,13 @@
       });
     }
 
-    // Wait for CDN libs, then load service scripts sequentially
+    // Wait for CDN libs, load Google APIs (non-blocking), then service scripts
     window.__servicesReady = window.__cdnReady.then(function() {
-      console.log('[SVC-LOADER] CDN ready, loading service scripts...');
+      console.log('[SVC-LOADER] CDN ready, loading Google APIs + service scripts...');
+      // Load Google APIs in parallel (non-critical — Drive features degrade gracefully)
+      loadScriptTag('https://apis.google.com/js/api.js').catch(function() {});
+      loadScriptTag('https://accounts.google.com/gsi/client').catch(function() {});
+      // Load service scripts sequentially (they depend on each other)
       return serviceScripts.reduce(function(chain, url) {
         return chain.then(function() { return loadScriptTag(url); });
       }, Promise.resolve());

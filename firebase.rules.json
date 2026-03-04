@@ -75,13 +75,15 @@
       // Jobs - managed job entries for forms and photo uploads
       "jobs": {
         ".read": "auth != null",
-        ".write": "auth != null"
+        ".write": "auth != null",
+        ".validate": "newData.val().length < 50000"
       },
 
-      // Sites - any authenticated device can read/write
+      // Sites - any authenticated device can read/write (stored as flat array, must use .set())
       "sites": {
         ".read": "auth != null",
-        ".write": "auth != null"
+        ".write": "auth != null",
+        ".validate": "newData.val().length < 50000"
       },
 
       // Training - any authenticated device can read/write
@@ -120,7 +122,10 @@
       // Notifications - authenticated devices can read/write
       "notifications": {
         ".read": "auth != null",
-        ".write": "auth != null"
+        "$notifId": {
+          ".write": "auth != null",
+          ".validate": "newData.val().length < 10000"
+        }
       },
 
       // Audit log - any authenticated user can read, append only (no deletes/updates)
