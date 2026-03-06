@@ -72,35 +72,13 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
         const updatedForms = [newForm, ...prevForms];
         console.log('setForms update, new length:', updatedForms.length);
 
-        try {
-          const dataToSave = JSON.stringify(updatedForms);
-          console.log('Data size:', Math.round(dataToSave.length / 1024), 'KB');
-          localStorage.setItem('jmart-safety-forms', dataToSave);
-          console.log('Immediately saved to localStorage');
-        } catch (storageErr) {
-          console.error('localStorage save error:', storageErr);
-          if (storageErr.name === 'QuotaExceededError') {
-            try {
-              const keysToRemove = [];
-              for (let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-                if (key && (key.includes('backup') || key.includes('temp'))) {
-                  keysToRemove.push(key);
-                }
-              }
-              keysToRemove.forEach(key => localStorage.removeItem(key));
-              localStorage.setItem('jmart-safety-forms', JSON.stringify(updatedForms));
-              console.log('Saved after cleanup');
-            } catch (retryErr) {
-              console.error('Failed to save even after cleanup:', retryErr);
-              alert('Storage full! Please delete some old forms to save new ones.');
-            }
-          }
-        }
+        // Safe write to localStorage (strips large data, trims to fit)
+        StorageQuotaManager.safeFormsWrite(updatedForms);
 
+        // Sync full form (with photos) to Firebase — Firebase is the source of truth
         if (FirebaseSync.isConnected()) {
           FirebaseSync.syncForms(updatedForms).then(() => {
-            console.log('Immediately synced to Firebase');
+            console.log('Synced to Firebase');
           }).catch(err => console.error('Firebase sync error:', err));
         }
 
@@ -414,72 +392,47 @@ function useDataSync({ setForms, setSites, deletingFormRef }) {
       const unsubForms = FirebaseSync.onFormsChange((firebaseForms) => {
         const formsArray = Array.isArray(firebaseForms) ? firebaseForms : Object.values(firebaseForms || {});
 
-        // Throttle: skip if last write was <2s ago (prevents rapid-fire listener loop)
+        // Throttle: skip if last write was <5s ago (prevents rapid-fire listener loop)
         var now = Date.now();
-        if (now - lastFormsWriteRef.current < 2000) return;
+        if (now - lastFormsWriteRef.current < 5000) return;
         lastFormsWriteRef.current = now;
 
         console.log('Firebase forms received:', formsArray.length, 'forms');
 
         if (deletingFormRef.current) {
-          console.log('Delete operation in progress - using Firebase as source of truth');
           deletingFormRef.current = false;
-          setForms(formsArray);
-          // Strip photos before writing to localStorage to prevent storage bloat
-          var stripped = typeof StorageQuotaManager !== 'undefined' && StorageQuotaManager.stripPhotosFromArray
-            ? StorageQuotaManager.stripPhotosFromArray(formsArray) : formsArray;
-          try { localStorage.setItem('jmart-safety-forms', JSON.stringify(stripped)); } catch(e) { console.warn('Forms save failed:', e.message); }
-          setSyncStatus('synced');
-          setLastSynced(new Date().toISOString());
-          return;
         }
 
         if (formsArray.length > 0) {
-          const mergedForms = [];
           const formMap = new Map();
 
           formsArray.forEach(form => {
             formMap.set(form.id, { ...form, source: 'firebase' });
           });
 
-          // Re-read localStorage to avoid stale closure over initial localForms
-          let currentLocalForms = localForms;
+          // Merge with local-only forms (forms not yet in Firebase)
+          let currentLocalForms = [];
           try {
             const freshLocal = localStorage.getItem('jmart-safety-forms');
             if (freshLocal) currentLocalForms = JSON.parse(freshLocal);
-          } catch (e) { /* use original localForms */ }
+          } catch (e) { /* ignore */ }
 
           currentLocalForms.forEach(localForm => {
-            const existingForm = formMap.get(localForm.id);
-            if (!existingForm) {
+            if (!formMap.has(localForm.id)) {
               formMap.set(localForm.id, { ...localForm, source: 'local' });
-            } else {
-              const localTime = new Date(localForm.updatedAt || localForm.createdAt).getTime();
-              const remoteTime = new Date(existingForm.updatedAt || existingForm.createdAt).getTime();
-
-              if (localTime > remoteTime) {
-                console.log('Conflict resolved for ' + localForm.id + ': local wins');
-                formMap.set(localForm.id, { ...localForm, source: 'local-wins' });
-              } else if (localTime < remoteTime) {
-                console.log('Conflict resolved for ' + localForm.id + ': firebase wins');
-              } else {
-                const localVersion = localForm.version || 1;
-                const remoteVersion = existingForm.version || 1;
-                if (localVersion > remoteVersion) {
-                  formMap.set(localForm.id, { ...localForm, source: 'local-version' });
-                }
-              }
             }
           });
 
+          const mergedForms = [];
           formMap.forEach(form => mergedForms.push(form));
-          mergedForms.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+          mergedForms.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+          // Update React state with full data (including photos for viewing)
           setForms(mergedForms);
-          // Strip base64 photos before writing to localStorage — photos live in Firebase, not localStorage
-          var strippedMerged = typeof StorageQuotaManager !== 'undefined' && StorageQuotaManager.stripPhotosFromArray
-            ? StorageQuotaManager.stripPhotosFromArray(mergedForms) : mergedForms;
-          try { localStorage.setItem('jmart-safety-forms', JSON.stringify(strippedMerged)); } catch(e) { console.warn('Forms save failed:', e.message); }
-          console.log('Merged forms with conflict resolution:', mergedForms.length, 'total');
+
+          // Write to localStorage using safe writer (strips large data, trims to fit)
+          StorageQuotaManager.safeFormsWrite(mergedForms);
+          console.log('Forms synced:', mergedForms.length, 'total');
         } else if (localForms.length > 0) {
           console.log('Firebase empty, pushing local forms to Firebase');
           FirebaseSync.syncForms(localForms);
@@ -487,6 +440,7 @@ function useDataSync({ setForms, setSites, deletingFormRef }) {
 
         setSyncStatus('synced');
         setLastSynced(new Date().toISOString());
+        setSyncError(null);
       });
 
       const unsubSites = FirebaseSync.onSitesChange((firebaseSites) => {
@@ -598,7 +552,7 @@ function useDataSync({ setForms, setSites, deletingFormRef }) {
     };
   }, []);
 
-  // Sync status listener
+  // Sync status listener — only show errors for real Firebase failures, not localStorage issues
   useEffect(() => {
     const unsubscribe = FirebaseSync.onSyncStatusChange((status, details) => {
       setPendingSyncCount(details?.pending || 0);
@@ -607,9 +561,19 @@ function useDataSync({ setForms, setSites, deletingFormRef }) {
         setSyncError(null);
       } else if (status === 'queued' || (details?.pending > 0)) {
         setSyncStatus('pending');
+      } else if (status === 'circuit_open' || status === 'circuit_reset') {
+        // Circuit breaker is a storage issue, not a sync issue — don't alarm the user
+        setSyncStatus(FirebaseSync.isConnected() ? 'synced' : 'pending');
       } else if (status === 'error' || status === 'failed') {
-        setSyncStatus('error');
-        setSyncError(details?.message || details?.error || 'Sync failed');
+        // Only show sync error if Firebase is actually disconnected
+        var msg = details?.message || details?.error || '';
+        if (msg.indexOf('Storage') !== -1 || msg.indexOf('quota') !== -1 || msg.indexOf('storage') !== -1) {
+          // Storage error — Firebase is fine, just localStorage is full
+          setSyncStatus(FirebaseSync.isConnected() ? 'synced' : 'pending');
+        } else {
+          setSyncStatus('error');
+          setSyncError(msg || 'Sync failed');
+        }
       }
     });
     return unsubscribe;

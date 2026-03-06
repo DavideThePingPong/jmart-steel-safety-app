@@ -298,18 +298,72 @@ const StorageQuotaManager = {
   };
 })();
 
-// Strip base64 data from a forms array (returns new array, does NOT mutate input)
-// Used by useDataSync before writing Firebase forms to localStorage
-StorageQuotaManager.stripPhotosFromArray = function(formsArray) {
+// Strip ALL large strings from a forms array (photos, signatures, base64, long text)
+// Returns new array, does NOT mutate input
+StorageQuotaManager.stripLargeData = function(formsArray) {
   if (!Array.isArray(formsArray)) return formsArray;
   return JSON.parse(JSON.stringify(formsArray, function(key, value) {
-    if (typeof value === 'string' && value.length > 1000 &&
-        (value.indexOf('data:image') === 0 || value.indexOf('data:application') === 0 ||
-         value.indexOf('/9j/') === 0 || value.indexOf('iVBOR') === 0)) {
-      return '[photo-in-firebase]';
+    if (typeof value !== 'string') return value;
+    // Strip any base64 data (photos, signatures, attachments) over 500 chars
+    if (value.length > 500 &&
+        (value.indexOf('data:') === 0 || value.indexOf('/9j/') === 0 ||
+         value.indexOf('iVBOR') === 0 || value.indexOf('JVBER') === 0)) {
+      return '[in-firebase]';
     }
+    // Strip any string over 5KB (corrupt data, embedded files, etc.)
+    if (value.length > 5000) return value.substring(0, 200) + '...[truncated]';
     return value;
   }));
+};
+// Alias for backward compat
+StorageQuotaManager.stripPhotosFromArray = StorageQuotaManager.stripLargeData;
+
+// SAFE FORMS WRITE — the ONLY way forms should be written to localStorage
+// Always succeeds: strips large data, then trims form count if still too big
+// Max budget: 2MB for forms (leaves 3MB for everything else)
+StorageQuotaManager.MAX_FORMS_BYTES = 2 * 1024 * 1024; // 2MB
+
+StorageQuotaManager.safeFormsWrite = function(formsArray) {
+  if (!Array.isArray(formsArray) || formsArray.length === 0) {
+    try { localStorage.setItem('jmart-safety-forms', '[]'); } catch(e) {}
+    return;
+  }
+  // Step 1: Strip all large data
+  var stripped = this.stripLargeData(formsArray);
+
+  // Step 2: Sort by date (newest first) so we keep the most recent
+  stripped.sort(function(a, b) {
+    return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+  });
+
+  // Step 3: Serialize and check size — trim forms until under budget
+  var json = JSON.stringify(stripped);
+  var maxForms = stripped.length;
+  while (json.length > StorageQuotaManager.MAX_FORMS_BYTES && maxForms > 5) {
+    maxForms = Math.floor(maxForms * 0.7); // Drop 30% each round
+    json = JSON.stringify(stripped.slice(0, maxForms));
+  }
+  if (maxForms < stripped.length) {
+    stripped = stripped.slice(0, maxForms);
+    json = JSON.stringify(stripped);
+    console.warn('[safeFormsWrite] Trimmed to ' + maxForms + ' forms to fit localStorage (' + Math.round(json.length / 1024) + 'KB)');
+  }
+
+  // Step 4: Write — if it still fails, progressively drop forms
+  try {
+    localStorage.setItem('jmart-safety-forms', json);
+  } catch(e) {
+    console.error('[safeFormsWrite] Write failed, emergency trim');
+    // Keep only 5 most recent forms
+    stripped = stripped.slice(0, 5);
+    try {
+      localStorage.setItem('jmart-safety-forms', JSON.stringify(stripped));
+    } catch(e2) {
+      // Give up on caching forms — app still works via Firebase
+      try { localStorage.removeItem('jmart-safety-forms'); } catch(e3) {}
+      console.error('[safeFormsWrite] Cannot cache forms — Firebase is source of truth');
+    }
+  }
 };
 
 // EMERGENCY AUTO-CLEANUP ON BOOT
