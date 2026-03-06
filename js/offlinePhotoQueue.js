@@ -32,10 +32,14 @@ const OfflinePhotoQueue = {
     });
   },
 
-  // Save queue to localStorage
+  // Save queue to localStorage (with size cap)
   saveQueue: function() {
     try {
-      localStorage.setItem('jmart-photo-queue', JSON.stringify(this.queue));
+      if (typeof StorageQuotaManager !== 'undefined' && StorageQuotaManager.safePhotoQueueWrite) {
+        StorageQuotaManager.safePhotoQueueWrite(this.queue);
+      } else {
+        localStorage.setItem('jmart-photo-queue', JSON.stringify(this.queue));
+      }
     } catch (e) {
       console.error('Error saving photo queue:', e);
     }

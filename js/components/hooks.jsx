@@ -40,7 +40,7 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
   // Update team signatures
   const updateSignatures = (newSignatures) => {
     setSavedSignatures(newSignatures);
-    localStorage.setItem('jmart-team-signatures', JSON.stringify(newSignatures));
+    if (typeof StorageQuotaManager !== 'undefined' && StorageQuotaManager.safeSignaturesWrite) { StorageQuotaManager.safeSignaturesWrite(newSignatures); } else { localStorage.setItem('jmart-team-signatures', JSON.stringify(newSignatures)); }
     if (FirebaseSync.isConnected()) {
       FirebaseSync.db.ref('signatures').set(newSignatures);
     }

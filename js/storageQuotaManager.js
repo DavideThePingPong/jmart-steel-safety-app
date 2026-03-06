@@ -366,6 +366,103 @@ StorageQuotaManager.safeFormsWrite = function(formsArray) {
   }
 };
 
+// SAFE PHOTO QUEUE WRITE — caps photo queue at 1MB
+// Photos in the queue are base64 so they're huge. Cap strictly.
+StorageQuotaManager.MAX_PHOTO_QUEUE_BYTES = 1 * 1024 * 1024; // 1MB
+
+StorageQuotaManager.safePhotoQueueWrite = function(queueArray) {
+  if (!Array.isArray(queueArray) || queueArray.length === 0) {
+    try { localStorage.setItem('jmart-photo-queue', '[]'); } catch(e) {}
+    return;
+  }
+  // Sort by queuedAt (newest first) so we keep the most recent
+  queueArray.sort(function(a, b) {
+    return new Date(b.queuedAt || 0) - new Date(a.queuedAt || 0);
+  });
+  var json = JSON.stringify(queueArray);
+  // If over budget, drop oldest items until it fits
+  while (json.length > this.MAX_PHOTO_QUEUE_BYTES && queueArray.length > 1) {
+    queueArray = queueArray.slice(0, -1); // drop oldest
+    json = JSON.stringify(queueArray);
+  }
+  // If a single item is still over budget, skip caching entirely
+  if (json.length > this.MAX_PHOTO_QUEUE_BYTES) {
+    console.warn('[safePhotoQueueWrite] Single photo exceeds 1MB budget — skipping localStorage cache');
+    try { localStorage.setItem('jmart-photo-queue', '[]'); } catch(e) {}
+    return;
+  }
+  try {
+    localStorage.setItem('jmart-photo-queue', json);
+  } catch(e) {
+    console.error('[safePhotoQueueWrite] Write failed — clearing queue from localStorage');
+    try { localStorage.removeItem('jmart-photo-queue'); } catch(e2) {}
+  }
+};
+
+// SAFE JOB RECORDINGS WRITE — strips base64 photos, caps at 1MB
+StorageQuotaManager.MAX_RECORDINGS_BYTES = 1 * 1024 * 1024; // 1MB
+
+StorageQuotaManager.safeRecordingsWrite = function(recordingsArray) {
+  if (!Array.isArray(recordingsArray) || recordingsArray.length === 0) {
+    try { localStorage.setItem('jmart-job-recordings', '[]'); } catch(e) {}
+    return;
+  }
+  // Strip base64 photo data from recordings — photos are in Drive
+  var stripped = this.stripLargeData(recordingsArray);
+  // Sort newest first
+  stripped.sort(function(a, b) {
+    return new Date(b.date || 0) - new Date(a.date || 0);
+  });
+  var json = JSON.stringify(stripped);
+  // Trim count if still too big
+  var maxItems = stripped.length;
+  while (json.length > this.MAX_RECORDINGS_BYTES && maxItems > 3) {
+    maxItems = Math.floor(maxItems * 0.7);
+    json = JSON.stringify(stripped.slice(0, maxItems));
+  }
+  if (maxItems < stripped.length) {
+    stripped = stripped.slice(0, maxItems);
+    json = JSON.stringify(stripped);
+    console.warn('[safeRecordingsWrite] Trimmed to ' + maxItems + ' recordings (' + Math.round(json.length / 1024) + 'KB)');
+  }
+  try {
+    localStorage.setItem('jmart-job-recordings', json);
+  } catch(e) {
+    // Emergency: keep only 3 most recent
+    try { localStorage.setItem('jmart-job-recordings', JSON.stringify(stripped.slice(0, 3))); } catch(e2) {
+      try { localStorage.removeItem('jmart-job-recordings'); } catch(e3) {}
+    }
+  }
+};
+
+// SAFE TEAM SIGNATURES WRITE — caps at 500KB
+// Signatures are small base64 PNGs but can accumulate
+StorageQuotaManager.MAX_SIGNATURES_BYTES = 500 * 1024; // 500KB
+
+StorageQuotaManager.safeSignaturesWrite = function(signaturesObj) {
+  if (!signaturesObj || typeof signaturesObj !== 'object') {
+    try { localStorage.setItem('jmart-team-signatures', '{}'); } catch(e) {}
+    return;
+  }
+  var json = JSON.stringify(signaturesObj);
+  // If over budget, drop signatures until it fits (keep newest by iterating keys)
+  if (json.length > this.MAX_SIGNATURES_BYTES) {
+    var keys = Object.keys(signaturesObj);
+    var trimmed = Object.assign({}, signaturesObj);
+    // Drop entries from the start (oldest added) until under budget
+    while (JSON.stringify(trimmed).length > this.MAX_SIGNATURES_BYTES && keys.length > 0) {
+      delete trimmed[keys.shift()];
+    }
+    json = JSON.stringify(trimmed);
+    console.warn('[safeSignaturesWrite] Trimmed signatures to fit (' + Math.round(json.length / 1024) + 'KB)');
+  }
+  try {
+    localStorage.setItem('jmart-team-signatures', json);
+  } catch(e) {
+    try { localStorage.removeItem('jmart-team-signatures'); } catch(e2) {}
+  }
+};
+
 // EMERGENCY AUTO-CLEANUP ON BOOT
 // Check for bloated keys and high storage usage before auth or anything else tries to write
 (function() {
@@ -388,11 +485,13 @@ StorageQuotaManager.safeFormsWrite = function(formsArray) {
     if (pct > 100) {
       console.error('[BOOT] CRITICAL: Storage at ' + usage.percentUsed + '% — running NUCLEAR cleanup');
 
-      // 1. Nuke sync queue, audit log, backup tracking
+      // 1. Nuke sync queue, audit log, backup tracking, photo queue, recordings
       try { localStorage.removeItem('jmart-sync-queue'); } catch(e) {}
       try { localStorage.removeItem('jmart-audit-log'); } catch(e) {}
       try { localStorage.removeItem('jmart-backed-up-forms'); } catch(e) {}
       try { localStorage.removeItem('jmart-photo-queue'); } catch(e) {}
+      try { localStorage.removeItem('jmart-job-recordings'); } catch(e) {}
+      try { localStorage.removeItem('jmart-team-signatures'); } catch(e) {}
 
       // 2. Nuke all temp/cache/backup keys
       for (var j = localStorage.length - 1; j >= 0; j--) {

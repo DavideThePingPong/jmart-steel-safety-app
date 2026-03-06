@@ -695,7 +695,7 @@ function RecordingsView({ forms, sites }) {
 
     const updatedRecordings = [recording, ...savedRecordings];
     setSavedRecordings(updatedRecordings);
-    localStorage.setItem('jmart-job-recordings', JSON.stringify(updatedRecordings));
+    if (typeof StorageQuotaManager !== 'undefined' && StorageQuotaManager.safeRecordingsWrite) { StorageQuotaManager.safeRecordingsWrite(updatedRecordings); } else { localStorage.setItem('jmart-job-recordings', JSON.stringify(updatedRecordings)); }
     setPhotos([]);
     setUploadStatus('Saved locally!');
     setTimeout(() => setUploadStatus(''), 3000);
@@ -729,7 +729,7 @@ function RecordingsView({ forms, sites }) {
 
         const updatedRecordings = [recording, ...savedRecordings];
         setSavedRecordings(updatedRecordings);
-        localStorage.setItem('jmart-job-recordings', JSON.stringify(updatedRecordings));
+        if (typeof StorageQuotaManager !== 'undefined' && StorageQuotaManager.safeRecordingsWrite) { StorageQuotaManager.safeRecordingsWrite(updatedRecordings); } else { localStorage.setItem('jmart-job-recordings', JSON.stringify(updatedRecordings)); }
 
         setPhotos([]);
         setUploadStatus(`Uploaded ${result.uploaded} photos to Google Drive!`);
@@ -760,7 +760,7 @@ function RecordingsView({ forms, sites }) {
   const deleteRecording = (recordingId) => {
     const updatedRecordings = savedRecordings.filter(r => r.id !== recordingId);
     setSavedRecordings(updatedRecordings);
-    localStorage.setItem('jmart-job-recordings', JSON.stringify(updatedRecordings));
+    if (typeof StorageQuotaManager !== 'undefined' && StorageQuotaManager.safeRecordingsWrite) { StorageQuotaManager.safeRecordingsWrite(updatedRecordings); } else { localStorage.setItem('jmart-job-recordings', JSON.stringify(updatedRecordings)); }
     setViewingRecording(null);
   };
 
