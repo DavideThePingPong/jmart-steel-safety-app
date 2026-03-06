@@ -48,6 +48,36 @@ function PrestartView({ onSubmit, onUpdate, editingForm, previousPrestarts = [],
 
   const [signatures, setSignatures] = useState(editData.signatures || FORM_CONSTANTS.emptySignatures());
 
+  // Reset form state when editingForm prop changes (useState initializers only run on mount)
+  useEffect(() => {
+    const data = editingForm?.data || {};
+    setStep(editingForm ? 2 : 1);
+    setCheckType(data.type || null);
+    setChecks(data.checks || {});
+    setNotes(data.notes || '');
+    setSupervisorName(data.supervisorName || '');
+    setSiteConducted(data.siteConducted || '');
+    setBuilder(data.builder || '');
+    setAddress(data.address || '');
+    setFormDate(data.date ? new Date(data.date) : new Date());
+    setWorkAreas(ensureMediaStructure(data.workAreas));
+    setTasksThisShift(ensureMediaStructure(data.tasksThisShift));
+    setMachineryControls(ensureMediaStructure(data.machineryControls));
+    setSiteHazards(ensureMediaStructure(data.siteHazards));
+    setPermitsRequired(ensureMediaStructure(data.permitsRequired));
+    setIsPlantEquipmentUsed(data.isPlantEquipmentUsed ?? null);
+    setHighRiskWorks(data.highRiskWorks ?? null);
+    setWorksCoveredBySWMS(data.worksCoveredBySWMS ?? null);
+    setHasSafetyIssues(data.hasSafetyIssues ?? null);
+    setSafetyIssuesPreviousShift(ensureMediaStructure(data.safetyIssuesPreviousShift));
+    setTranslatorRequired(data.translatorRequired ?? null);
+    setTranslatorSignature(data.translatorSignature || null);
+    setTranslatorName(data.translatorName || '');
+    setSignatures(data.signatures || FORM_CONSTANTS.emptySignatures());
+    setSubmitted(false);
+    setValidationErrors([]);
+  }, [editingForm?.id]);
+
   const displayDate = formDate.toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const displayTime = formDate.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
   const builders = FORM_CONSTANTS.builders;

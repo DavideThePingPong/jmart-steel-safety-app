@@ -12,7 +12,9 @@ try {
   console.log('[BOOTSTRAP] React render initiated successfully (with ErrorBoundary)');
 } catch (err) {
   console.error('[BOOTSTRAP] Render error:', err);
-  document.getElementById('root').innerHTML =
+  var errDiv = document.getElementById('root');
+  errDiv.innerHTML =
     '<div style="padding:20px;color:red;font-family:system-ui;">' +
-    '<h2>App Error</h2><pre>' + err.message + '</pre></div>';
+    '<h2>App Error</h2><pre></pre></div>';
+  errDiv.querySelector('pre').textContent = err.message;
 }

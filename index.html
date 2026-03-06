@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en-AU">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://cdnjs.cloudflare.com https://cdn.tailwindcss.com https://cdn.jsdelivr.net https://www.gstatic.com https://apis.google.com https://accounts.google.com; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://unpkg.com; connect-src 'self' https://unpkg.com https://cdnjs.cloudflare.com https://www.gstatic.com https://*.firebaseio.com https://*.firebasedatabase.app https://*.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://accounts.google.com wss://*.firebaseio.com wss://*.firebasedatabase.app; img-src 'self' data: blob:; font-src 'self' https://unpkg.com; frame-src https://accounts.google.com https://*.firebaseapp.com; worker-src 'self'; media-src 'self' blob:;">
   <title>J&M Artsteel Safety</title>
 
@@ -21,10 +21,13 @@
 
   <!-- Favicon and App Icons (Base64 embedded) -->
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23ea580c'/><text x='50' y='65' font-size='50' text-anchor='middle' fill='white'>🛡️</text></svg>">
-  <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'><rect width='180' height='180' rx='40' fill='%23ea580c'/><text x='90' y='115' font-size='80' text-anchor='middle' fill='white'>🛡️</text></svg>">
+  <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon-180x180.png">
+  <link rel="apple-touch-icon" sizes="167x167" href="icons/apple-touch-icon-167x167.png">
+  <link rel="apple-touch-icon" sizes="152x152" href="icons/apple-touch-icon-152x152.png">
+  <link rel="apple-touch-icon" sizes="120x120" href="icons/apple-touch-icon-120x120.png">
 
   <!-- Manifest for PWA -->
-  <link rel="manifest" href="data:application/json;base64,ewogICJuYW1lIjogIkpNYXJ0IFN0ZWVsIFNhZmV0eSBBcHAiLAogICJzaG9ydF9uYW1lIjogIkpNYXJ0IFNhZmV0eSIsCiAgImRlc2NyaXB0aW9uIjogIlNhZmV0eSBtYW5hZ2VtZW50IGFwcCBmb3IgSk1hcnQgU3RlZWwgLSBOU1cgT3BlcmF0aW9ucyIsCiAgInN0YXJ0X3VybCI6ICIuIiwKICAiZGlzcGxheSI6ICJzdGFuZGFsb25lIiwKICAiYmFja2dyb3VuZF9jb2xvciI6ICIjZjNmNGY2IiwKICAidGhlbWVfY29sb3IiOiAiI2VhNTgwYyIsCiAgIm9yaWVudGF0aW9uIjogInBvcnRyYWl0IiwKICAiaWNvbnMiOiBbCiAgICB7CiAgICAgICJzcmMiOiAiZGF0YTppbWFnZS9zdmcreG1sLDxzdmcgeG1sbnM9J2h0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnJyB2aWV3Qm94PScwIDAgMTkyIDE5Mic+PHJlY3Qgd2lkdGg9JzE5MicgaGVpZ2h0PScxOTInIHJ4PSc0MCcgZmlsbD0nJTIzZWE1ODBjJy8+PHRleHQgeD0nOTYnIHk9JzEyMCcgZm9udC1zaXplPSc4MCcgdGV4dC1hbmNob3I9J21pZGRsZScgZmlsbD0nd2hpdGUnPvCfm6HvuI88L3RleHQ+PC9zdmc+IiwKICAgICAgInNpemVzIjogIjE5MngxOTIiLAogICAgICAidHlwZSI6ICJpbWFnZS9zdmcreG1sIiwKICAgICAgInB1cnBvc2UiOiAiYW55IG1hc2thYmxlIgogICAgfQogIF0KfQ==">
+  <link rel="manifest" href="manifest.json">
 
   <!-- Scripts (pinned versions + crossorigin for SRI readiness) -->
   <!-- Pre-compiled Tailwind CSS - no CDN dependency -->
@@ -88,9 +91,10 @@
           root.innerHTML =
             '<div style="padding:40px;text-align:center;font-family:system-ui;">' +
             '<h2 style="color:#dc2626;">Failed to Load Libraries</h2>' +
-            '<p style="color:#6b7280;">' + err.message + '</p>' +
+            '<p style="color:#6b7280;"></p>' +
             '<button onclick="window.location.reload()" style="margin-top:16px;padding:12px 24px;background:#ea580c;color:white;border:none;border-radius:8px;font-size:16px;cursor:pointer;">Retry</button>' +
             '</div>';
+          root.querySelector('p').textContent = err.message;
         }
       });
     })();
@@ -239,6 +243,7 @@
 </head>
 <body>
   <div id="root"></div>
+  <noscript><div style="padding:40px;text-align:center;font-family:system-ui;"><h2>JavaScript Required</h2><p>J&M Artsteel Safety App requires JavaScript to run. Please enable JavaScript in your browser settings.</p></div></noscript>
   <!-- Global error handler for debugging -->
   <script>
     window.__appErrors = [];
@@ -313,12 +318,14 @@
         console.log('[LOADER] Script appended. Root innerHTML length:', document.getElementById('root').innerHTML.length);
       } catch (err) {
         console.error('[LOADER] Component loading error:', err);
-        document.getElementById('root').innerHTML =
+        var errRoot = document.getElementById('root');
+        errRoot.innerHTML =
           '<div style="padding:40px;text-align:center;font-family:system-ui;">' +
           '<h2 style="color:#dc2626;">Error Loading App</h2>' +
-          '<p style="color:#6b7280;">' + err.message + '</p>' +
+          '<p style="color:#6b7280;"></p>' +
           '<button onclick="window.location.reload()" style="margin-top:16px;padding:12px 24px;background:#ea580c;color:white;border:none;border-radius:8px;font-size:16px;cursor:pointer;">Retry</button>' +
           '</div>';
+        errRoot.querySelector('p').textContent = err.message;
       }
     })();
   </script>

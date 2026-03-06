@@ -21,8 +21,13 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
     return [];
   });
   const [savedSignatures, setSavedSignatures] = useState(() => {
-    const saved = localStorage.getItem('jmart-team-signatures');
-    return saved ? JSON.parse(saved) : {};
+    try {
+      const saved = localStorage.getItem('jmart-team-signatures');
+      return saved ? JSON.parse(saved) : {};
+    } catch (e) {
+      console.warn('Could not parse team signatures:', e);
+      return {};
+    }
   });
 
   const deletingFormRef = useRef(false);
@@ -297,6 +302,7 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
       if (FirebaseSync.isConnected()) {
         FirebaseSync.syncForms(updatedForms).then(() => {
           console.log('Deletion synced to Firebase');
+          deletingFormRef.current = false;
         }).catch(err => {
           console.error('Failed to sync deletion to Firebase:', err);
           deletingFormRef.current = false;

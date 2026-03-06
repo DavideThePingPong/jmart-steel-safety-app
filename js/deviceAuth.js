@@ -682,7 +682,8 @@ const DeviceAuth = {
       return JSON.stringify({ hash: hash, salt: salt, algorithm: 'pbkdf2', iterations: 100000 });
     } catch (e) {
       console.warn('PBKDF2 unavailable, falling back to SHA-256:', e.message);
-      return this._hashPasswordSHA256(password) || this._legacyHash(password);
+      var sha256Result = await this._hashPasswordSHA256(password);
+      return sha256Result || this._legacyHash(password);
     }
   },
 

@@ -80,7 +80,7 @@
         document.getElementById('goBtn').disabled = false;
       } catch (e) {
         el.className = 'status error';
-        el.innerHTML = '<strong>Error:</strong> ' + e.message + '<br><br>Steps completed: ' + steps.join(', ');
+        el.textContent = 'Error: ' + e.message + ' — Steps completed: ' + steps.join(', ');
         document.getElementById('goBtn').disabled = false;
       }
     }

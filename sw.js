@@ -9,7 +9,7 @@
  * - v4: Pinned CDN versions (supply-chain hardening)
  */
 
-const CACHE_VERSION = 'v49';
+const CACHE_VERSION = 'v50';
 const STATIC_CACHE = `jmart-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `jmart-dynamic-${CACHE_VERSION}`;
 const CDN_CACHE = `jmart-cdn-${CACHE_VERSION}`;
@@ -40,7 +40,6 @@ const STATIC_FILES = [
   './js/trainingCertGenerator.js',
   './js/formValidator.js',
   './js/formConstants.js',
-  './js/formValidator.js',
   './js/toastNotifier.js',
   './js/components/shared.jsx',
   './js/components/hooks.jsx',
@@ -62,7 +61,11 @@ const STATIC_FILES = [
   './manifest.json',
   './offline.html',
   './icons/icon-192x192.png',
-  './icons/icon-512x512.png'
+  './icons/icon-512x512.png',
+  './icons/apple-touch-icon-120x120.png',
+  './icons/apple-touch-icon-152x152.png',
+  './icons/apple-touch-icon-167x167.png',
+  './icons/apple-touch-icon-180x180.png'
 ];
 
 // Critical CDN resources - ALL must be cached for offline
