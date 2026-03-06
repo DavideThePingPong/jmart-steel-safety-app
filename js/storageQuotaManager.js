@@ -298,25 +298,78 @@ const StorageQuotaManager = {
   };
 })();
 
+// Strip base64 data from a forms array (returns new array, does NOT mutate input)
+// Used by useDataSync before writing Firebase forms to localStorage
+StorageQuotaManager.stripPhotosFromArray = function(formsArray) {
+  if (!Array.isArray(formsArray)) return formsArray;
+  return JSON.parse(JSON.stringify(formsArray, function(key, value) {
+    if (typeof value === 'string' && value.length > 1000 &&
+        (value.indexOf('data:image') === 0 || value.indexOf('data:application') === 0 ||
+         value.indexOf('/9j/') === 0 || value.indexOf('iVBOR') === 0)) {
+      return '[photo-in-firebase]';
+    }
+    return value;
+  }));
+};
+
 // EMERGENCY AUTO-CLEANUP ON BOOT
 // Check for bloated keys and high storage usage before auth or anything else tries to write
 (function() {
   try {
-    // First pass: nuke any single key over 1MB (almost certainly corrupt data)
-    for (var i = 0; i < localStorage.length; i++) {
+    // First pass: nuke any single key over 500KB (almost certainly bloated data)
+    for (var i = localStorage.length - 1; i >= 0; i--) {
       var key = localStorage.key(i);
-      if (key && key !== 'jmart-safety-forms') { // Never nuke forms
-        var val = localStorage.getItem(key);
-        if (val && val.length > 1000000) { // > 1MB
-          console.warn('[BOOT] Bloated key detected:', key, '(' + Math.round(val.length / 1024) + 'KB) — clearing');
-          localStorage.setItem(key, key.includes('queue') || key.includes('log') ? '[]' : '');
-        }
+      if (!key) continue;
+      var val = localStorage.getItem(key);
+      if (val && val.length > 500000 && key !== 'jmart-safety-forms') {
+        console.warn('[BOOT] Bloated key detected:', key, '(' + Math.round(val.length / 1024) + 'KB) — clearing');
+        localStorage.removeItem(key);
       }
     }
 
     var usage = StorageQuotaManager.getUsage();
-    if (parseFloat(usage.percentUsed) > 80) {
-      console.warn('[BOOT] Storage at ' + usage.percentUsed + '% — running emergency cleanup before app init');
+    var pct = parseFloat(usage.percentUsed);
+
+    // NUCLEAR cleanup if over 100% — storage is critically full
+    if (pct > 100) {
+      console.error('[BOOT] CRITICAL: Storage at ' + usage.percentUsed + '% — running NUCLEAR cleanup');
+
+      // 1. Nuke sync queue, audit log, backup tracking
+      try { localStorage.removeItem('jmart-sync-queue'); } catch(e) {}
+      try { localStorage.removeItem('jmart-audit-log'); } catch(e) {}
+      try { localStorage.removeItem('jmart-backed-up-forms'); } catch(e) {}
+      try { localStorage.removeItem('jmart-photo-queue'); } catch(e) {}
+
+      // 2. Nuke all temp/cache/backup keys
+      for (var j = localStorage.length - 1; j >= 0; j--) {
+        var k = localStorage.key(j);
+        if (k && (k.includes('temp') || k.includes('cache') || k.includes('backup') ||
+                  k.includes('draft') || k.includes('cdn-retry') || k.includes('firebase:'))) {
+          localStorage.removeItem(k);
+        }
+      }
+
+      // 3. Strip ALL photos from forms
+      StorageQuotaManager.stripPhotosFromForms();
+
+      // 4. If STILL over 90%, keep only last 20 forms
+      var afterNuke = StorageQuotaManager.getUsage();
+      if (parseFloat(afterNuke.percentUsed) > 90) {
+        try {
+          var forms = JSON.parse(localStorage.getItem('jmart-safety-forms') || '[]');
+          if (forms.length > 20) {
+            forms.sort(function(a, b) { return new Date(b.createdAt || 0) - new Date(a.createdAt || 0); });
+            localStorage.setItem('jmart-safety-forms', JSON.stringify(forms.slice(0, 20)));
+            console.warn('[BOOT] Trimmed forms to 20 most recent (was ' + forms.length + ')');
+          }
+        } catch(e) {}
+      }
+
+      var afterAll = StorageQuotaManager.getUsage();
+      console.log('[BOOT] Post-NUCLEAR storage: ' + afterAll.percentUsed + '% (' + afterAll.megabytes + ' MB)');
+
+    } else if (pct > 80) {
+      console.warn('[BOOT] Storage at ' + usage.percentUsed + '% — running cleanup before app init');
       StorageQuotaManager.cleanup();
       var after = StorageQuotaManager.getUsage();
       console.log('[BOOT] Post-cleanup storage: ' + after.percentUsed + '% (' + after.megabytes + ' MB)');

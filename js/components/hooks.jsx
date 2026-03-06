@@ -372,6 +372,7 @@ function useDataSync({ setForms, setSites, deletingFormRef }) {
 
   const isInitialLoad = useRef(true);
   const sitesFromFirebaseRef = useRef(false);
+  const lastFormsWriteRef = useRef(0); // throttle forms listener writes
 
   // Load saved data from localStorage first, then listen to Firebase
   useEffect(() => {
@@ -412,13 +413,22 @@ function useDataSync({ setForms, setSites, deletingFormRef }) {
     if (FirebaseSync.isConnected()) {
       const unsubForms = FirebaseSync.onFormsChange((firebaseForms) => {
         const formsArray = Array.isArray(firebaseForms) ? firebaseForms : Object.values(firebaseForms || {});
+
+        // Throttle: skip if last write was <2s ago (prevents rapid-fire listener loop)
+        var now = Date.now();
+        if (now - lastFormsWriteRef.current < 2000) return;
+        lastFormsWriteRef.current = now;
+
         console.log('Firebase forms received:', formsArray.length, 'forms');
 
         if (deletingFormRef.current) {
           console.log('Delete operation in progress - using Firebase as source of truth');
           deletingFormRef.current = false;
           setForms(formsArray);
-          localStorage.setItem('jmart-safety-forms', JSON.stringify(formsArray));
+          // Strip photos before writing to localStorage to prevent storage bloat
+          var stripped = typeof StorageQuotaManager !== 'undefined' && StorageQuotaManager.stripPhotosFromArray
+            ? StorageQuotaManager.stripPhotosFromArray(formsArray) : formsArray;
+          try { localStorage.setItem('jmart-safety-forms', JSON.stringify(stripped)); } catch(e) { console.warn('Forms save failed:', e.message); }
           setSyncStatus('synced');
           setLastSynced(new Date().toISOString());
           return;
@@ -465,7 +475,10 @@ function useDataSync({ setForms, setSites, deletingFormRef }) {
           formMap.forEach(form => mergedForms.push(form));
           mergedForms.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
           setForms(mergedForms);
-          localStorage.setItem('jmart-safety-forms', JSON.stringify(mergedForms));
+          // Strip base64 photos before writing to localStorage — photos live in Firebase, not localStorage
+          var strippedMerged = typeof StorageQuotaManager !== 'undefined' && StorageQuotaManager.stripPhotosFromArray
+            ? StorageQuotaManager.stripPhotosFromArray(mergedForms) : mergedForms;
+          try { localStorage.setItem('jmart-safety-forms', JSON.stringify(strippedMerged)); } catch(e) { console.warn('Forms save failed:', e.message); }
           console.log('Merged forms with conflict resolution:', mergedForms.length, 'total');
         } else if (localForms.length > 0) {
           console.log('Firebase empty, pushing local forms to Firebase');
