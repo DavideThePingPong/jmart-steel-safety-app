@@ -20,10 +20,11 @@ const DailyBackupScheduler = {
     const now = new Date();
     const today = now.toDateString();
     const hour = now.getHours();
-    const minute = now.getMinutes();
 
-    // Check if it's 7pm (19:00) and we haven't backed up today
-    if (hour === 19 && minute === 0 && this.lastBackupDate !== today) {
+    // Check if it's 7pm hour (19:00-19:59) and we haven't backed up today
+    // Using the full hour window prevents missing the backup when the 60s
+    // interval doesn't land exactly on minute === 0
+    if (hour === 19 && this.lastBackupDate !== today) {
       console.log('7pm backup triggered!');
       await this.performBackup();
     }

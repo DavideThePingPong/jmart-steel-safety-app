@@ -63,6 +63,9 @@
         'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'
       ];
 
+      // Critical scripts — if eval fails for these, the app cannot run
+      var criticalScripts = ['react.production', 'react-dom.production', 'babel.min'];
+
       // Load each script sequentially using fetch + eval to bypass SW script interception
       function loadScript(url) {
         return fetch(url, { mode: 'cors' }).then(function(r) {
@@ -73,6 +76,9 @@
             (0, eval)(code); // indirect eval runs in global scope
           } catch (e) {
             console.error('[CDN-LOADER] Error executing:', url, e.message);
+            // Re-throw for critical scripts — app cannot function without React/Babel
+            var isCritical = criticalScripts.some(function(name) { return url.indexOf(name) !== -1; });
+            if (isCritical) throw new Error('Critical script failed: ' + url.split('/').pop() + ' — ' + e.message);
           }
           console.log('[CDN-LOADER] Loaded:', url.split('/').pop());
         });
@@ -244,6 +250,10 @@
 <body>
   <div id="root"></div>
   <noscript><div style="padding:40px;text-align:center;font-family:system-ui;"><h2>JavaScript Required</h2><p>J&M Artsteel Safety App requires JavaScript to run. Please enable JavaScript in your browser settings.</p></div></noscript>
+  <!-- Loading Screen — must be set BEFORE async component loader starts -->
+  <script>
+    document.getElementById('root').innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:#f3f4f6;"><div class="spinner"></div><p style="margin-top:16px;color:#6b7280;font-family:system-ui;">Loading J&M Artsteel Safety...</p></div>';
+  </script>
   <!-- Global error handler for debugging -->
   <script>
     window.__appErrors = [];
@@ -328,12 +338,6 @@
         errRoot.querySelector('p').textContent = err.message;
       }
     })();
-  </script>
-
-  <!-- Loading Screen -->
-  <script>
-    // Show loading spinner while React loads
-    document.getElementById('root').innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:#f3f4f6;"><div class="spinner"></div><p style="margin-top:16px;color:#6b7280;font-family:system-ui;">Loading J&M Artsteel Safety...</p></div>';
   </script>
 
   <!-- Service Worker Registration (v3 - external file with stale-while-revalidate, background sync) -->

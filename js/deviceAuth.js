@@ -303,8 +303,10 @@ const DeviceAuth = {
   _cleanupInvalidDevices: async function() {
     if (!firebaseDb) return;
     try {
-      const approvedSnap = await firebaseDb.ref('jmart-safety/devices/approved').once('value');
-      const devices = approvedSnap.val();
+      // Use firebaseRead() (REST fallback) instead of .once() (SDK WebSocket)
+      // to stay consistent with the rest of the app's read strategy
+      const approvedResult = await firebaseRead('jmart-safety/devices/approved');
+      const devices = approvedResult.val;
       if (!devices) return;
 
       const invalidKeys = ['null', 'undefined', ''];
@@ -331,8 +333,8 @@ const DeviceAuth = {
       }
 
       // Also clean up pending devices with invalid IDs
-      const pendingSnap = await firebaseDb.ref('jmart-safety/devices/pending').once('value');
-      const pending = pendingSnap.val();
+      const pendingResult = await firebaseRead('jmart-safety/devices/pending');
+      const pending = pendingResult.val;
       if (pending) {
         for (const key of invalidKeys) {
           if (pending[key]) {

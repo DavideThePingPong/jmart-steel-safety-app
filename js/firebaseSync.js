@@ -17,6 +17,7 @@ const FirebaseSync = {
 
   MAX_QUEUE_SIZE: 100,        // Hard cap — prevents localStorage bloat
   MAX_QUEUE_BYTES: 500000,    // 500KB max — beyond this, oldest entries get dropped
+  _isProcessing: false,       // Concurrency guard — prevents overlapping processQueue calls
 
   // Initialize - load pending queue from localStorage
   init: function() {
@@ -100,8 +101,14 @@ const FirebaseSync = {
     return item.id;
   },
 
-  // Process the retry queue — respects circuit breaker
+  // Process the retry queue — respects circuit breaker and concurrency guard
   processQueue: async function() {
+    // Concurrency guard — prevent overlapping processQueue calls
+    if (this._isProcessing) {
+      console.log('[FirebaseSync] processQueue already running — skipping');
+      return;
+    }
+
     // Circuit breaker check
     if (this.circuitOpen) {
       const elapsed = Date.now() - (this.circuitOpenedAt || 0);
@@ -120,28 +127,33 @@ const FirebaseSync = {
       return;
     }
 
-    const itemsToProcess = [...this.pendingQueue];
-    for (const item of itemsToProcess) {
-      try {
-        await this.executeSync(item);
-        // Success - remove from queue
-        this.pendingQueue = this.pendingQueue.filter(i => i.id !== item.id);
-        this.saveQueue();
-        this.notifyListeners('synced', { pending: this.pendingQueue.length, item: item.type });
-        console.log(`Sync successful for ${item.type}`);
-      } catch (error) {
-        item.attempts++;
-        if (item.attempts >= this.maxRetries) {
-          console.error(`Max retries reached for ${item.type}, removing from queue`);
+    this._isProcessing = true;
+    try {
+      const itemsToProcess = [...this.pendingQueue];
+      for (const item of itemsToProcess) {
+        try {
+          await this.executeSync(item);
+          // Success - remove from queue
           this.pendingQueue = this.pendingQueue.filter(i => i.id !== item.id);
-          this.notifyListeners('failed', { pending: this.pendingQueue.length, error: error.message });
-        } else {
-          const delay = this.retryDelays[Math.min(item.attempts - 1, this.retryDelays.length - 1)];
-          console.log(`Retry ${item.attempts}/${this.maxRetries} for ${item.type} in ${delay}ms`);
-          setTimeout(() => this.processQueue(), delay);
+          this.saveQueue();
+          this.notifyListeners('synced', { pending: this.pendingQueue.length, item: item.type });
+          console.log(`Sync successful for ${item.type}`);
+        } catch (error) {
+          item.attempts++;
+          if (item.attempts >= this.maxRetries) {
+            console.error(`Max retries reached for ${item.type}, removing from queue`);
+            this.pendingQueue = this.pendingQueue.filter(i => i.id !== item.id);
+            this.notifyListeners('failed', { pending: this.pendingQueue.length, error: error.message });
+          } else {
+            const delay = this.retryDelays[Math.min(item.attempts - 1, this.retryDelays.length - 1)];
+            console.log(`Retry ${item.attempts}/${this.maxRetries} for ${item.type} in ${delay}ms`);
+            setTimeout(() => this.processQueue(), delay);
+          }
+          this.saveQueue();
         }
-        this.saveQueue();
       }
+    } finally {
+      this._isProcessing = false;
     }
   },
 

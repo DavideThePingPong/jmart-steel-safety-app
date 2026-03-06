@@ -439,9 +439,18 @@ function useDataSync({ setForms, setSites, deletingFormRef }) {
           // Write to localStorage using safe writer (strips large data, trims to fit)
           StorageQuotaManager.safeFormsWrite(mergedForms);
           console.log('Forms synced:', mergedForms.length, 'total');
-        } else if (localForms.length > 0) {
-          console.log('Firebase empty, pushing local forms to Firebase');
-          FirebaseSync.syncForms(localForms);
+        } else {
+          // Firebase returned empty — check if we have local forms to push
+          // Read fresh from localStorage to avoid stale closure over initial localForms
+          let freshLocalForms = [];
+          try {
+            const freshLocal = localStorage.getItem('jmart-safety-forms');
+            if (freshLocal) freshLocalForms = JSON.parse(freshLocal);
+          } catch (e) { /* ignore */ }
+          if (freshLocalForms.length > 0) {
+            console.log('Firebase empty, pushing local forms to Firebase');
+            FirebaseSync.syncForms(freshLocalForms);
+          }
         }
 
         setSyncStatus('synced');

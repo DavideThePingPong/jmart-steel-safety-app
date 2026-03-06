@@ -101,13 +101,15 @@ function Icon({ icon, size = 24, className = "" }) {
   useEffect(() => {
     if (ref.current && icon) {
       ref.current.innerHTML = '';
-      const svg = icon;
+      // Clone BEFORE mutating — icon is a shared singleton from lucide,
+      // mutating it directly would pollute all other Icon instances
+      const svg = icon.cloneNode(true);
       svg.setAttribute('width', size);
       svg.setAttribute('height', size);
       if (className) {
         className.split(' ').forEach(c => c && svg.classList.add(c));
       }
-      ref.current.appendChild(svg.cloneNode(true));
+      ref.current.appendChild(svg);
     }
   }, [icon, size, className]);
   return <span ref={ref} style={{display: 'inline-flex', alignItems: 'center'}}></span>;

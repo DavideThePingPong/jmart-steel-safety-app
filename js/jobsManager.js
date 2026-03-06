@@ -58,16 +58,18 @@ const JobsManager = {
 
         let migratedCount = 0;
         for (const site of sites) {
-          if (site && site.name && !existingNames.has(site.name.toLowerCase())) {
+          // Sites can be plain strings (e.g. "Martin Place") or objects with .name
+          const siteName = typeof site === 'string' ? site : (site && site.name ? site.name : null);
+          if (siteName && !existingNames.has(siteName.toLowerCase())) {
             await this.addJob({
-              name: site.name,
-              client: site.builder || '',
-              address: site.address || '',
+              name: siteName,
+              client: (typeof site === 'object' && site.builder) ? site.builder : '',
+              address: (typeof site === 'object' && site.address) ? site.address : '',
               status: 'active',
               createdAt: new Date().toISOString(),
               source: 'migrated-from-sites'
             });
-            existingNames.add(site.name.toLowerCase());
+            existingNames.add(siteName.toLowerCase());
             migratedCount++;
           }
         }
