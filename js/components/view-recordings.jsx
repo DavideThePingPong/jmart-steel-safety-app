@@ -273,9 +273,9 @@ function RecordingsView({ forms, sites }) {
 
         {showJobSelector && (
           <div className="mt-3 space-y-2 max-h-48 overflow-y-auto">
-            {getAvailableJobs().map((job, idx) => (
+            {getAvailableJobs().map((job) => (
               <button
-                key={idx}
+                key={job.id}
                 onClick={() => {
                   setSelectedJob(job);
                   setShowJobSelector(false);

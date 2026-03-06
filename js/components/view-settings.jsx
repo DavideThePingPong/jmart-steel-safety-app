@@ -439,8 +439,8 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
           </div>
         )}
         <div className="space-y-2">
-          {currentSites.map((site, idx) => (
-            <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+          {currentSites.map((site) => (
+            <div key={site} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
               <span className="text-sm text-gray-700">{site}</span>
               <button onClick={() => onUpdateSites(currentSites.filter(s => s !== site))} className="text-red-500">🗑️</button>
             </div>
@@ -469,8 +469,8 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
         )}
 
         <div className="space-y-2">
-          {allMembers.map((name, idx) => (
-            <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+          {allMembers.map((name) => (
+            <div key={name} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
               <div className="flex items-center gap-3 flex-1">
                 <span className="text-sm font-medium text-gray-700">{name}</span>
                 {signatures[name] ? (

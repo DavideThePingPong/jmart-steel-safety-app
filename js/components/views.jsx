@@ -15,8 +15,8 @@ function EmergencyView() {
         <p className="text-red-100 text-sm mt-1">Keep this information accessible</p>
       </div>
       <div className="bg-white rounded-xl shadow-sm divide-y">
-        {contacts.map((contact, idx) => (
-          <a key={idx} href={`tel:${contact.number.replace(/\s/g, '')}`} className="p-4 flex items-center justify-between">
+        {contacts.map((contact) => (
+          <a key={contact.name} href={`tel:${contact.number.replace(/\s/g, '')}`} className="p-4 flex items-center justify-between">
             <div>
               <p className="font-semibold text-gray-800">{contact.name}</p>
               <p className="text-sm text-gray-500">{contact.desc}</p>
@@ -469,8 +469,8 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
           </div>
         )}
         <div className="space-y-2">
-          {currentSites.map((site, idx) => (
-            <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+          {currentSites.map((site) => (
+            <div key={site} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
               <span className="text-sm text-gray-700">{site}</span>
               <button onClick={() => onUpdateSites(currentSites.filter(s => s !== site))} className="text-red-500">🗑️</button>
             </div>
@@ -499,8 +499,8 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
         )}
 
         <div className="space-y-2">
-          {allMembers.map((name, idx) => (
-            <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+          {allMembers.map((name) => (
+            <div key={name} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
               <div className="flex items-center gap-3 flex-1">
                 <span className="text-sm font-medium text-gray-700">{name}</span>
                 {signatures[name] ? (
@@ -552,8 +552,13 @@ function RecordingsView({ forms, sites }) {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState('');
   const [savedRecordings, setSavedRecordings] = useState(() => {
-    const saved = localStorage.getItem('jmart-job-recordings');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem('jmart-job-recordings');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      console.warn('Could not parse job recordings:', e);
+      return [];
+    }
   });
   const [viewingRecording, setViewingRecording] = useState(null);
   const cameraInputRef = useRef(null);
@@ -812,9 +817,9 @@ function RecordingsView({ forms, sites }) {
 
         {showJobSelector && (
           <div className="mt-3 space-y-2 max-h-48 overflow-y-auto">
-            {getAvailableJobs().map((job, idx) => (
+            {getAvailableJobs().map((job) => (
               <button
-                key={idx}
+                key={job.id}
                 onClick={() => {
                   setSelectedJob(job);
                   setShowJobSelector(false);

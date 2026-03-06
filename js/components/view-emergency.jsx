@@ -18,8 +18,8 @@ function EmergencyView() {
         <p className="text-red-100 text-sm mt-1">Keep this information accessible</p>
       </div>
       <div className="bg-white rounded-xl shadow-sm divide-y">
-        {contacts.map((contact, idx) => (
-          <a key={idx} href={`tel:${contact.number.replace(/\s/g, '')}`} className="p-4 flex items-center justify-between">
+        {contacts.map((contact) => (
+          <a key={contact.name} href={`tel:${contact.number.replace(/\s/g, '')}`} className="p-4 flex items-center justify-between">
             <div>
               <p className="font-semibold text-gray-800">{contact.name}</p>
               <p className="text-sm text-gray-500">{contact.desc}</p>

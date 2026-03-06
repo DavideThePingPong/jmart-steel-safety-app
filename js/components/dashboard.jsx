@@ -163,9 +163,9 @@ function Dashboard({ setCurrentView, forms, onViewForm, isFormBackedUp, sites = 
                     <p className="text-xs text-gray-500">Select which job these photos belong to</p>
                   </div>
                   <div className="p-2 max-h-60 overflow-y-auto">
-                    {allJobs.map((job, idx) => (
+                    {allJobs.map((job) => (
                       <button
-                        key={idx}
+                        key={job}
                         onClick={() => handleJobSelect(job)}
                         className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-orange-50 rounded-lg flex items-center gap-2"
                       >
