@@ -78,7 +78,8 @@ const DailyBackupScheduler = {
 
   stop: function() {
     if (this.checkInterval) {
-      clearInterval(this.checkInterval);
+      IntervalRegistry.clearInterval(this.checkInterval);
+      this.checkInterval = null;
       console.log('Daily backup scheduler stopped');
     }
   }

@@ -24,6 +24,7 @@ const ToastNotifier = {
   show: function(type, message, options) {
     this.init();
     options = options || {};
+    var self = this;
     var duration = options.duration || (type === 'error' ? 6000 : 3500);
 
     var toast = document.createElement('div');
@@ -77,7 +78,6 @@ const ToastNotifier = {
     });
 
     // Click to dismiss
-    var self = this;
     toast.onclick = function() { self.dismiss(toast); };
 
     // Auto dismiss

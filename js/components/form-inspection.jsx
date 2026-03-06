@@ -72,9 +72,16 @@ function SubcontractorInspectionView({ onSubmit, sites = [] }) {
   const allAnswered = Object.values(inspectionItems).every(v => v !== null);
 
   const handleSubmit = () => {
-    const errors = window.formValidator.validateInspection({
-      siteConducted, preparedBy, completedBy, inspectionItems
-    });
+    let errors = [];
+    if (window.formValidator) {
+      errors = window.formValidator.validateInspection({
+        siteConducted, preparedBy, completedBy, inspectionItems
+      });
+    } else {
+      if (!siteConducted) errors.push('Site/Location is required');
+      if (!preparedBy) errors.push('Prepared by is required');
+      if (!completedBy) errors.push('Completed by is required');
+    }
     if (errors.length > 0) {
       setValidationErrors(errors);
       return;

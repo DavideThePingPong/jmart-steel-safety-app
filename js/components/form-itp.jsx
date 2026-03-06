@@ -117,9 +117,15 @@ function ITPFormView({ onSubmit, sites = [] }) {
   );
 
   const handleSubmit = () => {
-    const errors = window.formValidator.validateITP({
-      siteConducted, preparedBy, builderSignoffName, builderSignature
-    });
+    let errors = [];
+    if (window.formValidator) {
+      errors = window.formValidator.validateITP({
+        siteConducted, preparedBy, builderSignoffName, builderSignature
+      });
+    } else {
+      if (!siteConducted) errors.push('Site/Location is required');
+      if (!preparedBy) errors.push('Prepared by is required');
+    }
     if (errors.length > 0) {
       setValidationErrors(errors);
       return;

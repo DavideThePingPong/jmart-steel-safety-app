@@ -1006,6 +1006,13 @@ function RecordingsView({ forms, sites }) {
                     className="w-full h-24 object-cover rounded-lg cursor-pointer hover:opacity-80"
                     onClick={() => {
                       const win = window.open('', '_blank');
+                      if (!win) {
+                        const link = document.createElement('a');
+                        link.href = photo.data;
+                        link.download = `photo-${idx + 1}.jpg`;
+                        link.click();
+                        return;
+                      }
                       const img = win.document.createElement('img');
                       img.src = photo.data;
                       img.style.maxWidth = '100%';

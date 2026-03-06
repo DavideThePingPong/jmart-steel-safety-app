@@ -91,9 +91,15 @@ function SteelITPView({ onSubmit, sites = [] }) {
   );
 
   const handleSubmit = () => {
-    const errors = window.formValidator.validateSteelITP({
-      siteConducted, preparedBy, managerName, managerSignature
-    });
+    let errors = [];
+    if (window.formValidator) {
+      errors = window.formValidator.validateSteelITP({
+        siteConducted, preparedBy, managerName, managerSignature
+      });
+    } else {
+      if (!siteConducted) errors.push('Site/Location is required');
+      if (!preparedBy) errors.push('Prepared by is required');
+    }
     if (errors.length > 0) {
       setValidationErrors(errors);
       return;

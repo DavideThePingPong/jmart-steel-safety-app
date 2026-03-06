@@ -48,7 +48,11 @@ function TrainingView() {
         score: score
       }];
       setCompletedCourses(newCompleted);
-      localStorage.setItem('jmart-completed-training', JSON.stringify(newCompleted));
+      try {
+        localStorage.setItem('jmart-completed-training', JSON.stringify(newCompleted));
+      } catch (e) {
+        console.warn('Could not save training completion:', e.message);
+      }
     }
     setShowResults(true);
   };

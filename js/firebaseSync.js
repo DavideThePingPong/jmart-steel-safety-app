@@ -147,7 +147,7 @@ const FirebaseSync = {
           } else {
             const delay = this.retryDelays[Math.min(item.attempts - 1, this.retryDelays.length - 1)];
             console.log(`Retry ${item.attempts}/${this.maxRetries} for ${item.type} in ${delay}ms`);
-            setTimeout(() => this.processQueue(), delay);
+            IntervalRegistry.setTimeout(() => this.processQueue(), delay, 'FirebaseSync-retry');
           }
           this.saveQueue();
         }
@@ -347,8 +347,8 @@ const FirebaseSync = {
   // Check if Firebase is configured and connected
   isConnected: () => isFirebaseConfigured && firebaseDb !== null,
 
-  // Firebase database reference (for direct access when needed)
-  db: firebaseDb
+  // Firebase database reference (getter — returns live value, not stale capture)
+  get db() { return firebaseDb; }
 };
 
 // Initialize sync queue on load

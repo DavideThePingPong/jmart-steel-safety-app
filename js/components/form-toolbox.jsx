@@ -63,9 +63,15 @@ function ToolboxView({ onSubmit, sites = [] }) {
   };
 
   const handleSubmit = () => {
-    const errors = window.formValidator.validateToolbox({
-      siteConducted, preparedBy, topics: selectedTopics, signatures
-    });
+    let errors = [];
+    if (window.formValidator) {
+      errors = window.formValidator.validateToolbox({
+        siteConducted, preparedBy, topics: selectedTopics, signatures
+      });
+    } else {
+      if (!siteConducted) errors.push('Site/Location is required');
+      if (!preparedBy) errors.push('Prepared by is required');
+    }
     if (errors.length > 0) {
       setValidationErrors(errors);
       return;

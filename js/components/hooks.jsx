@@ -778,15 +778,14 @@ function useAutoSave(formKey, formData, intervalMs) {
   // Save draft periodically
   useEffect(() => {
     if (!formData || !formKey) return;
-    const timer = setInterval(() => {
+    const timer = IntervalRegistry.setInterval(() => {
       try {
         localStorage.setItem(draftKey, JSON.stringify({ data: formData, savedAt: Date.now() }));
-        console.log('[AutoSave] Draft saved for', formKey);
       } catch (e) {
         console.warn('[AutoSave] Could not save draft:', e.message);
       }
-    }, saveInterval);
-    return () => clearInterval(timer);
+    }, saveInterval, 'useAutoSave-' + formKey);
+    return () => IntervalRegistry.clearInterval(timer);
   }, [formData, formKey]);
 
   // Load existing draft

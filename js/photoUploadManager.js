@@ -51,9 +51,8 @@ const PhotoUploadManager = {
 
     try {
       // Search for today's folder
-      const dateSearch = await fetch(
-        `https://www.googleapis.com/drive/v3/files?q=name='${today}' and '${photosFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-        { headers: { 'Authorization': `Bearer ${GoogleDriveSync.accessToken}` } }
+      const dateSearch = await GoogleDriveSync.apiCall(
+        `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent("name='" + GoogleDriveSync._escapeQuery(today) + "' and '" + photosFolderId + "' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false")}`
       );
       const dateData = await dateSearch.json();
 
@@ -62,12 +61,9 @@ const PhotoUploadManager = {
       }
 
       // Create date folder
-      const createDate = await fetch('https://www.googleapis.com/drive/v3/files', {
+      const createDate = await GoogleDriveSync.apiCall('https://www.googleapis.com/drive/v3/files', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${GoogleDriveSync.accessToken}`,
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: today,
           mimeType: 'application/vnd.google-apps.folder',
@@ -110,11 +106,10 @@ const PhotoUploadManager = {
       formData.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
       formData.append('file', file);
 
-      const response = await fetch(
+      const response = await GoogleDriveSync.apiCall(
         'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
         {
           method: 'POST',
-          headers: { 'Authorization': `Bearer ${GoogleDriveSync.accessToken}` },
           body: formData,
         }
       );
