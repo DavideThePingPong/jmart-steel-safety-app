@@ -115,15 +115,20 @@ const GoogleDriveSync = {
     return response;
   },
 
+  // Helper: escape single quotes in GDrive query strings
+  // e.g. "O'Brien Site" → "O\'Brien Site"
+  _escapeQuery: function(str) {
+    return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  },
+
   // Get or create the JMart Safety folder
   getOrCreateFolder: async function() {
     if (!this.accessToken) return null;
 
     try {
       // Search for existing folder
-      const searchResponse = await fetch(
-        `https://www.googleapis.com/drive/v3/files?q=name='${DRIVE_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-        { headers: { 'Authorization': `Bearer ${this.accessToken}` } }
+      const searchResponse = await this.apiCall(
+        `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent("name='" + this._escapeQuery(DRIVE_FOLDER_NAME) + "' and mimeType='application/vnd.google-apps.folder' and trashed=false")}`
       );
       const searchData = await searchResponse.json();
 
@@ -134,12 +139,9 @@ const GoogleDriveSync = {
       }
 
       // Create new folder
-      const createResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
+      const createResponse = await this.apiCall('https://www.googleapis.com/drive/v3/files', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.accessToken}`,
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: DRIVE_FOLDER_NAME,
           mimeType: 'application/vnd.google-apps.folder',
@@ -170,9 +172,8 @@ const GoogleDriveSync = {
     for (const folderName of parts) {
       try {
         // Search for folder
-        const searchResponse = await fetch(
-          `https://www.googleapis.com/drive/v3/files?q=name='${folderName}' and '${currentParent}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-          { headers: { 'Authorization': `Bearer ${this.accessToken}` } }
+        const searchResponse = await this.apiCall(
+          `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent("name='" + this._escapeQuery(folderName) + "' and '" + currentParent + "' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false")}`
         );
         const searchData = await searchResponse.json();
 
@@ -180,12 +181,9 @@ const GoogleDriveSync = {
           currentParent = searchData.files[0].id;
         } else {
           // Create folder
-          const createResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
+          const createResponse = await this.apiCall('https://www.googleapis.com/drive/v3/files', {
             method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${this.accessToken}`,
-              'Content-Type': 'application/json',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               name: folderName,
               mimeType: 'application/vnd.google-apps.folder',
@@ -239,11 +237,10 @@ const GoogleDriveSync = {
       formData.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
       formData.append('file', pdfBlob);
 
-      const response = await fetch(
+      const response = await this.apiCall(
         'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
         {
           method: 'POST',
-          headers: { 'Authorization': `Bearer ${this.accessToken}` },
           body: formData,
         }
       );
@@ -295,10 +292,9 @@ const GoogleDriveSync = {
     if (!this.accessToken) return [];
 
     try {
-      const query = `name contains '${namePattern}' and '${this.folderId}' in parents and trashed=false`;
-      const response = await fetch(
-        `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name,createdTime)`,
-        { headers: { 'Authorization': `Bearer ${this.accessToken}` } }
+      const query = `name contains '${this._escapeQuery(namePattern)}' and '${this.folderId}' in parents and trashed=false`;
+      const response = await this.apiCall(
+        `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name,createdTime)`
       );
       const data = await response.json();
       return data.files || [];
@@ -313,12 +309,9 @@ const GoogleDriveSync = {
     if (!this.accessToken) return false;
 
     try {
-      const response = await fetch(
+      const response = await this.apiCall(
         `https://www.googleapis.com/drive/v3/files/${fileId}`,
-        {
-          method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${this.accessToken}` }
-        }
+        { method: 'DELETE' }
       );
       if (response.ok || response.status === 204) {
         console.log('Deleted file from Drive:', fileId);
@@ -376,9 +369,8 @@ const GoogleDriveSync = {
       let recordingsFolderId = null;
 
       // Search for Job Recordings folder
-      const recordingsSearch = await fetch(
-        `https://www.googleapis.com/drive/v3/files?q=name='${recordingsFolderName}' and '${this.folderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-        { headers: { 'Authorization': `Bearer ${this.accessToken}` } }
+      const recordingsSearch = await this.apiCall(
+        `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent("name='" + this._escapeQuery(recordingsFolderName) + "' and '" + this.folderId + "' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false")}`
       );
       const recordingsData = await recordingsSearch.json();
 
@@ -386,12 +378,9 @@ const GoogleDriveSync = {
         recordingsFolderId = recordingsData.files[0].id;
       } else {
         // Create Job Recordings folder
-        const createRecordings = await fetch('https://www.googleapis.com/drive/v3/files', {
+        const createRecordings = await this.apiCall('https://www.googleapis.com/drive/v3/files', {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${this.accessToken}`,
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             name: recordingsFolderName,
             mimeType: 'application/vnd.google-apps.folder',
@@ -406,21 +395,17 @@ const GoogleDriveSync = {
       const safeSiteName = siteName.replace(/[<>:"/\\|?*]/g, '-');
       let siteFolderId = null;
 
-      const siteSearch = await fetch(
-        `https://www.googleapis.com/drive/v3/files?q=name='${safeSiteName}' and '${recordingsFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-        { headers: { 'Authorization': `Bearer ${this.accessToken}` } }
+      const siteSearch = await this.apiCall(
+        `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent("name='" + this._escapeQuery(safeSiteName) + "' and '" + recordingsFolderId + "' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false")}`
       );
       const siteData = await siteSearch.json();
 
       if (siteData.files && siteData.files.length > 0) {
         siteFolderId = siteData.files[0].id;
       } else {
-        const createSite = await fetch('https://www.googleapis.com/drive/v3/files', {
+        const createSite = await this.apiCall('https://www.googleapis.com/drive/v3/files', {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${this.accessToken}`,
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             name: safeSiteName,
             mimeType: 'application/vnd.google-apps.folder',
@@ -435,21 +420,17 @@ const GoogleDriveSync = {
       const dateStr = new Date(date).toLocaleDateString('en-AU').replace(/\//g, '-');
       let dateFolderId = null;
 
-      const dateSearch = await fetch(
-        `https://www.googleapis.com/drive/v3/files?q=name='${dateStr}' and '${siteFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-        { headers: { 'Authorization': `Bearer ${this.accessToken}` } }
+      const dateSearch = await this.apiCall(
+        `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent("name='" + this._escapeQuery(dateStr) + "' and '" + siteFolderId + "' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false")}`
       );
       const dateData = await dateSearch.json();
 
       if (dateData.files && dateData.files.length > 0) {
         dateFolderId = dateData.files[0].id;
       } else {
-        const createDate = await fetch('https://www.googleapis.com/drive/v3/files', {
+        const createDate = await this.apiCall('https://www.googleapis.com/drive/v3/files', {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${this.accessToken}`,
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             name: dateStr,
             mimeType: 'application/vnd.google-apps.folder',
@@ -502,11 +483,10 @@ const GoogleDriveSync = {
       formData.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
       formData.append('file', blob);
 
-      const response = await fetch(
+      const response = await this.apiCall(
         'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
         {
           method: 'POST',
-          headers: { 'Authorization': `Bearer ${this.accessToken}` },
           body: formData,
         }
       );

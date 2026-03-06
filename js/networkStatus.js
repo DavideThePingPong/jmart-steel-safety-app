@@ -43,9 +43,10 @@ const NetworkStatus = {
   startHeartbeat: function() {
     if (this.heartbeatInterval) return; // Already running
 
-    this.heartbeatInterval = setInterval(() => {
+    // Use IntervalRegistry for proper cleanup on page unload
+    this.heartbeatInterval = IntervalRegistry.setInterval(() => {
       this.checkHeartbeat();
-    }, this.HEARTBEAT_INTERVAL_MS);
+    }, this.HEARTBEAT_INTERVAL_MS, 'NetworkHeartbeat');
 
     // Initial check
     this.checkHeartbeat();
@@ -53,7 +54,7 @@ const NetworkStatus = {
 
   stopHeartbeat: function() {
     if (this.heartbeatInterval) {
-      clearInterval(this.heartbeatInterval);
+      IntervalRegistry.clearInterval(this.heartbeatInterval);
       this.heartbeatInterval = null;
     }
   },
@@ -65,11 +66,16 @@ const NetworkStatus = {
     if (typeof firebaseDb !== 'undefined' && firebaseDb && typeof isFirebaseConfigured !== 'undefined' && isFirebaseConfigured) {
       try {
         const connectedRef = firebaseDb.ref('.info/connected');
+        // Race .once() vs timeout — detach listener if timeout wins to prevent leak
+        let settled = false;
         const snap = await Promise.race([
           new Promise((resolve) => {
-            connectedRef.once('value', resolve);
+            connectedRef.once('value', (s) => { settled = true; resolve(s); });
           }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('heartbeat timeout')), 10000))
+          new Promise((_, reject) => setTimeout(() => {
+            if (!settled) { try { connectedRef.off('value'); } catch(e) {} }
+            reject(new Error('heartbeat timeout'));
+          }, 10000))
         ]);
 
         if (snap.val() === true) {

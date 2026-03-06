@@ -14,8 +14,13 @@ function TrainingView() {
   const [showQRCode, setShowQRCode] = useState(false);
   const [viewingStandards, setViewingStandards] = useState(null);
   const [completedCourses, setCompletedCourses] = useState(() => {
-    const saved = localStorage.getItem('jmart-completed-training');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem('jmart-completed-training');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      console.warn('Could not parse completed training:', e);
+      return [];
+    }
   });
 
   // Course data from external file

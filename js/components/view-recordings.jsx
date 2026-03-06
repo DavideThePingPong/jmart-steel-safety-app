@@ -8,8 +8,13 @@ function RecordingsView({ forms, sites }) {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState('');
   const [savedRecordings, setSavedRecordings] = useState(() => {
-    const saved = localStorage.getItem('jmart-job-recordings');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem('jmart-job-recordings');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      console.warn('Could not parse job recordings:', e);
+      return [];
+    }
   });
   const [viewingRecording, setViewingRecording] = useState(null);
   const cameraInputRef = useRef(null);

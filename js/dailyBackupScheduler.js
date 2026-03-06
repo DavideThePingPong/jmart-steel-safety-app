@@ -43,7 +43,17 @@ const DailyBackupScheduler = {
       return;
     }
 
-    const forms = JSON.parse(formsJson);
+    let forms;
+    try {
+      forms = JSON.parse(formsJson);
+    } catch (e) {
+      console.error('Daily backup: corrupt forms data in localStorage:', e.message);
+      return;
+    }
+    if (!Array.isArray(forms) || forms.length === 0) {
+      console.log('No valid forms to backup');
+      return;
+    }
     const result = await GoogleDriveSync.uploadDailyForms(forms);
 
     if (result.success) {
