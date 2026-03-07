@@ -124,7 +124,7 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
     }
     setForms(prevForms => {
       const updated = prevForms.map(f => f.id === formId ? { ...f, locked: false } : f);
-      localStorage.setItem('jmart-safety-forms', JSON.stringify(updated));
+      StorageQuotaManager.safeFormsWrite(updated);
       return updated;
     });
     AuditLogManager.log('unlock', { formId, action: 'Form unlocked for editing by admin' });
@@ -212,7 +212,7 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
           return f;
         });
 
-        localStorage.setItem('jmart-safety-forms', JSON.stringify(updatedForms));
+        StorageQuotaManager.safeFormsWrite(updatedForms);
         console.log('Updated form saved to localStorage');
 
         if (FirebaseSync.isConnected()) {
@@ -294,7 +294,7 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
         action: 'Form deleted'
       });
 
-      localStorage.setItem('jmart-safety-forms', JSON.stringify(updatedForms));
+      StorageQuotaManager.safeFormsWrite(updatedForms);
       console.log('Form deleted, saved to localStorage:', updatedForms.length, 'forms remaining');
 
       deletingFormRef.current = true;
@@ -517,7 +517,10 @@ function useDataSync({ setForms, setSites, deletingFormRef }) {
   const syncFormsEffect = (forms) => {
     if (!isInitialLoad.current) {
       try {
-        localStorage.setItem('jmart-safety-forms', JSON.stringify(forms));
+        // FIXED: Use safeFormsWrite instead of raw setItem.
+        // Raw setItem wrote unstripped base64 photos from React state → storage bomb.
+        // safeFormsWrite strips large data and enforces 2MB cap.
+        StorageQuotaManager.safeFormsWrite(forms);
         localStorage.setItem('jmart-last-sync', new Date().toISOString());
       } catch (storageErr) {
         console.error('[syncFormsEffect] localStorage write failed:', storageErr.message, '— forms NOT lost, still in React state');
