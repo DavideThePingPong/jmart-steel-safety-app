@@ -11,6 +11,10 @@
  * Options:
  *   stripAutoInit: array of patterns to comment out before eval
  *     e.g., ['JobsManager.init()', 'setTimeout(']
+ *   globalizeConst: array of variable names to promote from const to global
+ *     e.g., ['NetworkStatus', 'ToastNotifier']
+ *     Replaces `const X =` with `global.X =` so tests can access them
+ *   quiet: boolean - suppress console.log/warn during eval (default: false)
  */
 const fs = require('fs');
 const path = require('path');
@@ -40,8 +44,23 @@ function loadScript(relPath, options = {}) {
     }
   }
 
+  // Promote const declarations to global assignments
+  if (options.globalizeConst) {
+    for (const name of options.globalizeConst) {
+      code = code.replace(new RegExp(`^const ${name}\\s*=`, 'm'), `global.${name} =`);
+    }
+  }
+
   // Strip import/export statements (these files don't use them, but just in case)
   code = code.replace(/^export\s+/gm, '');
+
+  // Optionally suppress console during eval
+  const savedLog = console.log;
+  const savedWarn = console.warn;
+  if (options.quiet) {
+    console.log = () => {};
+    console.warn = () => {};
+  }
 
   // Eval into global scope
   try {
@@ -55,6 +74,11 @@ function loadScript(relPath, options = {}) {
       eval(code);
     } catch (evalErr) {
       throw new Error(`loadScript(${relPath}) failed:\n${evalErr.message}\nFirst error: ${err.message}`);
+    }
+  } finally {
+    if (options.quiet) {
+      console.log = savedLog;
+      console.warn = savedWarn;
     }
   }
 }
