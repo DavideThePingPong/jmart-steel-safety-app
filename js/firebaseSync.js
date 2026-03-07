@@ -18,6 +18,35 @@ const FirebaseSync = {
   MAX_QUEUE_SIZE: 100,        // Hard cap — prevents localStorage bloat
   MAX_QUEUE_BYTES: 500000,    // 500KB max — beyond this, oldest entries get dropped
   _isProcessing: false,       // Concurrency guard — prevents overlapping processQueue calls
+  _authReady: false,          // Tracks whether Firebase auth has completed
+
+  // ========================================
+  // AUTH GATE — ensures Firebase auth is ready before any operation
+  // Without this, operations fire before signInAnonymously() completes
+  // and get PERMISSION_DENIED, tripping the circuit breaker.
+  // ========================================
+  _ensureAuth: async function() {
+    // Already confirmed ready
+    if (this._authReady) return true;
+
+    // Firebase not configured — no auth needed
+    if (!isFirebaseConfigured || !firebaseDb) return false;
+
+    // Wait for the auth promise (set in config.js)
+    try {
+      await Promise.race([
+        firebaseAuthReady,
+        new Promise(function(_, reject) {
+          setTimeout(function() { reject(new Error('AUTH_TIMEOUT')); }, 10000);
+        })
+      ]);
+      this._authReady = true;
+      return true;
+    } catch (e) {
+      console.warn('[FirebaseSync] Auth not ready:', e.message);
+      return false;
+    }
+  },
 
   // Initialize - load pending queue from localStorage
   init: function() {
@@ -31,12 +60,34 @@ const FirebaseSync = {
         this.saveQueue();
       }
       if (this.pendingQueue.length > 0) {
-        console.log(`Found ${this.pendingQueue.length} pending sync items`);
-        this.processQueue();
+        console.log('[FirebaseSync] Found ' + this.pendingQueue.length + ' pending sync items — waiting for auth before processing');
+        // FIXED: Wait for auth before processing queue.
+        // Previously this called processQueue() immediately, which fired
+        // before signInAnonymously() completed → PERMISSION_DENIED → circuit breaker trip
+        this._processAfterAuth();
       }
     } catch (e) {
       console.error('Error loading sync queue:', e);
       this.pendingQueue = [];
+    }
+  },
+
+  // Deferred queue processing — waits for Firebase auth then processes
+  _processAfterAuth: async function() {
+    var authOk = await this._ensureAuth();
+    if (authOk) {
+      console.log('[FirebaseSync] Auth ready — processing ' + this.pendingQueue.length + ' queued items');
+      // Reset circuit breaker on fresh auth — previous PERMISSION_DENIED errors
+      // would have tripped it, but now auth is valid so we should retry
+      if (this.circuitOpen) {
+        console.log('[FirebaseSync] Resetting circuit breaker after auth recovery');
+        this.circuitOpen = false;
+        this.consecutiveStorageErrors = 0;
+        this.circuitOpenedAt = null;
+      }
+      this.processQueue();
+    } else {
+      console.warn('[FirebaseSync] Auth failed — queue processing deferred until online event');
     }
   },
 
@@ -62,7 +113,7 @@ const FirebaseSync = {
       if (this.consecutiveStorageErrors >= this.CIRCUIT_BREAKER_THRESHOLD && !this.circuitOpen) {
         this.circuitOpen = true;
         this.circuitOpenedAt = Date.now();
-        console.error('CIRCUIT BREAKER OPEN — too many storage errors (' + this.consecutiveStorageErrors + '). Retries paused for 5 minutes.');
+        console.error('CIRCUIT BREAKER OPEN — too many storage errors (' + this.consecutiveStorageErrors + '). Retries paused for 2 minutes.');
         this.notifyListeners('circuit_open', { reason: 'storage_full', cooldownMs: this.CIRCUIT_COOLDOWN_MS });
       }
     }
@@ -101,7 +152,7 @@ const FirebaseSync = {
     return item.id;
   },
 
-  // Process the retry queue — respects circuit breaker and concurrency guard
+  // Process the retry queue — respects circuit breaker, concurrency guard, AND auth gate
   processQueue: async function() {
     // Concurrency guard — prevent overlapping processQueue calls
     if (this._isProcessing) {
@@ -127,6 +178,14 @@ const FirebaseSync = {
       return;
     }
 
+    // FIXED: Wait for Firebase auth before processing
+    // Without this, operations fire before signInAnonymously() completes
+    var authOk = await this._ensureAuth();
+    if (!authOk) {
+      console.warn('[FirebaseSync] Auth not ready — deferring queue processing');
+      return;
+    }
+
     this._isProcessing = true;
     try {
       const itemsToProcess = [...this.pendingQueue];
@@ -137,16 +196,39 @@ const FirebaseSync = {
           this.pendingQueue = this.pendingQueue.filter(i => i.id !== item.id);
           this.saveQueue();
           this.notifyListeners('synced', { pending: this.pendingQueue.length, item: item.type });
-          console.log(`Sync successful for ${item.type}`);
+          console.log('[FirebaseSync] Sync successful for ' + item.type);
         } catch (error) {
+          // Check if it's a PERMISSION_DENIED error — if so, try re-auth
+          if (error.message && error.message.indexOf('PERMISSION_DENIED') !== -1) {
+            console.warn('[FirebaseSync] PERMISSION_DENIED — attempting re-auth');
+            this._authReady = false;
+            var reAuthOk = await this._ensureAuth();
+            if (!reAuthOk) {
+              console.error('[FirebaseSync] Re-auth failed — stopping queue processing');
+              break;
+            }
+            // Retry this one item after re-auth
+            try {
+              await this.executeSync(item);
+              this.pendingQueue = this.pendingQueue.filter(i => i.id !== item.id);
+              this.saveQueue();
+              this.notifyListeners('synced', { pending: this.pendingQueue.length, item: item.type });
+              console.log('[FirebaseSync] Sync successful for ' + item.type + ' after re-auth');
+              continue;
+            } catch (e2) {
+              // Still failing after re-auth — fall through to retry logic
+              error = e2;
+            }
+          }
+
           item.attempts++;
           if (item.attempts >= this.maxRetries) {
-            console.error(`Max retries reached for ${item.type}, removing from queue`);
+            console.error('[FirebaseSync] Max retries reached for ' + item.type + ', removing from queue');
             this.pendingQueue = this.pendingQueue.filter(i => i.id !== item.id);
             this.notifyListeners('failed', { pending: this.pendingQueue.length, error: error.message });
           } else {
             const delay = this.retryDelays[Math.min(item.attempts - 1, this.retryDelays.length - 1)];
-            console.log(`Retry ${item.attempts}/${this.maxRetries} for ${item.type} in ${delay}ms`);
+            console.log('[FirebaseSync] Retry ' + item.attempts + '/' + this.maxRetries + ' for ' + item.type + ' in ' + delay + 'ms');
             IntervalRegistry.setTimeout(() => this.processQueue(), delay, 'FirebaseSync-retry');
           }
           this.saveQueue();
@@ -163,6 +245,9 @@ const FirebaseSync = {
       throw new Error('Firebase not configured');
     }
 
+    // FIXED: Ensure auth is ready before any Firebase write
+    await this._ensureAuth();
+
     // v3 granular operations (path-based)
     if (item.path && item.operation) {
       const ref = firebaseDb.ref(item.path);
@@ -170,7 +255,7 @@ const FirebaseSync = {
         case 'set': await ref.set(item.data); break;
         case 'update': await ref.update(item.data); break;
         case 'delete': await ref.remove(); break;
-        default: throw new Error(`Unknown operation: ${item.operation}`);
+        default: throw new Error('Unknown operation: ' + item.operation);
       }
       return;
     }
@@ -201,7 +286,7 @@ const FirebaseSync = {
         await firebaseDb.ref('signatures').set(item.data);
         break;
       default:
-        throw new Error(`Unknown sync type: ${item.type}`);
+        throw new Error('Unknown sync type: ' + item.type);
     }
   },
 
@@ -211,12 +296,18 @@ const FirebaseSync = {
       this.addToQueue('forms', forms);
       return { success: false, queued: true };
     }
+    // FIXED: Wait for auth before writing
+    var authOk = await this._ensureAuth();
+    if (!authOk) {
+      this.addToQueue('forms', forms);
+      return { success: false, queued: true, error: 'Auth not ready' };
+    }
     try {
       const deviceId = localStorage.getItem('jmart-device-id') || 'unknown';
       const updates = {};
       const formsArray = Array.isArray(forms) ? forms : Object.values(forms || {});
       formsArray.forEach(form => {
-        const key = form.id || `form-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+        const key = form.id || ('form-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6));
         updates[key] = {
           ...form,
           _lastModified: Date.now(),
@@ -241,6 +332,12 @@ const FirebaseSync = {
     if (!firebaseDb || !isFirebaseConfigured) {
       this.addToQueue('sites', sites);
       return { success: false, queued: true };
+    }
+    // FIXED: Wait for auth before writing
+    var authOk = await this._ensureAuth();
+    if (!authOk) {
+      this.addToQueue('sites', sites);
+      return { success: false, queued: true, error: 'Auth not ready' };
     }
     try {
       // Ensure we're writing a clean array of plain strings (no objects, no duplicates)
@@ -267,11 +364,17 @@ const FirebaseSync = {
       this.addToQueue('training', training);
       return { success: false, queued: true };
     }
+    // FIXED: Wait for auth before writing
+    var authOk = await this._ensureAuth();
+    if (!authOk) {
+      this.addToQueue('training', training);
+      return { success: false, queued: true, error: 'Auth not ready' };
+    }
     try {
       const trainingArray = Array.isArray(training) ? training : Object.values(training || {});
       const updates = {};
       trainingArray.forEach((record, i) => {
-        const key = record.id || `training-${i}`;
+        const key = record.id || ('training-' + i);
         updates[key] = { ...record, _lastModified: Date.now() };
       });
       await firebaseDb.ref('jmart-safety/training').update(updates);
@@ -306,6 +409,8 @@ const FirebaseSync = {
   },
 
   // Listen for real-time form updates
+  // FIXED: Sets up listener immediately but the Firebase SDK handles auth internally
+  // for .on() listeners — they auto-retry after auth completes
   onFormsChange: (callback) => {
     if (!firebaseDb || !isFirebaseConfigured) return () => {};
     const ref = firebaseDb.ref('jmart-safety/forms');
@@ -360,5 +465,7 @@ window.processSyncQueue = () => FirebaseSync.processQueue();
 // Process queue when coming back online
 window.addEventListener('online', () => {
   console.log('Back online - processing sync queue');
+  // Reset auth flag so we re-check (network change may have invalidated token)
+  FirebaseSync._authReady = false;
   FirebaseSync.processQueue();
 });
