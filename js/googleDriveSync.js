@@ -85,25 +85,45 @@ const GoogleDriveSync = {
     }
   },
 
-  // Request user authorization
+  // Request user authorization — waits for GSI to load if needed
   authorize: function() {
-    if (!this.isInitialized) {
-      // Lazy init — try again in case Google API loaded late
-      if (isGoogleDriveConfigured && typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
-        console.log('Google Drive lazy-init on authorize click');
-        this.init();
+    var self = this;
+
+    // Helper: attempt init and open consent
+    var doAuthorize = function() {
+      if (!self.isInitialized) {
+        if (isGoogleDriveConfigured && typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
+          console.log('Google Drive lazy-init on authorize click');
+          self.init();
+        }
       }
-      if (!this.isInitialized) {
-        this._notifyConnectionChange(false, 'Google Drive is still loading. Please wait a moment and try again.');
-        return;
+      if (!self.isInitialized) return false;
+      try {
+        self.tokenClient.requestAccessToken({ prompt: 'consent' });
+        return true;
+      } catch (e) {
+        console.error('Drive authorize error:', e);
+        self._notifyConnectionChange(false, 'Could not open Google sign-in. Check your popup blocker.');
+        return true; // Don't keep retrying on this error
       }
-    }
-    try {
-      this.tokenClient.requestAccessToken({ prompt: 'consent' });
-    } catch (e) {
-      console.error('Drive authorize error:', e);
-      this._notifyConnectionChange(false, 'Could not open Google sign-in. Check your popup blocker.');
-    }
+    };
+
+    // Try immediately
+    if (doAuthorize()) return;
+
+    // GSI not loaded yet — poll every 500ms for up to 15 seconds
+    this._notifyConnectionChange(false, 'Loading Google Drive... please wait');
+    var attempts = 0;
+    var maxAttempts = 30; // 30 × 500ms = 15 seconds
+    var pollTimer = setInterval(function() {
+      attempts++;
+      if (doAuthorize()) {
+        clearInterval(pollTimer);
+      } else if (attempts >= maxAttempts) {
+        clearInterval(pollTimer);
+        self._notifyConnectionChange(false, 'Google Drive failed to load. Check your internet connection and try again.');
+      }
+    }, 500);
   },
 
   // Check if connected
@@ -605,13 +625,15 @@ window.addEventListener('load', function() {
       if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
         GoogleDriveSync.init();
         console.log('Google Drive init succeeded on attempt', attempt);
-      } else if (attempt < 10) {
-        // Retry with increasing delay: 500ms, 1s, 1.5s, 2s...
-        const delay = Math.min(500 * attempt, 3000);
-        console.log('Google API not ready, retrying in', delay, 'ms (attempt', attempt, ')');
+      } else if (attempt < 30) {
+        // Retry every 1s for up to 30 seconds (mobile networks can be slow)
+        const delay = 1000;
+        if (attempt % 5 === 0) {
+          console.log('Google API not ready, retrying... (attempt', attempt, ')');
+        }
         setTimeout(() => tryInit(attempt + 1), delay);
       } else {
-        console.error('Google API failed to load after 10 attempts');
+        console.error('Google API failed to load after 30 attempts');
       }
     };
     tryInit(1);
