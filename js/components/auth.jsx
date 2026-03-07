@@ -3,7 +3,9 @@
 
 function LoginScreen({ onAuthenticated, authStatus }) {
   const [password, setPassword] = useState('');
-  const [deviceName, setDeviceName] = useState('');
+  const [deviceName, setDeviceName] = useState(() => {
+    try { return localStorage.getItem('jmart-device-name') || ''; } catch(e) { return ''; }
+  });
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isFirstSetup, setIsFirstSetup] = useState(false);
@@ -39,6 +41,10 @@ function LoginScreen({ onAuthenticated, authStatus }) {
         })(),
         new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000))
       ]);
+      // Save device name locally so it's remembered forever
+      if (deviceName) {
+        try { localStorage.setItem('jmart-device-name', deviceName); } catch(e) {}
+      }
       onAuthenticated(true);
     } catch (err) {
       if (err.message === 'timeout') {
@@ -64,6 +70,10 @@ function LoginScreen({ onAuthenticated, authStatus }) {
     if (await DeviceAuthManager.verifyPassword(password)) {
       // Password correct - grant access IMMEDIATELY
       onAuthenticated(true);
+      // Save device name locally so it's remembered next time
+      if (deviceName) {
+        try { localStorage.setItem('jmart-device-name', deviceName); } catch(e) {}
+      }
       // Fire-and-forget device registration
       Promise.race([
         DeviceAuthManager.init(),

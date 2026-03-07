@@ -473,7 +473,10 @@ StorageQuotaManager.safeSignaturesWrite = function(signaturesObj) {
       var key = localStorage.key(i);
       if (!key) continue;
       var val = localStorage.getItem(key);
-      if (val && val.length > 500000 && key !== 'jmart-safety-forms') {
+      // Never nuke auth-critical keys (device ID, password hash, Firebase auth tokens)
+      if (val && val.length > 500000 && key !== 'jmart-safety-forms' &&
+          !key.startsWith('jmart-device') && !key.startsWith('jmart-password') &&
+          !key.startsWith('firebase:')) {
         console.warn('[BOOT] Bloated key detected:', key, '(' + Math.round(val.length / 1024) + 'KB) — clearing');
         localStorage.removeItem(key);
       }
@@ -498,9 +501,11 @@ StorageQuotaManager.safeSignaturesWrite = function(signaturesObj) {
       for (var j = localStorage.length - 1; j >= 0; j--) {
         var k = localStorage.key(j);
         if (k && (k.includes('temp') || k.includes('cache') || k.includes('backup') ||
-                  k.includes('draft') || k.includes('cdn-retry') || k.includes('firebase:'))) {
+                  k.includes('draft') || k.includes('cdn-retry'))) {
           localStorage.removeItem(k);
         }
+        // NOTE: firebase: keys are NO LONGER deleted here.
+        // Deleting them destroyed auth tokens and forced users to re-enter credentials.
       }
 
       // 3. Strip ALL photos from forms
