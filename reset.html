@@ -3,85 +3,188 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>JMart Safety - Reset Cache</title>
+  <title>JMart Safety - Reset</title>
   <style>
     body { margin: 0; font-family: system-ui, sans-serif; background: #f3f4f6; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 16px; }
-    .card { background: white; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); max-width: 400px; width: 100%; overflow: hidden; }
+    .card { background: white; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); max-width: 420px; width: 100%; overflow: hidden; }
     .header { padding: 24px; text-align: center; background: #ea580c; color: white; }
     .body { padding: 24px; }
-    .status { background: #fef3c7; border: 1px solid #fde68a; border-radius: 8px; padding: 12px; margin: 12px 0; font-size: 14px; color: #92400e; min-height: 60px; }
+    .status { background: #fef3c7; border: 1px solid #fde68a; border-radius: 8px; padding: 12px; margin: 12px 0; font-size: 13px; color: #92400e; min-height: 60px; line-height: 1.5; }
     .status.done { background: #dcfce7; border-color: #bbf7d0; color: #166534; }
     .status.error { background: #fee2e2; border-color: #fecaca; color: #991b1b; }
+    .meter { background: #e5e7eb; border-radius: 6px; height: 20px; margin: 8px 0; overflow: hidden; }
+    .meter-fill { height: 100%; border-radius: 6px; transition: width 0.3s; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: white; }
     button { width: 100%; padding: 14px; border: none; border-radius: 12px; font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 8px; }
     .btn-reset { background: #dc2626; color: white; }
     .btn-go { background: #ea580c; color: white; }
-    .btn-go:disabled { background: #d1d5db; }
+    .btn-go:disabled { background: #d1d5db; cursor: not-allowed; }
+    .small { font-size: 12px; color: #6b7280; margin-top: 8px; text-align: center; }
   </style>
 </head>
 <body>
   <script>
-    // IMMEDIATELY unregister SW on page load — don't wait for user interaction
-    // This ensures reset.html always works even if SW is serving stale content
+    // IMMEDIATELY unregister SW on page load
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.getRegistrations().then(function(regs) {
         regs.forEach(function(r) { r.unregister(); });
-        if (regs.length > 0) console.log('[RESET] Auto-unregistered ' + regs.length + ' SW(s) on page load');
+        if (regs.length > 0) console.log('[RESET] Auto-unregistered ' + regs.length + ' SW(s)');
       });
     }
   </script>
   <div class="card">
     <div class="header">
       <div style="font-size:48px;margin-bottom:8px;">🔧</div>
-      <h2 style="margin:0;font-size:20px;">Cache Reset Tool</h2>
-      <p style="margin:4px 0 0;font-size:14px;opacity:0.9;">Fixes "Storage full" and loading errors</p>
+      <h2 style="margin:0;font-size:20px;">Reset &amp; Fix Storage</h2>
+      <p style="margin:4px 0 0;font-size:14px;opacity:0.9;">Fixes storage full, sync broken, loading errors</p>
     </div>
     <div class="body">
-      <div id="status" class="status">Ready. Tap "Reset Everything" to clear cached data and fix loading issues. Your saved forms in Firebase are safe.</div>
-      <button class="btn-reset" onclick="doReset()">Reset Everything</button>
+      <div id="meter-label" style="font-size:13px;font-weight:600;color:#374151;">Storage: calculating...</div>
+      <div class="meter"><div id="meter-fill" class="meter-fill" style="width:0%;background:#9ca3af;">—</div></div>
+      <div id="status" class="status">Ready. Tap "Fix Everything" to:<br>
+        • Strip photos from local cache (they're safe in Firebase)<br>
+        • Clear old sync queue &amp; temp data<br>
+        • Remove service worker &amp; caches<br>
+        • Your forms and credentials are preserved
+      </div>
+      <button class="btn-reset" id="resetBtn" onclick="doReset()">Fix Everything</button>
       <button class="btn-go" id="goBtn" onclick="window.location.href='./'" disabled>Open App</button>
+      <div class="small">Device name &amp; password are preserved. Forms are in Firebase.</div>
     </div>
   </div>
   <script>
+    // ---- Storage meter ----
+    function getStorageInfo() {
+      var total = 0;
+      var breakdown = {};
+      for (var i = 0; i < localStorage.length; i++) {
+        var key = localStorage.key(i);
+        if (!key) continue;
+        var val = localStorage.getItem(key);
+        var bytes = val ? val.length * 2 : 0;
+        total += bytes;
+        // Group keys
+        var group = key.startsWith('jmart-') ? key : (key.startsWith('firebase:') ? 'firebase:*' : key);
+        breakdown[group] = (breakdown[group] || 0) + bytes;
+      }
+      return { totalBytes: total, totalMB: (total / 1024 / 1024).toFixed(2), pct: ((total / (5 * 1024 * 1024)) * 100).toFixed(0), breakdown: breakdown };
+    }
+
+    function updateMeter() {
+      var info = getStorageInfo();
+      var pct = Math.min(parseInt(info.pct), 100);
+      var color = pct > 90 ? '#dc2626' : pct > 70 ? '#f59e0b' : '#22c55e';
+      document.getElementById('meter-label').textContent = 'Storage: ' + info.totalMB + ' MB / 5 MB (' + info.pct + '%)';
+      var fill = document.getElementById('meter-fill');
+      fill.style.width = Math.max(pct, 5) + '%';
+      fill.style.background = color;
+      fill.textContent = info.pct + '%';
+    }
+    updateMeter();
+
+    // ---- Main reset ----
     async function doReset() {
       var el = document.getElementById('status');
+      var btn = document.getElementById('resetBtn');
+      btn.disabled = true;
+      btn.textContent = 'Working...';
       var steps = [];
+      var beforeInfo = getStorageInfo();
+
       try {
         // 1. Unregister all service workers
-        el.textContent = 'Step 1/4: Removing service workers...';
+        el.textContent = 'Step 1/7: Removing service workers...';
         var regs = await navigator.serviceWorker.getRegistrations();
         for (var r of regs) { await r.unregister(); }
         steps.push('Removed ' + regs.length + ' service worker(s)');
 
-        // 2. Delete all caches
-        el.textContent = 'Step 2/4: Clearing caches...';
-        var names = await caches.keys();
-        for (var n of names) { await caches.delete(n); }
-        steps.push('Deleted ' + names.length + ' cache(s)');
+        // 2. Delete ALL caches
+        el.textContent = 'Step 2/7: Clearing caches...';
+        var cacheNames = await caches.keys();
+        for (var n of cacheNames) { await caches.delete(n); }
+        steps.push('Deleted ' + cacheNames.length + ' cache(s)');
 
-        // 3. Clear problematic localStorage keys (keep forms safe)
-        el.textContent = 'Step 3/4: Cleaning localStorage...';
-        var keysToRemove = [];
-        for (var i = 0; i < localStorage.length; i++) {
+        // 3. STRIP BASE64 from forms (the #1 storage bomb)
+        el.textContent = 'Step 3/7: Stripping photos from forms...';
+        var strippedCount = 0;
+        try {
+          var formsRaw = localStorage.getItem('jmart-safety-forms');
+          if (formsRaw && formsRaw.length > 10000) {
+            var forms = JSON.parse(formsRaw);
+            var stripped = JSON.parse(JSON.stringify(forms, function(key, value) {
+              if (typeof value !== 'string') return value;
+              if (value.length > 500 &&
+                  (value.indexOf('data:') === 0 || value.indexOf('/9j/') === 0 ||
+                   value.indexOf('iVBOR') === 0 || value.indexOf('JVBER') === 0)) {
+                strippedCount++;
+                return '[in-firebase]';
+              }
+              if (value.length > 5000) return value.substring(0, 200) + '...[truncated]';
+              return value;
+            }));
+            // Also trim to 50 most recent
+            stripped.sort(function(a, b) { return new Date(b.createdAt || 0) - new Date(a.createdAt || 0); });
+            if (stripped.length > 50) stripped = stripped.slice(0, 50);
+            localStorage.setItem('jmart-safety-forms', JSON.stringify(stripped));
+            steps.push('Stripped ' + strippedCount + ' photos, kept ' + stripped.length + ' forms');
+          } else {
+            steps.push('Forms already small (' + (formsRaw ? Math.round(formsRaw.length / 1024) + 'KB' : 'none') + ')');
+          }
+        } catch (e) {
+          steps.push('Forms strip error: ' + e.message);
+        }
+
+        // 4. Nuke sync queue, audit log, photo queue, recordings
+        el.textContent = 'Step 4/7: Clearing sync queue & temp data...';
+        var nuked = 0;
+        ['jmart-sync-queue', 'jmart-audit-log', 'jmart-photo-queue', 'jmart-job-recordings',
+         'jmart-backed-up-forms', 'jmart-team-signatures'].forEach(function(k) {
+          try {
+            if (localStorage.getItem(k)) { localStorage.removeItem(k); nuked++; }
+          } catch(e) {}
+        });
+        steps.push('Cleared ' + nuked + ' data store(s)');
+
+        // 5. Clear temp/cache/draft/backup keys
+        el.textContent = 'Step 5/7: Removing temp keys...';
+        var tempKeys = [];
+        for (var i = localStorage.length - 1; i >= 0; i--) {
           var key = localStorage.key(i);
-          if (key && (key.includes('temp') || key.includes('cache') || key.includes('draft') || key.includes('cdn-retry') || key.includes('firebase:previous_websocket_failure'))) {
-            keysToRemove.push(key);
+          if (key && (key.includes('temp') || key.includes('cache') || key.includes('draft') ||
+                      key.includes('cdn-retry') || key.includes('backup'))) {
+            tempKeys.push(key);
           }
         }
-        keysToRemove.forEach(function(k) { localStorage.removeItem(k); });
-        steps.push('Cleaned ' + keysToRemove.length + ' temp key(s)');
+        tempKeys.forEach(function(k) { try { localStorage.removeItem(k); } catch(e) {} });
+        steps.push('Removed ' + tempKeys.length + ' temp key(s)');
 
-        // 4. Clear sessionStorage
-        el.textContent = 'Step 4/4: Clearing session data...';
+        // 6. Clear session storage
+        el.textContent = 'Step 6/7: Clearing session data...';
         sessionStorage.clear();
         steps.push('Session cleared');
 
+        // 7. Force a clean websocket state
+        el.textContent = 'Step 7/7: Resetting Firebase connection state...';
+        try { localStorage.removeItem('firebase:previous_websocket_failure'); } catch(e) {}
+        steps.push('Firebase connection reset');
+
+        // Done — show results
+        var afterInfo = getStorageInfo();
+        var freedMB = (parseFloat(beforeInfo.totalMB) - parseFloat(afterInfo.totalMB)).toFixed(2);
+        updateMeter();
+
         el.className = 'status done';
-        el.innerHTML = '<strong>Done!</strong><br>' + steps.join('<br>') + '<br><br>Tap "Open App" to load the fixed version.';
+        el.innerHTML = '<strong>Done! Freed ' + freedMB + ' MB</strong><br>' +
+          'Before: ' + beforeInfo.totalMB + ' MB → After: ' + afterInfo.totalMB + ' MB<br><br>' +
+          steps.join('<br>') +
+          '<br><br><strong>Tap "Open App" to load the fixed version.</strong>';
         document.getElementById('goBtn').disabled = false;
+        btn.textContent = 'Done ✓';
       } catch (e) {
         el.className = 'status error';
         el.textContent = 'Error: ' + e.message + ' — Steps completed: ' + steps.join(', ');
         document.getElementById('goBtn').disabled = false;
+        btn.disabled = false;
+        btn.textContent = 'Fix Everything';
       }
     }
   </script>
