@@ -8,6 +8,26 @@ const GoogleDriveSync = {
   accessToken: null,
   folderId: null,
   isInitialized: false,
+  _onConnectCallbacks: [],   // Listeners for connection state changes
+  _lastError: null,          // Last error message for UI display
+
+  // Register a callback for when connection status changes
+  onConnectionChange: function(callback) {
+    this._onConnectCallbacks.push(callback);
+  },
+
+  // Fire all connection-change callbacks
+  _notifyConnectionChange: function(connected, error) {
+    this._lastError = error || null;
+    this._onConnectCallbacks.forEach(function(cb) {
+      try { cb(connected, error); } catch (e) { console.error('Drive callback error:', e); }
+    });
+  },
+
+  // Get last error message (for UI display)
+  getLastError: function() {
+    return this._lastError;
+  },
 
   // Initialize Google Identity Services
   init: function() {
@@ -23,22 +43,42 @@ const GoogleDriveSync = {
         callback: (response) => {
           if (response.error) {
             console.error('Google Auth error:', response.error);
+            this._notifyConnectionChange(false, 'Google sign-in failed: ' + response.error);
             return;
           }
           this.accessToken = response.access_token;
-          sessionStorage.setItem('google-drive-token', response.access_token);
+          // Store token with timestamp so we know when it expires (~1hr)
+          localStorage.setItem('google-drive-token', JSON.stringify({
+            token: response.access_token,
+            savedAt: Date.now()
+          }));
           console.log('Google Drive connected!');
+          this._notifyConnectionChange(true, null);
           this.getOrCreateFolder();
         },
       });
       this.isInitialized = true;
       console.log('Google Drive initialized');
 
-      // Check for stored token
-      const storedToken = sessionStorage.getItem('google-drive-token');
-      if (storedToken) {
-        this.accessToken = storedToken;
-        this.getOrCreateFolder();
+      // Check for stored token (localStorage survives page close)
+      try {
+        const stored = localStorage.getItem('google-drive-token');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          // Tokens expire after ~1hr. Only reuse if < 50 minutes old.
+          const age = Date.now() - (parsed.savedAt || 0);
+          if (parsed.token && age < 50 * 60 * 1000) {
+            this.accessToken = parsed.token;
+            this._notifyConnectionChange(true, null);
+            this.getOrCreateFolder();
+          } else {
+            // Token expired — clear it
+            localStorage.removeItem('google-drive-token');
+          }
+        }
+      } catch (e) {
+        // Handle old format (raw string, not JSON)
+        localStorage.removeItem('google-drive-token');
       }
     } catch (error) {
       console.error('Google Drive init error:', error);
@@ -54,11 +94,16 @@ const GoogleDriveSync = {
         this.init();
       }
       if (!this.isInitialized) {
-        alert('Google Drive is still loading. Please wait a moment and try again.');
+        this._notifyConnectionChange(false, 'Google Drive is still loading. Please wait a moment and try again.');
         return;
       }
     }
-    this.tokenClient.requestAccessToken({ prompt: 'consent' });
+    try {
+      this.tokenClient.requestAccessToken({ prompt: 'consent' });
+    } catch (e) {
+      console.error('Drive authorize error:', e);
+      this._notifyConnectionChange(false, 'Could not open Google sign-in. Check your popup blocker.');
+    }
   },
 
   // Check if connected
@@ -83,14 +128,16 @@ const GoogleDriveSync = {
     // If token expired (401), try to refresh silently
     if (response.status === 401) {
       console.log('Google Drive token expired, attempting refresh...');
-      sessionStorage.removeItem('google-drive-token');
+      localStorage.removeItem('google-drive-token');
       this.accessToken = null;
+      this._notifyConnectionChange(false, null);
 
       // Request new token (will trigger callback)
       return new Promise((resolve, reject) => {
         const originalCallback = this.tokenClient.callback;
         const refreshTimeout = setTimeout(() => {
           this.tokenClient.callback = originalCallback;
+          this._notifyConnectionChange(false, 'Token refresh timed out');
           reject(new Error('Token refresh timed out after 30s'));
         }, 30000);
 
@@ -98,11 +145,16 @@ const GoogleDriveSync = {
           clearTimeout(refreshTimeout);
           if (tokenResponse.error) {
             this.tokenClient.callback = originalCallback;
+            this._notifyConnectionChange(false, 'Token refresh failed');
             reject(new Error('Token refresh failed'));
             return;
           }
           this.accessToken = tokenResponse.access_token;
-          sessionStorage.setItem('google-drive-token', tokenResponse.access_token);
+          localStorage.setItem('google-drive-token', JSON.stringify({
+            token: tokenResponse.access_token,
+            savedAt: Date.now()
+          }));
+          this._notifyConnectionChange(true, null);
           this.tokenClient.callback = originalCallback;
 
           // Retry the original request
@@ -366,7 +418,8 @@ const GoogleDriveSync = {
   disconnect: function() {
     this.accessToken = null;
     this.folderId = null;
-    sessionStorage.removeItem('google-drive-token');
+    localStorage.removeItem('google-drive-token');
+    this._notifyConnectionChange(false, null);
     console.log('Disconnected from Google Drive');
   },
 

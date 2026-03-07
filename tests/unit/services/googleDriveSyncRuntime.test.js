@@ -67,6 +67,8 @@ afterEach(() => {
   GoogleDriveSync.folderId = null;
   GoogleDriveSync.isInitialized = false;
   GoogleDriveSync.tokenClient = null;
+  GoogleDriveSync._onConnectCallbacks = [];
+  GoogleDriveSync._lastError = null;
   jest.restoreAllMocks();
 });
 
@@ -455,13 +457,13 @@ describe('GoogleDriveSync - additional edge cases', () => {
     expect(GoogleDriveSync.isConnected()).toBe(true);
   });
 
-  test('disconnect clears token, folderId, and sessionStorage', () => {
+  test('disconnect clears token, folderId, and localStorage', () => {
     connectSync('folder-123');
     GoogleDriveSync.disconnect();
 
     expect(GoogleDriveSync.accessToken).toBeNull();
     expect(GoogleDriveSync.folderId).toBeNull();
-    expect(sessionStorage.removeItem).toHaveBeenCalledWith('google-drive-token');
+    expect(localStorage.removeItem).toHaveBeenCalledWith('google-drive-token');
   });
 
   test('_escapeQuery escapes single quotes', () => {

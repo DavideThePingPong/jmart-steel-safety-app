@@ -5,6 +5,7 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
   const [newSite, setNewSite] = useState('');
   const [showAddSite, setShowAddSite] = useState(false);
   const [driveConnected, setDriveConnected] = useState(GoogleDriveSync.isConnected());
+  const [driveError, setDriveError] = useState('');
   const [backupStatus, setBackupStatus] = useState('');
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [showSignaturePad, setShowSignaturePad] = useState(null); // Name of person to sign
@@ -27,6 +28,20 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
       return () => unsubscribe();
     }
   }, [isAdmin, canViewDevices, canRevokeDevices]);
+
+  // Listen for Google Drive connection status changes (real-time, no timeout)
+  useEffect(() => {
+    const handleDriveChange = (connected, error) => {
+      setDriveConnected(connected);
+      if (error) {
+        setDriveError(error);
+      } else {
+        setDriveError('');
+      }
+    };
+    GoogleDriveSync.onConnectionChange(handleDriveChange);
+    // No cleanup needed — callbacks list is on the singleton
+  }, []);
 
   const handleApproveDevice = async (deviceId) => {
     setDeviceActionLoading(deviceId);
@@ -144,9 +159,9 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
   };
 
   const connectDrive = () => {
+    setDriveError('');
     GoogleDriveSync.authorize();
-    // Check connection status after a delay
-    setTimeout(() => setDriveConnected(GoogleDriveSync.isConnected()), 3000);
+    // Status updates come via onConnectionChange callback — no timeout needed
   };
 
   const disconnectDrive = () => {
@@ -397,6 +412,12 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
                 </button>
               )}
             </div>
+
+            {driveError && !driveConnected && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-2 mb-3">
+                <p className="text-sm text-red-700">❌ {driveError}</p>
+              </div>
+            )}
 
             {driveConnected && (
               <>
