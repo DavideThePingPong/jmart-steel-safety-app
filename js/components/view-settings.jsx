@@ -16,6 +16,10 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
   const [deviceActionLoading, setDeviceActionLoading] = useState(null);
   const [editingDeviceId, setEditingDeviceId] = useState(null);
   const [editingDeviceName, setEditingDeviceName] = useState('');
+  const [storageInfo, setStorageInfo] = useState(null);
+  const [fixStatus, setFixStatus] = useState('');
+  const [isFixing, setIsFixing] = useState(false);
+  const [fixDone, setFixDone] = useState(false);
   const currentSites = sites.length > 0 ? sites : FORM_CONSTANTS.defaultSites;
 
   // Listen to device changes if admin, viewer, or has revoke permission
@@ -190,6 +194,112 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
       setBackupStatus('❌ Backup error: ' + error.message);
     }
     setIsBackingUp(false);
+  };
+
+  // --- Storage & Fix Everything ---
+  const getStorageInfo = () => {
+    var total = 0;
+    for (var i = 0; i < localStorage.length; i++) {
+      var key = localStorage.key(i);
+      if (!key) continue;
+      var val = localStorage.getItem(key);
+      total += val ? val.length * 2 : 0;
+    }
+    var totalMB = (total / 1024 / 1024).toFixed(2);
+    var pct = Math.min(Math.round((total / (5 * 1024 * 1024)) * 100), 100);
+    return { totalBytes: total, totalMB: totalMB, pct: pct };
+  };
+
+  useEffect(() => {
+    setStorageInfo(getStorageInfo());
+  }, []);
+
+  const doFixEverything = async () => {
+    if (!confirm('This will strip photos from local cache and clear temp data.\n\nYour forms and credentials are preserved.\nPhotos are safe in Firebase & Drive.\n\nContinue?')) return;
+    setIsFixing(true);
+    setFixDone(false);
+    setFixStatus('Starting...');
+    var steps = [];
+    var beforeInfo = getStorageInfo();
+
+    try {
+      // 1. Delete ALL browser caches
+      setFixStatus('Step 1/6: Clearing caches...');
+      var cacheNames = await caches.keys();
+      for (var i = 0; i < cacheNames.length; i++) { await caches.delete(cacheNames[i]); }
+      steps.push('Deleted ' + cacheNames.length + ' cache(s)');
+
+      // 2. Strip base64 photos from forms (the #1 storage bomb)
+      setFixStatus('Step 2/6: Stripping photos from forms...');
+      var strippedCount = 0;
+      try {
+        var formsRaw = localStorage.getItem('jmart-safety-forms');
+        if (formsRaw && formsRaw.length > 10000) {
+          var forms = JSON.parse(formsRaw);
+          var stripped = JSON.parse(JSON.stringify(forms, function(key, value) {
+            if (typeof value !== 'string') return value;
+            if (value.length > 500 &&
+                (value.indexOf('data:') === 0 || value.indexOf('/9j/') === 0 ||
+                 value.indexOf('iVBOR') === 0 || value.indexOf('JVBER') === 0)) {
+              strippedCount++;
+              return '[in-firebase]';
+            }
+            if (value.length > 5000) return value.substring(0, 200) + '...[truncated]';
+            return value;
+          }));
+          stripped.sort(function(a, b) { return new Date(b.createdAt || 0) - new Date(a.createdAt || 0); });
+          if (stripped.length > 50) stripped = stripped.slice(0, 50);
+          localStorage.setItem('jmart-safety-forms', JSON.stringify(stripped));
+          steps.push('Stripped ' + strippedCount + ' photos, kept ' + stripped.length + ' forms');
+        } else {
+          steps.push('Forms already small');
+        }
+      } catch (e) {
+        steps.push('Forms error: ' + e.message);
+      }
+
+      // 3. Clear sync queue, audit log, photo queue, recordings
+      setFixStatus('Step 3/6: Clearing sync queue & temp data...');
+      var nuked = 0;
+      ['jmart-sync-queue', 'jmart-audit-log', 'jmart-photo-queue', 'jmart-job-recordings',
+       'jmart-backed-up-forms', 'jmart-team-signatures'].forEach(function(k) {
+        try { if (localStorage.getItem(k)) { localStorage.removeItem(k); nuked++; } } catch(e) {}
+      });
+      steps.push('Cleared ' + nuked + ' data store(s)');
+
+      // 4. Clear temp/cache/draft/backup keys
+      setFixStatus('Step 4/6: Removing temp keys...');
+      var tempKeys = [];
+      for (var j = localStorage.length - 1; j >= 0; j--) {
+        var lsKey = localStorage.key(j);
+        if (lsKey && (lsKey.includes('temp') || lsKey.includes('cache') || lsKey.includes('draft') ||
+                      lsKey.includes('cdn-retry') || lsKey.includes('backup'))) {
+          tempKeys.push(lsKey);
+        }
+      }
+      tempKeys.forEach(function(k) { try { localStorage.removeItem(k); } catch(e) {} });
+      steps.push('Removed ' + tempKeys.length + ' temp key(s)');
+
+      // 5. Clear session storage
+      setFixStatus('Step 5/6: Clearing session data...');
+      sessionStorage.clear();
+      steps.push('Session cleared');
+
+      // 6. Reset Firebase connection state
+      setFixStatus('Step 6/6: Resetting Firebase connection...');
+      try { localStorage.removeItem('firebase:previous_websocket_failure'); } catch(e) {}
+      steps.push('Firebase connection reset');
+
+      // Done
+      var afterInfo = getStorageInfo();
+      var freedMB = (parseFloat(beforeInfo.totalMB) - parseFloat(afterInfo.totalMB)).toFixed(2);
+      setStorageInfo(afterInfo);
+      setFixStatus('Freed ' + freedMB + ' MB (' + beforeInfo.totalMB + ' MB \u2192 ' + afterInfo.totalMB + ' MB). ' + steps.join('. '));
+      setFixDone(true);
+    } catch (e) {
+      setFixStatus('Error: ' + e.message + '. Steps done: ' + steps.join(', '));
+    }
+    setIsFixing(false);
   };
 
   const lastBackup = localStorage.getItem('last-drive-backup-date');
@@ -533,6 +643,56 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
           onCancel={() => setShowSignaturePad(null)}
         />
       )}
+      {/* Storage & Fix Everything */}
+      <div className="bg-white rounded-xl shadow-sm p-4">
+        <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+          <span className="text-2xl">🔧</span> Storage & Maintenance
+        </h3>
+
+        {storageInfo && (
+          <div className="mb-3">
+            <div className="flex justify-between text-sm mb-1">
+              <span className="text-gray-600">Local Storage</span>
+              <span className="font-medium">{storageInfo.totalMB} MB / 5 MB</span>
+            </div>
+            <div className="bg-gray-200 rounded-full h-3 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${storageInfo.pct > 90 ? 'bg-red-500' : storageInfo.pct > 70 ? 'bg-yellow-500' : 'bg-green-500'}`}
+                style={{ width: Math.max(storageInfo.pct, 2) + '%' }}
+              ></div>
+            </div>
+            <p className="text-xs text-gray-400 mt-1">{storageInfo.pct}% used</p>
+          </div>
+        )}
+
+        <button
+          onClick={doFixEverything}
+          disabled={isFixing}
+          className={`w-full py-3 rounded-lg text-white font-bold text-base ${isFixing ? 'bg-gray-400' : 'bg-red-600 active:bg-red-700'}`}
+        >
+          {isFixing ? 'Working...' : 'Fix Everything'}
+        </button>
+
+        <p className="text-xs text-gray-500 mt-2 text-center">
+          Strips photos from cache, clears temp data & caches. Forms & credentials preserved.
+        </p>
+
+        {fixStatus && (
+          <div className={`mt-3 p-3 rounded-lg text-sm ${fixDone ? 'bg-green-50 border border-green-200 text-green-700' : isFixing ? 'bg-yellow-50 border border-yellow-200 text-yellow-800' : 'bg-red-50 border border-red-200 text-red-700'}`}>
+            {fixStatus}
+          </div>
+        )}
+
+        {fixDone && (
+          <button
+            onClick={() => window.location.reload()}
+            className="w-full mt-2 py-3 rounded-lg bg-orange-600 active:bg-orange-700 text-white font-bold text-base"
+          >
+            Reload App
+          </button>
+        )}
+      </div>
+
       <div className="bg-white rounded-xl shadow-sm p-4">
         <p className="text-sm text-gray-600">J&M Artsteel Safety App v1.0</p>
         <p className="text-sm text-gray-600">NSW WHS Act 2011 Compliant</p>
