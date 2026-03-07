@@ -104,6 +104,14 @@ const FirebaseSync = {
         this.pendingQueue.shift(); // drop oldest
         serialized = JSON.stringify(this.pendingQueue);
       }
+      // FIXED: If a single entry is still over the limit, drop it entirely.
+      // Previously this case was ignored, and a single 5MB+ entry would be written
+      // to localStorage, immediately filling storage.
+      if (serialized.length > this.MAX_QUEUE_BYTES && this.pendingQueue.length === 1) {
+        console.warn('[FirebaseSync] Single queue entry too large (' + Math.round(serialized.length / 1024) + 'KB) — dropping it');
+        this.pendingQueue = [];
+        serialized = '[]';
+      }
       localStorage.setItem('jmart-sync-queue', serialized);
       // Reset consecutive error counter on success
       this.consecutiveStorageErrors = 0;
@@ -133,16 +141,33 @@ const FirebaseSync = {
   },
 
   // Add item to retry queue — blocked when circuit breaker is open
+  // FIXED: Strip base64 photos from queued data. Without this, a single failed
+  // syncForms() call would store 5MB+ of photo data in the sync queue in localStorage,
+  // immediately filling storage to 130%.
   addToQueue: function(type, data) {
     if (this.circuitOpen) {
       console.warn('Circuit breaker OPEN — cannot add to queue. Try again after cooldown.');
       this.notifyListeners('circuit_open', { reason: 'queue_blocked' });
       return null;
     }
-    const item = {
+    // Strip large data (photos, signatures, base64) from queue items.
+    // The queue only needs form metadata — photos live in Firebase.
+    var safeData = data;
+    if (typeof StorageQuotaManager !== 'undefined' && StorageQuotaManager.stripLargeData) {
+      if (Array.isArray(data)) {
+        safeData = StorageQuotaManager.stripLargeData(data);
+      } else if (data && typeof data === 'object') {
+        try { safeData = JSON.parse(JSON.stringify(data, function(k, v) {
+          if (typeof v === 'string' && v.length > 500 && (v.indexOf('data:') === 0 || v.indexOf('/9j/') === 0 || v.indexOf('iVBOR') === 0)) return '[queued]';
+          if (typeof v === 'string' && v.length > 5000) return v.substring(0, 200) + '...[truncated]';
+          return v;
+        })); } catch (e) { /* use original */ }
+      }
+    }
+    var item = {
       id: Date.now() + '-' + Math.random().toString(36).substr(2, 9),
-      type,
-      data,
+      type: type,
+      data: safeData,
       timestamp: new Date().toISOString(),
       attempts: 0
     };

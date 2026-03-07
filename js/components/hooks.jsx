@@ -355,6 +355,7 @@ function useDataSync({ setForms, setSites, deletingFormRef }) {
   const [showSyncBanner, setShowSyncBanner] = useState(!FirebaseSync.isConnected());
 
   const isInitialLoad = useRef(true);
+  const formsFromFirebaseRef = useRef(false);  // Anti-loop: skip syncing back to Firebase when data came FROM Firebase
   const sitesFromFirebaseRef = useRef(false);
   const lastFormsWriteRef = useRef(0); // throttle forms listener writes
 
@@ -434,6 +435,7 @@ function useDataSync({ setForms, setSites, deletingFormRef }) {
           mergedForms.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 
           // Update React state with full data (including photos for viewing)
+          formsFromFirebaseRef.current = true;  // Prevent syncFormsEffect from sending back to Firebase
           setForms(mergedForms);
 
           // Write to localStorage using safe writer (strips large data, trims to fit)
@@ -528,6 +530,17 @@ function useDataSync({ setForms, setSites, deletingFormRef }) {
       }
       setLastSynced(new Date().toISOString());
       console.log('Forms saved to localStorage:', forms.length, 'forms');
+
+      // FIXED: Anti-loop — don't send forms back to Firebase when they just came FROM Firebase.
+      // Without this, the Firebase listener → setForms → syncFormsEffect → syncForms loop
+      // sent full photo data back on every update, and if the write failed, the ENTIRE
+      // forms array (with photos) was stored in the sync queue → 5MB+ in localStorage.
+      // syncSitesEffect already had this protection (sitesFromFirebaseRef). Forms didn't.
+      if (formsFromFirebaseRef.current) {
+        formsFromFirebaseRef.current = false;
+        setSyncStatus('synced');
+        return;
+      }
 
       if (FirebaseSync.isConnected() && isOnline && forms.length > 0) {
         setSyncStatus('syncing');
