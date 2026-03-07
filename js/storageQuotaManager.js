@@ -31,7 +31,7 @@ const StorageQuotaManager = {
   // Check if we can safely store data of given size
   // Accepts a string (uses .length) or a number (treated as byte count)
   canStore: function(dataString) {
-    const dataBytes = (typeof dataString === 'number' ? dataString : (dataString ? dataString.length : 0)) * 2;
+    const dataBytes = typeof dataString === 'number' ? dataString : ((dataString ? dataString.length : 0) * 2);
     const usage = this.getUsage();
     const projectedMB = (usage.bytes + dataBytes) / (1024 * 1024);
     return projectedMB < this.MAX_STORAGE_MB;

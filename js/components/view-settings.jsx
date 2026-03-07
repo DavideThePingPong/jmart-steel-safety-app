@@ -130,8 +130,14 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
   };
 
   const addSite = () => {
-    if (newSite.trim()) {
-      onUpdateSites([...currentSites, newSite.trim()]);
+    const trimmed = newSite.trim();
+    if (trimmed) {
+      const isDuplicate = currentSites.some(s => s.toLowerCase() === trimmed.toLowerCase());
+      if (isDuplicate) {
+        alert('This site already exists');
+        return;
+      }
+      onUpdateSites([...currentSites, trimmed]);
       setNewSite('');
       setShowAddSite(false);
     }

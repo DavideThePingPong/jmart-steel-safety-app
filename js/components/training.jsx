@@ -261,7 +261,7 @@ function TrainingView() {
           {selectedCourse.questions.map((q, i) => (
             <div key={i} className={`p-3 rounded-lg ${answers[i] === q.correct ? 'bg-green-50' : 'bg-red-50'}`}>
               <p className="font-medium text-sm">{q.question}</p>
-              <p className="text-xs mt-1">Your answer: {q.options[answers[i]]}</p>
+              <p className="text-xs mt-1">Your answer: {answers[i] !== undefined ? q.options[answers[i]] : <span className="italic text-gray-400">Not answered</span>}</p>
               {answers[i] !== q.correct && (
                 <p className="text-xs text-green-700 mt-1">Correct: {q.options[q.correct]}</p>
               )}

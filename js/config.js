@@ -80,10 +80,14 @@ async function firebaseRead(path, timeoutMs) {
   // Try SDK first (fast if working, hangs if broken)
   if (firebaseDb) {
     try {
+      var timeoutId;
       var result = await Promise.race([
-        firebaseDb.ref(path).once('value'),
+        firebaseDb.ref(path).once('value').then(function(snap) {
+          clearTimeout(timeoutId);
+          return snap;
+        }),
         new Promise(function(_, reject) {
-          setTimeout(function() { reject(new Error('SDK_TIMEOUT')); }, timeoutMs);
+          timeoutId = setTimeout(function() { reject(new Error('SDK_TIMEOUT')); }, timeoutMs);
         })
       ]);
       return { exists: result.exists(), val: result.val(), source: 'sdk' };

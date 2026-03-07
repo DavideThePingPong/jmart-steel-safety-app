@@ -171,9 +171,30 @@ const OfflinePhotoQueue = {
           this.saveQueue();
           processed++;
           console.log(`Uploaded queued photo: ${item.filename}`);
+        } else {
+          // Upload returned null (failed) — increment retry counter
+          const queueItem = this.queue.find(q => q.id === item.id);
+          if (queueItem) {
+            queueItem.retries = (queueItem.retries || 0) + 1;
+            if (queueItem.retries >= 3) {
+              console.warn(`Photo ${item.filename} failed 3 times — removing from queue`);
+              this.queue = this.queue.filter(q => q.id !== item.id);
+            }
+            this.saveQueue();
+          }
         }
       } catch (error) {
         console.error(`Error uploading queued photo ${item.filename}:`, error);
+        // Increment retry counter on exception too
+        const queueItem = this.queue.find(q => q.id === item.id);
+        if (queueItem) {
+          queueItem.retries = (queueItem.retries || 0) + 1;
+          if (queueItem.retries >= 3) {
+            console.warn(`Photo ${item.filename} failed 3 times (error) — removing from queue`);
+            this.queue = this.queue.filter(q => q.id !== item.id);
+          }
+          this.saveQueue();
+        }
       }
     }
 

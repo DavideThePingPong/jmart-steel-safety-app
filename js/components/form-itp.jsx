@@ -1,59 +1,98 @@
 // ITPFormView Component
 // Extracted from forms.jsx
 
-function ITPFormView({ onSubmit, sites = [] }) {
+function ITPFormView({ onSubmit, onUpdate, editingForm, sites = [] }) {
+  const isEditing = !!editingForm;
+  const editData = editingForm?.data || {};
+
   const [page, setPage] = useState(1);
   const [submitted, setSubmitted] = useState(false);
   const [signingPerson, setSigningPerson] = useState(null);
   const [validationErrors, setValidationErrors] = useState([]);
 
   // Page 1 - Title Page
-  const [siteConducted, setSiteConducted] = useState('');
-  const [conductedOn, setConductedOn] = useState(new Date().toISOString().slice(0, 16));
-  const [preparedBy, setPreparedBy] = useState('');
-  const [location, setLocation] = useState('');
+  const [siteConducted, setSiteConducted] = useState(editData.siteConducted || '');
+  const [conductedOn, setConductedOn] = useState(editData.conductedOn || new Date().toISOString().slice(0, 16));
+  const [preparedBy, setPreparedBy] = useState(editData.preparedBy || '');
+  const [location, setLocation] = useState(editData.location || '');
   const [isLocating, setIsLocating] = useState(false);
 
   // Page 2 - Inspection Items
-  const [preConstructionMeeting, setPreConstructionMeeting] = useState('');
-  const [highRiskWorkshop, setHighRiskWorkshop] = useState(null);
-  const [shopdrawingsApproved, setShopdrawingsApproved] = useState(null);
-  const [allItemsSignedOff, setAllItemsSignedOff] = useState(null);
+  const [preConstructionMeeting, setPreConstructionMeeting] = useState(editData.preConstructionMeeting || '');
+  const [highRiskWorkshop, setHighRiskWorkshop] = useState(editData.highRiskWorkshop ?? null);
+  const [shopdrawingsApproved, setShopdrawingsApproved] = useState(editData.shopdrawingsApproved ?? null);
+  const [allItemsSignedOff, setAllItemsSignedOff] = useState(editData.allItemsSignedOff ?? null);
 
   // Procurement section
-  const [shopdrawingRevision, setShopdrawingRevision] = useState('');
-  const [orderedGlassFrom, setOrderedGlassFrom] = useState('');
-  const [glassSpecification, setGlassSpecification] = useState('');
+  const [shopdrawingRevision, setShopdrawingRevision] = useState(editData.shopdrawingRevision || '');
+  const [orderedGlassFrom, setOrderedGlassFrom] = useState(editData.orderedGlassFrom || '');
+  const [glassSpecification, setGlassSpecification] = useState(editData.glassSpecification || '');
 
   // Installation of Glass section
-  const [glassFreeFromDamage, setGlassFreeFromDamage] = useState(null);
-  const [specificationOfFixings, setSpecificationOfFixings] = useState('');
-  const [setoutCompletedBy, setSetoutCompletedBy] = useState('');
-  const [installationMethod, setInstallationMethod] = useState('');
-  const [glassInstalledCorrectRL, setGlassInstalledCorrectRL] = useState(null);
-  const [glassLockedWedgedGlued, setGlassLockedWedgedGlued] = useState(null);
-  const [removeWedgesCaulk, setRemoveWedgesCaulk] = useState('');
+  const [glassFreeFromDamage, setGlassFreeFromDamage] = useState(editData.glassFreeFromDamage ?? null);
+  const [specificationOfFixings, setSpecificationOfFixings] = useState(editData.specificationOfFixings || '');
+  const [setoutCompletedBy, setSetoutCompletedBy] = useState(editData.setoutCompletedBy || '');
+  const [installationMethod, setInstallationMethod] = useState(editData.installationMethod || '');
+  const [glassInstalledCorrectRL, setGlassInstalledCorrectRL] = useState(editData.glassInstalledCorrectRL ?? null);
+  const [glassLockedWedgedGlued, setGlassLockedWedgedGlued] = useState(editData.glassLockedWedgedGlued ?? null);
+  const [removeWedgesCaulk, setRemoveWedgesCaulk] = useState(editData.removeWedgesCaulk || '');
 
   // Installation of Handrails section
-  const [handrailSpecConfirmed, setHandrailSpecConfirmed] = useState(null);
-  const [spigotsCouplingsTight, setSpigotsCouplingsTight] = useState(null);
-  const [handrailCompliantHeight, setHandrailCompliantHeight] = useState(null);
-  const [threadOnFixings, setThreadOnFixings] = useState(null);
-  const [fullWeldingJunctions, setFullWeldingJunctions] = useState(null);
+  const [handrailSpecConfirmed, setHandrailSpecConfirmed] = useState(editData.handrailSpecConfirmed ?? null);
+  const [spigotsCouplingsTight, setSpigotsCouplingsTight] = useState(editData.spigotsCouplingsTight ?? null);
+  const [handrailCompliantHeight, setHandrailCompliantHeight] = useState(editData.handrailCompliantHeight ?? null);
+  const [threadOnFixings, setThreadOnFixings] = useState(editData.threadOnFixings ?? null);
+  const [fullWeldingJunctions, setFullWeldingJunctions] = useState(editData.fullWeldingJunctions ?? null);
 
   // Handover section
-  const [allGlassNoDefects, setAllGlassNoDefects] = useState(null);
-  const [allHandrailNoDefects, setAllHandrailNoDefects] = useState(null);
-  const [balustradeAsPerDesign, setBalustradeAsPerDesign] = useState(null);
+  const [allGlassNoDefects, setAllGlassNoDefects] = useState(editData.allGlassNoDefects ?? null);
+  const [allHandrailNoDefects, setAllHandrailNoDefects] = useState(editData.allHandrailNoDefects ?? null);
+  const [balustradeAsPerDesign, setBalustradeAsPerDesign] = useState(editData.balustradeAsPerDesign ?? null);
 
   // Page 3 - Sign off
-  const [builderSignoffName, setBuilderSignoffName] = useState('');
-  const [builderSignature, setBuilderSignature] = useState(null);
-  const [futureCorrespondence, setFutureCorrespondence] = useState('');
+  const [builderSignoffName, setBuilderSignoffName] = useState(editData.builderSignoffName || '');
+  const [builderSignature, setBuilderSignature] = useState(editData.builderSignature || null);
+  const [futureCorrespondence, setFutureCorrespondence] = useState(editData.futureCorrespondence || '');
 
   const todayDate = new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const preparers = FORM_CONSTANTS.supervisors;
   const sitesList = (sites.length > 0 ? sites : FORM_CONSTANTS.defaultSites).filter(s => typeof s === 'string');
+
+  useEffect(() => {
+    const data = editingForm?.data || {};
+    setPage(1);
+    setSiteConducted(data.siteConducted || '');
+    setConductedOn(data.conductedOn || new Date().toISOString().slice(0, 16));
+    setPreparedBy(data.preparedBy || '');
+    setLocation(data.location || '');
+    setPreConstructionMeeting(data.preConstructionMeeting || '');
+    setHighRiskWorkshop(data.highRiskWorkshop ?? null);
+    setShopdrawingsApproved(data.shopdrawingsApproved ?? null);
+    setAllItemsSignedOff(data.allItemsSignedOff ?? null);
+    setShopdrawingRevision(data.shopdrawingRevision || '');
+    setOrderedGlassFrom(data.orderedGlassFrom || '');
+    setGlassSpecification(data.glassSpecification || '');
+    setGlassFreeFromDamage(data.glassFreeFromDamage ?? null);
+    setSpecificationOfFixings(data.specificationOfFixings || '');
+    setSetoutCompletedBy(data.setoutCompletedBy || '');
+    setInstallationMethod(data.installationMethod || '');
+    setGlassInstalledCorrectRL(data.glassInstalledCorrectRL ?? null);
+    setGlassLockedWedgedGlued(data.glassLockedWedgedGlued ?? null);
+    setRemoveWedgesCaulk(data.removeWedgesCaulk || '');
+    setHandrailSpecConfirmed(data.handrailSpecConfirmed ?? null);
+    setSpigotsCouplingsTight(data.spigotsCouplingsTight ?? null);
+    setHandrailCompliantHeight(data.handrailCompliantHeight ?? null);
+    setThreadOnFixings(data.threadOnFixings ?? null);
+    setFullWeldingJunctions(data.fullWeldingJunctions ?? null);
+    setAllGlassNoDefects(data.allGlassNoDefects ?? null);
+    setAllHandrailNoDefects(data.allHandrailNoDefects ?? null);
+    setBalustradeAsPerDesign(data.balustradeAsPerDesign ?? null);
+    setBuilderSignoffName(data.builderSignoffName || '');
+    setBuilderSignature(data.builderSignature || null);
+    setFutureCorrespondence(data.futureCorrespondence || '');
+    setSubmitted(false);
+    setValidationErrors([]);
+  }, [editingForm?.id]);
 
   const getLocation = () => {
     setIsLocating(true);
@@ -72,6 +111,8 @@ function ITPFormView({ onSubmit, sites = [] }) {
         () => { alert('Unable to get location'); setIsLocating(false); },
         { enableHighAccuracy: true, timeout: 10000 }
       );
+    } else {
+      setIsLocating(false);
     }
   };
 
@@ -131,7 +172,7 @@ function ITPFormView({ onSubmit, sites = [] }) {
       return;
     }
     setValidationErrors([]);
-    onSubmit({
+    const submitData = {
       siteConducted, conductedOn, preparedBy, location,
       preConstructionMeeting, highRiskWorkshop, shopdrawingsApproved, allItemsSignedOff,
       shopdrawingRevision, orderedGlassFrom, glassSpecification,
@@ -141,8 +182,13 @@ function ITPFormView({ onSubmit, sites = [] }) {
       allGlassNoDefects, allHandrailNoDefects, balustradeAsPerDesign,
       builderSignoffName, builderSignature, futureCorrespondence,
       date: new Date().toISOString()
-    });
-    setSubmitted(true);
+    };
+    if (isEditing && onUpdate) {
+      onUpdate(editingForm.id, 'itp', submitData);
+    } else {
+      onSubmit(submitData);
+      setSubmitted(true);
+    }
   };
 
   const resetForm = () => {
@@ -162,8 +208,8 @@ function ITPFormView({ onSubmit, sites = [] }) {
     return (
       <div className="text-center py-12">
         <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 text-4xl">✅</div>
-        <h2 className="text-2xl font-bold text-gray-800 mb-2">ITP Form Complete!</h2>
-        <p className="text-gray-600 mb-6">Inspection Test Plan has been recorded.</p>
+        <h2 className="text-2xl font-bold text-gray-800 mb-2">{isEditing ? 'ITP Form Updated!' : 'ITP Form Complete!'}</h2>
+        <p className="text-gray-600 mb-6">{isEditing ? 'Your changes have been saved.' : 'Inspection Test Plan has been recorded.'}</p>
         <button onClick={resetForm} className="bg-orange-600 text-white px-6 py-3 rounded-lg font-semibold">Start New ITP</button>
       </div>
     );
@@ -182,6 +228,16 @@ function ITPFormView({ onSubmit, sites = [] }) {
           </div>
         </div>
       </div>
+
+      {isEditing && (
+        <div className="bg-blue-100 border border-blue-300 rounded-xl p-3 flex items-center gap-2">
+          <span className="text-blue-600 text-xl">✏️</span>
+          <div>
+            <p className="text-blue-800 font-semibold">Editing Mode</p>
+            <p className="text-blue-600 text-sm">Modify this ITP form and save your changes</p>
+          </div>
+        </div>
+      )}
 
       {/* Page 1 - Title Page */}
       {page === 1 && (

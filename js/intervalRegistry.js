@@ -30,6 +30,11 @@ const IntervalRegistry = {
     this.intervals = this.intervals.filter(function(i) { return i.id !== id; });
   },
 
+  clearTimeout: function(id) {
+    window.clearTimeout(id);
+    this.timeouts = this.timeouts.filter(function(t) { return t.id !== id; });
+  },
+
   clearAll: function() {
     this.intervals.forEach(function(i) { window.clearInterval(i.id); });
     this.timeouts.forEach(function(t) { window.clearTimeout(t.id); });

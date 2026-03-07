@@ -1,20 +1,11 @@
 // SubcontractorInspectionView Component
 // Extracted from forms.jsx
 
-function SubcontractorInspectionView({ onSubmit, sites = [] }) {
-  const [step, setStep] = useState(1);
-  const [submitted, setSubmitted] = useState(false);
-  const [siteConducted, setSiteConducted] = useState('');
-  const [preparedBy, setPreparedBy] = useState('');
-  const [location, setLocation] = useState('');
-  const [isLocating, setIsLocating] = useState(false);
-  const [completedBy, setCompletedBy] = useState('');
-  const [completedBySignature, setCompletedBySignature] = useState(null);
-  const [signingInspector, setSigningInspector] = useState(false);
-  const [validationErrors, setValidationErrors] = useState([]);
+function SubcontractorInspectionView({ onSubmit, onUpdate, editingForm, sites = [] }) {
+  const isEditing = !!editingForm;
+  const editData = editingForm?.data || {};
 
-  // Inspection items with Yes/No/N/A
-  const [inspectionItems, setInspectionItems] = useState({
+  const defaultInspectionItems = {
     siteBoxes: null,
     electricalLeads: null,
     toolsRetagging: null,
@@ -25,12 +16,38 @@ function SubcontractorInspectionView({ onSubmit, sites = [] }) {
     equipmentInspection: null,
     workerSafetyConcerns: null,
     builderRequests: null,
-  });
+  };
+
+  const [step, setStep] = useState(1);
+  const [submitted, setSubmitted] = useState(false);
+  const [siteConducted, setSiteConducted] = useState(editData.siteConducted || '');
+  const [preparedBy, setPreparedBy] = useState(editData.preparedBy || '');
+  const [location, setLocation] = useState(editData.location || '');
+  const [isLocating, setIsLocating] = useState(false);
+  const [completedBy, setCompletedBy] = useState(editData.completedBy || '');
+  const [completedBySignature, setCompletedBySignature] = useState(editData.completedBySignature || null);
+  const [signingInspector, setSigningInspector] = useState(false);
+  const [validationErrors, setValidationErrors] = useState([]);
+
+  // Inspection items with Yes/No/N/A
+  const [inspectionItems, setInspectionItems] = useState(editData.inspectionItems || defaultInspectionItems);
 
   const todayDate = new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const preparers = FORM_CONSTANTS.supervisors;
   const inspectors = ['Scott Seeho', 'Davide Casolini'];
   const sitesList = (sites.length > 0 ? sites : FORM_CONSTANTS.defaultSites).filter(s => typeof s === 'string');
+
+  useEffect(() => {
+    const data = editingForm?.data || {};
+    setSiteConducted(data.siteConducted || '');
+    setPreparedBy(data.preparedBy || '');
+    setLocation(data.location || '');
+    setCompletedBy(data.completedBy || '');
+    setCompletedBySignature(data.completedBySignature || null);
+    setInspectionItems(data.inspectionItems || defaultInspectionItems);
+    setSubmitted(false);
+    setValidationErrors([]);
+  }, [editingForm?.id]);
 
   const inspectionQuestions = [
     { id: 'siteBoxes', text: 'Site boxes in good condition and lockable' },
@@ -62,6 +79,8 @@ function SubcontractorInspectionView({ onSubmit, sites = [] }) {
         () => { alert('Unable to get location'); setIsLocating(false); },
         { enableHighAccuracy: true, timeout: 10000 }
       );
+    } else {
+      setIsLocating(false);
     }
   };
 
@@ -87,11 +106,16 @@ function SubcontractorInspectionView({ onSubmit, sites = [] }) {
       return;
     }
     setValidationErrors([]);
-    onSubmit({
+    const submitData = {
       siteConducted, preparedBy, location, completedBy, completedBySignature, inspectionItems,
       date: new Date().toISOString()
-    });
-    setSubmitted(true);
+    };
+    if (isEditing && onUpdate) {
+      onUpdate(editingForm.id, 'inspection', submitData);
+    } else {
+      onSubmit(submitData);
+      setSubmitted(true);
+    }
   };
 
   const resetForm = () => {
@@ -109,8 +133,8 @@ function SubcontractorInspectionView({ onSubmit, sites = [] }) {
     return (
       <div className="text-center py-12">
         <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 text-4xl">✅</div>
-        <h2 className="text-2xl font-bold text-gray-800 mb-2">Inspection Complete!</h2>
-        <p className="text-gray-600 mb-6">Site inspection has been recorded.</p>
+        <h2 className="text-2xl font-bold text-gray-800 mb-2">{isEditing ? 'Inspection Updated!' : 'Inspection Complete!'}</h2>
+        <p className="text-gray-600 mb-6">{isEditing ? 'Your changes have been saved.' : 'Site inspection has been recorded.'}</p>
         <button onClick={resetForm} className="bg-orange-600 text-white px-6 py-3 rounded-lg font-semibold">Start Another Inspection</button>
       </div>
     );
@@ -132,6 +156,16 @@ function SubcontractorInspectionView({ onSubmit, sites = [] }) {
         <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">🔍 Subcontractor Site Inspection</h2>
         <p className="text-gray-500 text-sm mt-1">Complete site safety inspection</p>
       </div>
+
+      {isEditing && (
+        <div className="bg-blue-100 border border-blue-300 rounded-xl p-3 flex items-center gap-2">
+          <span className="text-blue-600 text-xl">✏️</span>
+          <div>
+            <p className="text-blue-800 font-semibold">Editing Mode</p>
+            <p className="text-blue-600 text-sm">Modify this inspection and save your changes</p>
+          </div>
+        </div>
+      )}
 
       {/* Site Details */}
       <div className="bg-white rounded-xl p-4 shadow-sm space-y-4">

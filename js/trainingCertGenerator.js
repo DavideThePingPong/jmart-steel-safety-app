@@ -3,6 +3,10 @@
 
 const TrainingCertGenerator = {
   generate(workerName, selectedCourse, signatureData, calculateScore) {
+    if (!selectedCourse) {
+      console.warn('No course selected');
+      return;
+    }
     try {
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF({
@@ -300,7 +304,8 @@ const TrainingCertGenerator = {
       doc.text('Valid for 12 months from date of issue.  •  J&M Artsteel Pty Ltd  •  ABN XX XXX XXX XXX', pageWidth / 2, pageHeight - 12, { align: 'center' });
 
       // Save the PDF
-      const fileName = 'JMart-Certificate-' + selectedCourse.id + '-' + workerName.replace(/\s+/g, '-') + '.pdf';
+      const safeName = (workerName || 'Unknown').replace(/\s+/g, '-');
+      const fileName = 'JMart-Certificate-' + selectedCourse.id + '-' + safeName + '.pdf';
       doc.save(fileName);
 
     } catch (error) {

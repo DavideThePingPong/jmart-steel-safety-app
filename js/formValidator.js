@@ -22,6 +22,8 @@ window.formValidator = (function() {
       .replace(/<object[^>]*>[\s\S]*?<\/object>/gi, '')    // Remove objects
       .replace(/<embed[^>]*>/gi, '')                        // Remove embeds
       .replace(/<link[^>]*>/gi, '')                         // Remove link tags
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')    // Remove style tags
+      .replace(/<form[^>]*>[\s\S]*?<\/form>/gi, '')       // Remove form tags
       .trim();
   }
 

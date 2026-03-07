@@ -116,8 +116,8 @@ const JobsManager = {
     if (!firebaseDb || !jobId) return false;
 
     try {
-      updates.updatedAt = new Date().toISOString();
-      await firebaseDb.ref(`jmart-safety/jobs/${jobId}`).update(updates);
+      const updateData = { ...updates, updatedAt: new Date().toISOString() };
+      await firebaseDb.ref(`jmart-safety/jobs/${jobId}`).update(updateData);
       console.log('JobsManager: Updated job', jobId);
       return true;
     } catch (error) {
@@ -138,7 +138,9 @@ const JobsManager = {
 
   // Find job by name (case-insensitive)
   findByName: function(name) {
-    return this.jobs.find(j => j.name.toLowerCase() === name.toLowerCase());
+    if (!name) return undefined;
+    const lower = name.toLowerCase();
+    return this.jobs.find(j => j.name && j.name.toLowerCase() === lower);
   },
 
   // Subscribe to job updates

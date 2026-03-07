@@ -1,19 +1,22 @@
 // ToolboxView Component
 // Extracted from forms.jsx
 
-function ToolboxView({ onSubmit, sites = [] }) {
-  const [step, setStep] = useState(1);
+function ToolboxView({ onSubmit, onUpdate, editingForm, sites = [] }) {
+  const isEditing = !!editingForm;
+  const editData = editingForm?.data || {};
+
+  const [step, setStep] = useState(isEditing ? 2 : 1);
   const [signingWorker, setSigningWorker] = useState(null);
-  const [siteConducted, setSiteConducted] = useState('');
-  const [builder, setBuilder] = useState('');
-  const [address, setAddress] = useState('');
+  const [siteConducted, setSiteConducted] = useState(editData.siteConducted || '');
+  const [builder, setBuilder] = useState(editData.builder || '');
+  const [address, setAddress] = useState(editData.address || '');
   const [isLocating, setIsLocating] = useState(false);
-  const [preparedBy, setPreparedBy] = useState('');
-  const [selectedTopics, setSelectedTopics] = useState([]);
-  const [otherTopic, setOtherTopic] = useState('');
-  const [correctiveAction, setCorrectiveAction] = useState('');
-  const [feedbackResponses, setFeedbackResponses] = useState('');
-  const [signatures, setSignatures] = useState(FORM_CONSTANTS.emptySignatures());
+  const [preparedBy, setPreparedBy] = useState(editData.preparedBy || '');
+  const [selectedTopics, setSelectedTopics] = useState(editData.topics || []);
+  const [otherTopic, setOtherTopic] = useState(editData.otherTopic || '');
+  const [correctiveAction, setCorrectiveAction] = useState(editData.correctiveAction || '');
+  const [feedbackResponses, setFeedbackResponses] = useState(editData.feedbackResponses || '');
+  const [signatures, setSignatures] = useState(editData.signatures || FORM_CONSTANTS.emptySignatures());
   const [validationErrors, setValidationErrors] = useState([]);
 
   const todayDate = new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -42,6 +45,21 @@ function ToolboxView({ onSubmit, sites = [] }) {
     }
   };
 
+  useEffect(() => {
+    const data = editingForm?.data || {};
+    setStep(editingForm ? 2 : 1);
+    setSiteConducted(data.siteConducted || '');
+    setBuilder(data.builder || '');
+    setAddress(data.address || '');
+    setPreparedBy(data.preparedBy || '');
+    setSelectedTopics(data.topics || []);
+    setOtherTopic(data.otherTopic || '');
+    setCorrectiveAction(data.correctiveAction || '');
+    setFeedbackResponses(data.feedbackResponses || '');
+    setSignatures(data.signatures || FORM_CONSTANTS.emptySignatures());
+    setValidationErrors([]);
+  }, [editingForm?.id]);
+
   const getLocation = () => {
     setIsLocating(true);
     if (navigator.geolocation) {
@@ -59,6 +77,8 @@ function ToolboxView({ onSubmit, sites = [] }) {
         () => { alert('Unable to get location'); setIsLocating(false); },
         { enableHighAccuracy: true, timeout: 10000 }
       );
+    } else {
+      setIsLocating(false);
     }
   };
 
@@ -77,12 +97,17 @@ function ToolboxView({ onSubmit, sites = [] }) {
       return;
     }
     setValidationErrors([]);
-    onSubmit({
+    const submitData = {
       siteConducted, builder, address, preparedBy,
       topics: selectedTopics, otherTopic, correctiveAction, feedbackResponses,
       signatures, date: new Date().toISOString()
-    });
-    setStep(3);
+    };
+    if (isEditing && onUpdate) {
+      onUpdate(editingForm.id, 'toolbox', submitData);
+    } else {
+      onSubmit(submitData);
+      setStep(3);
+    }
   };
 
   const resetForm = () => {
@@ -96,7 +121,7 @@ function ToolboxView({ onSubmit, sites = [] }) {
     return (
       <div className="text-center py-12">
         <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 text-4xl">✅</div>
-        <h2 className="text-2xl font-bold text-gray-800 mb-2">Toolbox Talk Recorded!</h2>
+        <h2 className="text-2xl font-bold text-gray-800 mb-2">{isEditing ? 'Toolbox Talk Updated!' : 'Toolbox Talk Recorded!'}</h2>
         <p className="text-gray-600 mb-6">{signedCount} attendees signed on</p>
         <button onClick={resetForm} className="bg-orange-600 text-white px-6 py-3 rounded-lg font-semibold">Record Another</button>
       </div>
@@ -119,6 +144,16 @@ function ToolboxView({ onSubmit, sites = [] }) {
         <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">👥 Toolbox Talk</h2>
         <p className="text-gray-500 text-sm mt-1">Daily safety briefing record</p>
       </div>
+
+      {isEditing && (
+        <div className="bg-blue-100 border border-blue-300 rounded-xl p-3 flex items-center gap-2">
+          <span className="text-blue-600 text-xl">✏️</span>
+          <div>
+            <p className="text-blue-800 font-semibold">Editing Mode</p>
+            <p className="text-blue-600 text-sm">Modify this toolbox talk and save your changes</p>
+          </div>
+        </div>
+      )}
 
       {step === 1 && (
         <div className="space-y-4">

@@ -277,6 +277,7 @@ const PDFGenerator = {
       let col = 0;
 
       checklistItems.forEach(([key, value]) => {
+        if (checkPageBreak(10)) { col = 0; }
         const itemLabel = this.checklistLabels[key] || key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase());
         const xPos = margin + (col * colWidth) + 3;
 

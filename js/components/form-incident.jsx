@@ -1,13 +1,16 @@
 // IncidentView Component
 // Extracted from forms.jsx
 
-function IncidentView({ onSubmit }) {
-  const [step, setStep] = useState(1);
+function IncidentView({ onSubmit, onUpdate, editingForm }) {
+  const isEditing = !!editingForm;
+  const editData = editingForm?.data || {};
+
+  const [step, setStep] = useState(isEditing ? 2 : 1);
   const [formData, setFormData] = useState({
-    type: '', date: new Date().toISOString().split('T')[0], time: new Date().toTimeString().slice(0, 5),
-    location: '', description: '', injuries: 'none', injuryDetails: '', witnesses: '', immediateActions: '', reportedBy: '',
+    type: editData.type || '', date: editData.date || new Date().toISOString().split('T')[0], time: editData.time || new Date().toTimeString().slice(0, 5),
+    location: editData.location || '', description: editData.description || '', injuries: editData.injuries || 'none', injuryDetails: editData.injuryDetails || '', witnesses: editData.witnesses || '', immediateActions: editData.immediateActions || '', reportedBy: editData.reportedBy || '',
   });
-  const [reporterSignature, setReporterSignature] = useState(null);
+  const [reporterSignature, setReporterSignature] = useState(editData.reporterSignature || null);
   const [signingReporter, setSigningReporter] = useState(false);
   const [validationError, setValidationError] = useState('');
 
@@ -18,6 +21,18 @@ function IncidentView({ onSubmit }) {
     { id: 'environmental', label: 'Environmental', description: 'Spill/leak/environmental', color: 'bg-green-500' },
   ];
 
+  useEffect(() => {
+    const data = editingForm?.data || {};
+    setStep(editingForm ? 2 : 1);
+    setFormData({
+      type: data.type || '', date: data.date || new Date().toISOString().split('T')[0], time: data.time || new Date().toTimeString().slice(0, 5),
+      location: data.location || '', description: data.description || '', injuries: data.injuries || 'none', injuryDetails: data.injuryDetails || '', witnesses: data.witnesses || '', immediateActions: data.immediateActions || '', reportedBy: data.reportedBy || '',
+    });
+    setReporterSignature(data.reporterSignature || null);
+    setSigningReporter(false);
+    setValidationError('');
+  }, [editingForm?.id]);
+
   const handleIncidentSubmit = () => {
     // Use centralized validator for comprehensive WHS-compliant checks
     const validationData = { ...formData, reporterSignature, incidentType: formData.type, incidentDate: formData.date, incidentTime: formData.time };
@@ -27,8 +42,13 @@ function IncidentView({ onSubmit }) {
       return;
     }
     setValidationError('');
-    onSubmit({ ...formData, reporterSignature });
-    setStep(4);
+    const submitData = { ...formData, reporterSignature };
+    if (isEditing && onUpdate) {
+      onUpdate(editingForm.id, 'incident', submitData);
+    } else {
+      onSubmit(submitData);
+      setStep(4);
+    }
   };
 
   const isNotifiable = formData.type === 'injury' || (formData.type === 'damage' && formData.description && formData.description.toLowerCase().match(/collapse|fall|electr|explos|gas|chemical|asbestos|confined|trench/));
@@ -37,7 +57,7 @@ function IncidentView({ onSubmit }) {
     return (
       <div className="text-center py-12">
         <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 text-4xl">✅</div>
-        <h2 className="text-2xl font-bold text-gray-800 mb-2">Report Submitted!</h2>
+        <h2 className="text-2xl font-bold text-gray-800 mb-2">{isEditing ? 'Report Updated!' : 'Report Submitted!'}</h2>
         <p className="text-gray-600 mb-6">Reference: INC-{Date.now().toString().slice(-6)}</p>
         {isNotifiable && (
           <div className="bg-red-50 border-2 border-red-400 rounded-xl p-4 mx-4 mb-6 text-left">
@@ -75,6 +95,16 @@ function IncidentView({ onSubmit }) {
         <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">⚠️ Incident / Near Miss Report</h2>
         <p className="text-gray-500 text-sm mt-1">Report all incidents within 24 hours</p>
       </div>
+
+      {isEditing && (
+        <div className="bg-blue-100 border border-blue-300 rounded-xl p-3 flex items-center gap-2">
+          <span className="text-blue-600 text-xl">✏️</span>
+          <div>
+            <p className="text-blue-800 font-semibold">Editing Mode</p>
+            <p className="text-blue-600 text-sm">Modify this report and save your changes</p>
+          </div>
+        </div>
+      )}
 
       {step === 1 && (
         <div className="space-y-3">

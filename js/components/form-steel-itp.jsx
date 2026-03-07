@@ -1,81 +1,135 @@
 // SteelITPView Component
 // Extracted from forms.jsx
 
-function SteelITPView({ onSubmit, sites = [] }) {
+function SteelITPView({ onSubmit, onUpdate, editingForm, sites = [] }) {
+  const isEditing = !!editingForm;
+  const editData = editingForm?.data || {};
+
   const [step, setStep] = useState(1);
   const [submitted, setSubmitted] = useState(false);
-  const [managerSignature, setManagerSignature] = useState(null);
-  const [builderSignature, setBuilderSignature] = useState(null);
+  const [managerSignature, setManagerSignature] = useState(editData.managerSignature || null);
+  const [builderSignature, setBuilderSignature] = useState(editData.builderSignature || null);
   const [signingManager, setSigningManager] = useState(false);
   const [signingBuilder, setSigningBuilder] = useState(false);
   const [validationErrors, setValidationErrors] = useState([]);
 
   // Form state
-  const [siteConducted, setSiteConducted] = useState('');
-  const [preparedBy, setPreparedBy] = useState('');
-  const [location, setLocation] = useState('');
-  const [jobStructure, setJobStructure] = useState('');
+  const [siteConducted, setSiteConducted] = useState(editData.siteConducted || '');
+  const [preparedBy, setPreparedBy] = useState(editData.preparedBy || '');
+  const [location, setLocation] = useState(editData.location || '');
+  const [jobStructure, setJobStructure] = useState(editData.jobStructure || '');
 
   // Items section
-  const [preConstMeeting, setPreConstMeeting] = useState('');
-  const [highRiskWorkshop, setHighRiskWorkshop] = useState('');
-  const [shopdrawingsApproved, setShopdrawingsApproved] = useState('');
-  const [allItemsSignedOff, setAllItemsSignedOff] = useState('');
+  const [preConstMeeting, setPreConstMeeting] = useState(editData.preConstMeeting || '');
+  const [highRiskWorkshop, setHighRiskWorkshop] = useState(editData.highRiskWorkshop || '');
+  const [shopdrawingsApproved, setShopdrawingsApproved] = useState(editData.shopdrawingsApproved || '');
+  const [allItemsSignedOff, setAllItemsSignedOff] = useState(editData.allItemsSignedOff || '');
 
   // Fabrication section
-  const [materialsOrdered, setMaterialsOrdered] = useState('');
-  const [materialsCorrect, setMaterialsCorrect] = useState('');
-  const [visualCheck, setVisualCheck] = useState('');
-  const [shopdrawingsCurrent, setShopdrawingsCurrent] = useState('');
-  const [setoutCorrect, setSetoutCorrect] = useState('');
-  const [tackWeld, setTackWeld] = useState('');
-  const [fullyWelded, setFullyWelded] = useState('');
-  const [packLoad, setPackLoad] = useState('');
+  const [materialsOrdered, setMaterialsOrdered] = useState(editData.materialsOrdered || '');
+  const [materialsCorrect, setMaterialsCorrect] = useState(editData.materialsCorrect || '');
+  const [visualCheck, setVisualCheck] = useState(editData.visualCheck || '');
+  const [shopdrawingsCurrent, setShopdrawingsCurrent] = useState(editData.shopdrawingsCurrent || '');
+  const [setoutCorrect, setSetoutCorrect] = useState(editData.setoutCorrect || '');
+  const [tackWeld, setTackWeld] = useState(editData.tackWeld || '');
+  const [fullyWelded, setFullyWelded] = useState(editData.fullyWelded || '');
+  const [packLoad, setPackLoad] = useState(editData.packLoad || '');
 
   // Specialised finishes
-  const [finishConfirmed, setFinishConfirmed] = useState('');
-  const [deliveryBooked, setDeliveryBooked] = useState('');
-  const [sentToPainter, setSentToPainter] = useState('');
-  const [deliveryVehicle, setDeliveryVehicle] = useState('');
-  const [afterDeliveryFinish, setAfterDeliveryFinish] = useState('');
+  const [finishConfirmed, setFinishConfirmed] = useState(editData.finishConfirmed || '');
+  const [deliveryBooked, setDeliveryBooked] = useState(editData.deliveryBooked || '');
+  const [sentToPainter, setSentToPainter] = useState(editData.sentToPainter || '');
+  const [deliveryVehicle, setDeliveryVehicle] = useState(editData.deliveryVehicle || '');
+  const [afterDeliveryFinish, setAfterDeliveryFinish] = useState(editData.afterDeliveryFinish || '');
 
   // Site setout
-  const [drawingsConfirmed, setDrawingsConfirmed] = useState('');
-  const [surveyorMeasurements, setSurveyorMeasurements] = useState('');
-  const [surveyorName, setSurveyorName] = useState('');
-  const [clashesDetected, setClashesDetected] = useState('');
+  const [drawingsConfirmed, setDrawingsConfirmed] = useState(editData.drawingsConfirmed || '');
+  const [surveyorMeasurements, setSurveyorMeasurements] = useState(editData.surveyorMeasurements || '');
+  const [surveyorName, setSurveyorName] = useState(editData.surveyorName || '');
+  const [clashesDetected, setClashesDetected] = useState(editData.clashesDetected || '');
 
   // Site installation
-  const [chemicalAnchors, setChemicalAnchors] = useState('');
-  const [anchorsInstalled, setAnchorsInstalled] = useState('');
-  const [levelPlumb, setLevelPlumb] = useState('');
-  const [boltsTorqued, setBoltsTorqued] = useState('');
-  const [weldingCompleted, setWeldingCompleted] = useState('');
+  const [chemicalAnchors, setChemicalAnchors] = useState(editData.chemicalAnchors || '');
+  const [anchorsInstalled, setAnchorsInstalled] = useState(editData.anchorsInstalled || '');
+  const [levelPlumb, setLevelPlumb] = useState(editData.levelPlumb || '');
+  const [boltsTorqued, setBoltsTorqued] = useState(editData.boltsTorqued || '');
+  const [weldingCompleted, setWeldingCompleted] = useState(editData.weldingCompleted || '');
 
   // Grouting
-  const [groutingCompleted, setGroutingCompleted] = useState('');
+  const [groutingCompleted, setGroutingCompleted] = useState(editData.groutingCompleted || '');
 
   // Final inspection
-  const [itemsChecked, setItemsChecked] = useState('');
-  const [finishAcceptable, setFinishAcceptable] = useState('');
-  const [fixingsTorqued, setFixingsTorqued] = useState('');
+  const [itemsChecked, setItemsChecked] = useState(editData.itemsChecked || '');
+  const [finishAcceptable, setFinishAcceptable] = useState(editData.finishAcceptable || '');
+  const [fixingsTorqued, setFixingsTorqued] = useState(editData.fixingsTorqued || '');
 
   // NDT
-  const [weldTestingBooked, setWeldTestingBooked] = useState('');
-  const [testingIssues, setTestingIssues] = useState('');
-  const [weldsPassed, setWeldsPassed] = useState('');
+  const [weldTestingBooked, setWeldTestingBooked] = useState(editData.weldTestingBooked || '');
+  const [testingIssues, setTestingIssues] = useState(editData.testingIssues || '');
+  const [weldsPassed, setWeldsPassed] = useState(editData.weldsPassed || '');
 
   // Handover
-  const [colourConfirmed, setColourConfirmed] = useState('');
-  const [defectsChecked, setDefectsChecked] = useState('');
-  const [handoverAccepted, setHandoverAccepted] = useState('');
+  const [colourConfirmed, setColourConfirmed] = useState(editData.colourConfirmed || '');
+  const [defectsChecked, setDefectsChecked] = useState(editData.defectsChecked || '');
+  const [handoverAccepted, setHandoverAccepted] = useState(editData.handoverAccepted || '');
 
   // Manager info
-  const [managerName, setManagerName] = useState('');
-  const [builderName, setBuilderName] = useState('');
+  const [managerName, setManagerName] = useState(editData.managerName || '');
+  const [builderName, setBuilderName] = useState(editData.builderName || '');
 
   const todayDate = new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const sitesList = (sites.length > 0 ? sites : FORM_CONSTANTS.defaultSites).filter(s => typeof s === 'string');
+
+  useEffect(() => {
+    const data = editingForm?.data || {};
+    setStep(1);
+    setSiteConducted(data.siteConducted || '');
+    setPreparedBy(data.preparedBy || '');
+    setLocation(data.location || '');
+    setJobStructure(data.jobStructure || '');
+    setPreConstMeeting(data.preConstMeeting || '');
+    setHighRiskWorkshop(data.highRiskWorkshop || '');
+    setShopdrawingsApproved(data.shopdrawingsApproved || '');
+    setAllItemsSignedOff(data.allItemsSignedOff || '');
+    setMaterialsOrdered(data.materialsOrdered || '');
+    setMaterialsCorrect(data.materialsCorrect || '');
+    setVisualCheck(data.visualCheck || '');
+    setShopdrawingsCurrent(data.shopdrawingsCurrent || '');
+    setSetoutCorrect(data.setoutCorrect || '');
+    setTackWeld(data.tackWeld || '');
+    setFullyWelded(data.fullyWelded || '');
+    setPackLoad(data.packLoad || '');
+    setFinishConfirmed(data.finishConfirmed || '');
+    setDeliveryBooked(data.deliveryBooked || '');
+    setSentToPainter(data.sentToPainter || '');
+    setDeliveryVehicle(data.deliveryVehicle || '');
+    setAfterDeliveryFinish(data.afterDeliveryFinish || '');
+    setDrawingsConfirmed(data.drawingsConfirmed || '');
+    setSurveyorMeasurements(data.surveyorMeasurements || '');
+    setSurveyorName(data.surveyorName || '');
+    setClashesDetected(data.clashesDetected || '');
+    setChemicalAnchors(data.chemicalAnchors || '');
+    setAnchorsInstalled(data.anchorsInstalled || '');
+    setLevelPlumb(data.levelPlumb || '');
+    setBoltsTorqued(data.boltsTorqued || '');
+    setWeldingCompleted(data.weldingCompleted || '');
+    setGroutingCompleted(data.groutingCompleted || '');
+    setItemsChecked(data.itemsChecked || '');
+    setFinishAcceptable(data.finishAcceptable || '');
+    setFixingsTorqued(data.fixingsTorqued || '');
+    setWeldTestingBooked(data.weldTestingBooked || '');
+    setTestingIssues(data.testingIssues || '');
+    setWeldsPassed(data.weldsPassed || '');
+    setColourConfirmed(data.colourConfirmed || '');
+    setDefectsChecked(data.defectsChecked || '');
+    setHandoverAccepted(data.handoverAccepted || '');
+    setManagerName(data.managerName || '');
+    setManagerSignature(data.managerSignature || null);
+    setBuilderName(data.builderName || '');
+    setBuilderSignature(data.builderSignature || null);
+    setSubmitted(false);
+    setValidationErrors([]);
+  }, [editingForm?.id]);
 
   const SelectField = ({ label, value, onChange }) => (
     <div className="space-y-2">
@@ -119,8 +173,12 @@ function SteelITPView({ onSubmit, sites = [] }) {
       managerName, managerSignature, builderName, builderSignature,
       submittedAt: new Date().toISOString()
     };
-    onSubmit(data);
-    setSubmitted(true);
+    if (isEditing && onUpdate) {
+      onUpdate(editingForm.id, 'steel-itp', data);
+    } else {
+      onSubmit(data);
+      setSubmitted(true);
+    }
   };
 
   if (submitted) {
@@ -128,7 +186,7 @@ function SteelITPView({ onSubmit, sites = [] }) {
       <div className="space-y-4">
         <div className="bg-green-500 text-white p-6 rounded-xl text-center">
           <div className="text-6xl mb-4">✅</div>
-          <h2 className="text-2xl font-bold">Steel ITP Submitted!</h2>
+          <h2 className="text-2xl font-bold">{isEditing ? 'Steel ITP Updated!' : 'Steel ITP Submitted!'}</h2>
         </div>
         <button onClick={() => {
           setSubmitted(false); setStep(1);
@@ -170,6 +228,16 @@ function SteelITPView({ onSubmit, sites = [] }) {
         ))}
       </div>
       <p className="text-xs text-gray-500 text-center">Step {step} of 8</p>
+
+      {isEditing && (
+        <div className="bg-blue-100 border border-blue-300 rounded-xl p-3 flex items-center gap-2">
+          <span className="text-blue-600 text-xl">✏️</span>
+          <div>
+            <p className="text-blue-800 font-semibold">Editing Mode</p>
+            <p className="text-blue-600 text-sm">Modify this Steel ITP and save your changes</p>
+          </div>
+        </div>
+      )}
 
       {/* Step 1: Basic Info */}
       {step === 1 && (
@@ -360,9 +428,4 @@ function SteelITPView({ onSubmit, sites = [] }) {
 // Emergency View
 
 // Export to window for cross-file access
-window.PrestartView = PrestartView;
-window.IncidentView = IncidentView;
-window.ToolboxView = ToolboxView;
-window.SubcontractorInspectionView = SubcontractorInspectionView;
-window.ITPFormView = ITPFormView;
 window.SteelITPView = SteelITPView;

@@ -207,7 +207,7 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
       setForms(prevForms => {
         const updatedForms = prevForms.map(f => {
           if (f.id === form.id) {
-            return { ...f, data: formData, updatedAt: new Date().toISOString() };
+            return { ...f, data: formData, updatedAt: new Date().toISOString(), version: form.version, modifiedBy: form.modifiedBy, modifiedByName: form.modifiedByName, previousVersion: form.previousVersion, status: form.status || 'completed' };
           }
           return f;
         });
@@ -630,6 +630,8 @@ function useDeviceAuth() {
   const [newDeviceNotification, setNewDeviceNotification] = useState(null);
 
   useEffect(() => {
+    const cleanups = [];
+
     const initDeviceAuth = async () => {
       // Wait for Firebase DB WebSocket to connect before checking device auth.
       // DeviceAuth.init() may fail if called before DB is ready (returns approved:false
@@ -670,7 +672,7 @@ function useDeviceAuth() {
         if (result.admin) {
           DeviceAuth.requestNotificationPermission();
 
-          DeviceAuth.onNotification((type, data) => {
+          const unsubNotify = DeviceAuth.onNotification((type, data) => {
             if (type === 'new_device') {
               setNewDeviceNotification(data);
               DeviceAuth.showBrowserNotification(
@@ -680,24 +682,28 @@ function useDeviceAuth() {
               setTimeout(() => setNewDeviceNotification(null), 10000);
             }
           });
+          if (unsubNotify) cleanups.push(unsubNotify);
         }
 
         if (result.admin || result.canViewDevices || result.canRevokeDevices) {
-          DeviceAuth.listenForPendingDevices((devices) => {
+          const unsubPending = DeviceAuth.listenForPendingDevices((devices) => {
             setPendingDevices(devices);
           });
+          if (unsubPending) cleanups.push(unsubPending);
 
-          DeviceAuth.listenForApprovedDevices((devices) => {
+          const unsubApproved = DeviceAuth.listenForApprovedDevices((devices) => {
             setApprovedDevices(devices);
           });
+          if (unsubApproved) cleanups.push(unsubApproved);
         }
 
-        DeviceAuth.listenForOwnDeviceStatus((status) => {
+        const unsubOwnStatus = DeviceAuth.listenForOwnDeviceStatus((status) => {
           if (status.revoked) {
             setDeviceAuthStatus('denied');
             alert('Your device access has been revoked by an administrator.');
           }
         });
+        if (unsubOwnStatus) cleanups.push(unsubOwnStatus);
       } else {
         setDeviceAuthStatus('pending');
 
@@ -711,11 +717,15 @@ function useDeviceAuth() {
           }
         }, 5000, 'DeviceApprovalPoll');
 
-        return () => IntervalRegistry.clearInterval(pollInterval);
+        cleanups.push(() => IntervalRegistry.clearInterval(pollInterval));
       }
     };
 
     initDeviceAuth();
+
+    return () => {
+      cleanups.forEach(fn => { try { fn(); } catch(e) {} });
+    };
   }, []);
 
   return {

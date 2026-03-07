@@ -9,7 +9,7 @@
  * - v4: Pinned CDN versions (supply-chain hardening)
  */
 
-const CACHE_VERSION = 'v54';
+const CACHE_VERSION = 'v55';
 const STATIC_CACHE = `jmart-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `jmart-dynamic-${CACHE_VERSION}`;
 const CDN_CACHE = `jmart-cdn-${CACHE_VERSION}`;
@@ -120,12 +120,17 @@ function getStrategy(request) {
     return STRATEGIES.CACHE_FIRST;
   }
 
-  // Static assets - cache first
+  // Images and fonts — cache first (immutable content)
   if (request.destination === 'image' ||
-      request.destination === 'font' ||
-      url.pathname.endsWith('.js') ||
-      url.pathname.endsWith('.css')) {
+      request.destination === 'font') {
     return STRATEGIES.CACHE_FIRST;
+  }
+
+  // Local JS/CSS — stale-while-revalidate (serve cached, update in background)
+  if (url.pathname.endsWith('.js') ||
+      url.pathname.endsWith('.jsx') ||
+      url.pathname.endsWith('.css')) {
+    return STRATEGIES.STALE_WHILE_REVALIDATE;
   }
 
   // HTML pages - stale while revalidate
@@ -508,7 +513,9 @@ self.addEventListener('message', (event) => {
       // Cache additional URLs on demand
       if (event.data.urls) {
         caches.open(DYNAMIC_CACHE).then(cache => {
-          cache.addAll(event.data.urls);
+          cache.addAll(event.data.urls).catch(err => {
+            console.warn('[SW] cache.addAll failed:', err.message);
+          });
         });
       }
       break;
@@ -516,7 +523,7 @@ self.addEventListener('message', (event) => {
     case 'CLEAR_CACHE':
       caches.keys().then(names => {
         names.forEach(name => {
-          if (name.startsWith('jmart-')) {
+          if (name.startsWith('jmart-') && !name.endsWith(CACHE_VERSION)) {
             caches.delete(name);
           }
         });

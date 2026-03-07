@@ -89,7 +89,13 @@ const GoogleDriveSync = {
       // Request new token (will trigger callback)
       return new Promise((resolve, reject) => {
         const originalCallback = this.tokenClient.callback;
+        const refreshTimeout = setTimeout(() => {
+          this.tokenClient.callback = originalCallback;
+          reject(new Error('Token refresh timed out after 30s'));
+        }, 30000);
+
         this.tokenClient.callback = async (tokenResponse) => {
+          clearTimeout(refreshTimeout);
           if (tokenResponse.error) {
             this.tokenClient.callback = originalCallback;
             reject(new Error('Token refresh failed'));
@@ -161,13 +167,17 @@ const GoogleDriveSync = {
   getOrCreateNestedFolder: async function(folderPath, parentId = null) {
     if (!this.accessToken) return null;
 
-    const parent = parentId || this.folderId;
+    let parent = parentId || this.folderId;
     if (!parent) {
-      await this.getOrCreateFolder();
+      parent = await this.getOrCreateFolder();
+      if (!parent) {
+        console.error('getOrCreateNestedFolder: Could not resolve parent folder');
+        return null;
+      }
     }
 
     const parts = folderPath.split('/').filter(p => p.trim());
-    let currentParent = parent || this.folderId;
+    let currentParent = parent;
 
     for (const folderName of parts) {
       try {
@@ -269,6 +279,12 @@ const GoogleDriveSync = {
       return { success: true, uploaded: 0 };
     }
 
+    // Check if PDF generation is available
+    if (typeof PDFGenerator === 'undefined' || typeof jspdf === 'undefined') {
+      console.warn('PDFGenerator or jsPDF not loaded - cannot upload daily forms');
+      return { success: false, error: 'PDF generation not available' };
+    }
+
     const results = [];
     for (const form of todaysForms) {
       try {
@@ -289,7 +305,7 @@ const GoogleDriveSync = {
 
   // Search for files by name pattern
   searchFiles: async function(namePattern) {
-    if (!this.accessToken) return [];
+    if (!this.accessToken || !this.folderId) return [];
 
     try {
       const query = `name contains '${this._escapeQuery(namePattern)}' and '${this.folderId}' in parents and trashed=false`;
@@ -457,6 +473,12 @@ const GoogleDriveSync = {
     }
 
     try {
+      // Guard: only process data URIs (base64-encoded images)
+      if (!photoData || !photoData.startsWith('data:')) {
+        console.error('uploadJobPhoto: expected a data URI but received:', typeof photoData === 'string' ? photoData.substring(0, 30) + '...' : typeof photoData);
+        return null;
+      }
+
       const folderId = await this.getOrCreateRecordingsFolder(siteName, date);
       if (!folderId) {
         console.error('Could not create recordings folder');

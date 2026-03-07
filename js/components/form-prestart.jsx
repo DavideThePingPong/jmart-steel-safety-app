@@ -103,6 +103,8 @@ function PrestartView({ onSubmit, onUpdate, editingForm, previousPrestarts = [],
         () => { alert('Unable to get location'); setIsLocating(false); },
         { enableHighAccuracy: true, timeout: 10000 }
       );
+    } else {
+      setIsLocating(false);
     }
   };
 
