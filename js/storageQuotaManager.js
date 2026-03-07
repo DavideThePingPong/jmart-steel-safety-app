@@ -321,8 +321,10 @@ StorageQuotaManager.stripPhotosFromArray = StorageQuotaManager.stripLargeData;
 
 // SAFE FORMS WRITE — the ONLY way forms should be written to localStorage
 // Always succeeds: strips large data, then trims form count if still too big
-// Max budget: 2MB for forms (leaves 3MB for everything else)
-StorageQuotaManager.MAX_FORMS_BYTES = 2 * 1024 * 1024; // 2MB
+// TOTAL BUDGET: All safe writers share 5MB. Budgets MUST add up to <4MB:
+//   Forms: 1.5MB + Photos: 500KB + Recordings: 500KB + Sigs: 250KB + Queue: 250KB = 3MB
+//   Leaves 2MB headroom for audit log, Firebase SDK, sites, device data, etc.
+StorageQuotaManager.MAX_FORMS_BYTES = 1.5 * 1024 * 1024; // 1.5MB (was 2MB)
 
 StorageQuotaManager.safeFormsWrite = function(formsArray) {
   if (!Array.isArray(formsArray) || formsArray.length === 0) {
@@ -367,9 +369,9 @@ StorageQuotaManager.safeFormsWrite = function(formsArray) {
   }
 };
 
-// SAFE PHOTO QUEUE WRITE — caps photo queue at 1MB
+// SAFE PHOTO QUEUE WRITE — caps photo queue
 // Photos in the queue are base64 so they're huge. Cap strictly.
-StorageQuotaManager.MAX_PHOTO_QUEUE_BYTES = 1 * 1024 * 1024; // 1MB
+StorageQuotaManager.MAX_PHOTO_QUEUE_BYTES = 500 * 1024; // 500KB (was 1MB)
 
 StorageQuotaManager.safePhotoQueueWrite = function(queueArray) {
   if (!Array.isArray(queueArray) || queueArray.length === 0) {
@@ -400,8 +402,8 @@ StorageQuotaManager.safePhotoQueueWrite = function(queueArray) {
   }
 };
 
-// SAFE JOB RECORDINGS WRITE — strips base64 photos, caps at 1MB
-StorageQuotaManager.MAX_RECORDINGS_BYTES = 1 * 1024 * 1024; // 1MB
+// SAFE JOB RECORDINGS WRITE — strips base64 photos
+StorageQuotaManager.MAX_RECORDINGS_BYTES = 500 * 1024; // 500KB (was 1MB)
 
 StorageQuotaManager.safeRecordingsWrite = function(recordingsArray) {
   if (!Array.isArray(recordingsArray) || recordingsArray.length === 0) {
@@ -436,9 +438,9 @@ StorageQuotaManager.safeRecordingsWrite = function(recordingsArray) {
   }
 };
 
-// SAFE TEAM SIGNATURES WRITE — caps at 500KB
+// SAFE TEAM SIGNATURES WRITE
 // Signatures are small base64 PNGs but can accumulate
-StorageQuotaManager.MAX_SIGNATURES_BYTES = 500 * 1024; // 500KB
+StorageQuotaManager.MAX_SIGNATURES_BYTES = 250 * 1024; // 250KB (was 500KB)
 
 StorageQuotaManager.safeSignaturesWrite = function(signaturesObj) {
   if (!signaturesObj || typeof signaturesObj !== 'object') {

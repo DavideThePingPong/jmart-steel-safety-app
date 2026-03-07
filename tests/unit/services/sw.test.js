@@ -149,14 +149,14 @@ describe('Service Worker (sw.js)', () => {
   // Constants
   // -----------------------------------------------------------------------
   describe('cache constants', () => {
-    it('should define CACHE_VERSION as v59', () => {
-      expect(env.CACHE_VERSION).toBe('v59');
+    it('should define CACHE_VERSION as v60', () => {
+      expect(env.CACHE_VERSION).toBe('v60');
     });
 
     it('should name caches with version suffix', () => {
-      expect(env.STATIC_CACHE).toBe('jmart-static-v59');
-      expect(env.DYNAMIC_CACHE).toBe('jmart-dynamic-v59');
-      expect(env.CDN_CACHE).toBe('jmart-cdn-v59');
+      expect(env.STATIC_CACHE).toBe('jmart-static-v60');
+      expect(env.DYNAMIC_CACHE).toBe('jmart-dynamic-v60');
+      expect(env.CDN_CACHE).toBe('jmart-cdn-v60');
     });
   });
 
@@ -225,9 +225,9 @@ describe('Service Worker (sw.js)', () => {
       env.mockCaches.keys.mockResolvedValue([
         'jmart-static-v54',
         'jmart-cdn-v54',
-        'jmart-static-v59',
-        'jmart-cdn-v59',
-        'jmart-dynamic-v59'
+        'jmart-static-v60',
+        'jmart-cdn-v60',
+        'jmart-dynamic-v60'
       ]);
 
       const handler = env.listeners['message'];
@@ -243,10 +243,10 @@ describe('Service Worker (sw.js)', () => {
       expect(deleted).toContain('jmart-static-v54');
       expect(deleted).toContain('jmart-cdn-v54');
 
-      // Current v59 caches MUST be preserved
-      expect(deleted).not.toContain('jmart-static-v59');
-      expect(deleted).not.toContain('jmart-cdn-v59');
-      expect(deleted).not.toContain('jmart-dynamic-v59');
+      // Current v60 caches MUST be preserved
+      expect(deleted).not.toContain('jmart-static-v60');
+      expect(deleted).not.toContain('jmart-cdn-v60');
+      expect(deleted).not.toContain('jmart-dynamic-v60');
     });
 
     it('should not delete non-jmart caches', async () => {
@@ -306,7 +306,7 @@ describe('Service Worker (sw.js)', () => {
 
       const result = await env.staleWhileRevalidate(
         { url: 'https://jmart-steel-safety.web.app/js/app.js' },
-        'jmart-static-v59'
+        'jmart-static-v60'
       );
 
       expect(result).toBe(cached);
@@ -319,7 +319,7 @@ describe('Service Worker (sw.js)', () => {
 
       const result = await env.staleWhileRevalidate(
         { url: 'https://jmart-steel-safety.web.app/js/app.js' },
-        'jmart-static-v59'
+        'jmart-static-v60'
       );
 
       expect(result).toBe(networkResp);

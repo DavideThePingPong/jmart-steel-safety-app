@@ -15,8 +15,8 @@ const FirebaseSync = {
   circuitOpenedAt: null,
   CIRCUIT_COOLDOWN_MS: 2 * 60 * 1000, // 2 minutes (reduced from 5 for faster recovery)
 
-  MAX_QUEUE_SIZE: 100,        // Hard cap — prevents localStorage bloat
-  MAX_QUEUE_BYTES: 500000,    // 500KB max — beyond this, oldest entries get dropped
+  MAX_QUEUE_SIZE: 50,         // Hard cap — prevents localStorage bloat (was 100)
+  MAX_QUEUE_BYTES: 250000,    // 250KB max — beyond this, oldest entries get dropped (was 500KB)
   _isProcessing: false,       // Concurrency guard — prevents overlapping processQueue calls
   _authReady: false,          // Tracks whether Firebase auth has completed
 

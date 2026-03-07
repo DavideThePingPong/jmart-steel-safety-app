@@ -17,15 +17,23 @@ const AuditLogManager = {
       details: details
     };
 
-    // Save to local audit log
+    // Save to local audit log — capped at 200 entries AND 200KB
+    // The audit log is a compliance trail, NOT a primary data store.
+    // Full history lives in Firebase. Local copy is just for quick offline viewing.
     try {
-      const localLog = JSON.parse(localStorage.getItem('jmart-audit-log') || '[]');
+      var localLog = JSON.parse(localStorage.getItem('jmart-audit-log') || '[]');
       localLog.push(logEntry);
-      // Keep last 1000 entries locally
-      if (localLog.length > 1000) {
-        localLog.splice(0, localLog.length - 1000);
+      // Cap by count (was 1000 — way too many, caused ~500KB of localStorage usage)
+      if (localLog.length > 200) {
+        localLog = localLog.slice(-200);
       }
-      localStorage.setItem('jmart-audit-log', JSON.stringify(localLog));
+      // Cap by byte size (200KB max — shares 5MB localStorage with forms, photos, etc.)
+      var json = JSON.stringify(localLog);
+      while (json.length > 200000 && localLog.length > 10) {
+        localLog = localLog.slice(-Math.floor(localLog.length * 0.7));
+        json = JSON.stringify(localLog);
+      }
+      localStorage.setItem('jmart-audit-log', json);
     } catch (e) {
       console.error('Error saving audit log locally:', e);
     }
