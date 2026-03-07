@@ -577,7 +577,13 @@ function NoteMediaBox({ label, iconName, value, notes, media, onValueChange, onA
           <div className="grid grid-cols-3 gap-2">
             {media.map((item, idx) => (
               <div key={idx} className="relative">
-                <img src={item.data} alt={item.name} className="w-full h-20 object-cover rounded-lg" />
+                {item.data && item.data !== '[in-firebase]' && item.data.startsWith('data:') ? (
+                  <img src={item.data} alt={item.name} className="w-full h-20 object-cover rounded-lg" />
+                ) : (
+                  <div className="w-full h-20 bg-gray-100 rounded-lg flex items-center justify-center text-xs text-gray-400">
+                    ☁️ In cloud
+                  </div>
+                )}
                 <button onClick={() => onRemoveMedia(idx)} className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full text-xs">✕</button>
               </div>
             ))}

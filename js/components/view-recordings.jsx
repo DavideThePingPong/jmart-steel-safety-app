@@ -332,7 +332,11 @@ function RecordingsView({ forms, sites }) {
             <div className="grid grid-cols-4 gap-2">
               {photos.map((photo) => (
                 <div key={photo.id} className="relative">
-                  <img src={photo.data} alt="captured" className="w-full h-16 object-cover rounded-lg" />
+                  {photo.data && photo.data !== '[in-firebase]' && photo.data.startsWith('data:') ? (
+                    <img src={photo.data} alt="captured" className="w-full h-16 object-cover rounded-lg" />
+                  ) : (
+                    <div className="w-full h-16 bg-gray-100 rounded-lg flex items-center justify-center text-xs text-gray-400">☁️</div>
+                  )}
                   <button
                     onClick={() => removePhoto(photo.id)}
                     className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center"
@@ -455,28 +459,33 @@ function RecordingsView({ forms, sites }) {
               )}
               <div className="grid grid-cols-3 gap-2">
                 {viewingRecording.photos.map((photo, idx) => (
-                  <img
-                    key={idx}
-                    src={photo.data}
-                    alt={`Photo ${idx + 1}`}
-                    className="w-full h-24 object-cover rounded-lg cursor-pointer hover:opacity-80"
-                    onClick={() => {
-                      const win = window.open('', '_blank');
-                      if (!win) {
-                        // Popup blocked — fallback to download
-                        const link = document.createElement('a');
-                        link.href = photo.data;
-                        link.download = `photo-${idx + 1}.jpg`;
-                        link.click();
-                        return;
-                      }
-                      const img = win.document.createElement('img');
-                      img.src = photo.data;
-                      img.style.maxWidth = '100%';
-                      img.style.height = 'auto';
-                      win.document.body.appendChild(img);
-                    }}
-                  />
+                  photo.data && photo.data !== '[in-firebase]' && photo.data.startsWith('data:') ? (
+                    <img
+                      key={idx}
+                      src={photo.data}
+                      alt={`Photo ${idx + 1}`}
+                      className="w-full h-24 object-cover rounded-lg cursor-pointer hover:opacity-80"
+                      onClick={() => {
+                        const win = window.open('', '_blank');
+                        if (!win) {
+                          const link = document.createElement('a');
+                          link.href = photo.data;
+                          link.download = `photo-${idx + 1}.jpg`;
+                          link.click();
+                          return;
+                        }
+                        const img = win.document.createElement('img');
+                        img.src = photo.data;
+                        img.style.maxWidth = '100%';
+                        img.style.height = 'auto';
+                        win.document.body.appendChild(img);
+                      }}
+                    />
+                  ) : (
+                    <div key={idx} className="w-full h-24 bg-gray-100 rounded-lg flex items-center justify-center text-xs text-gray-400">
+                      ☁️ In cloud
+                    </div>
+                  )
                 ))}
               </div>
             </div>

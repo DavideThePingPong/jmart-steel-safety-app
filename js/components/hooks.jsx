@@ -90,12 +90,25 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
         return updatedForms;
       });
 
-      // Auto-download PDF
+      // Auto-download PDF + upload to Drive
       setTimeout(() => {
         try {
           const filename = PDFGenerator.download(newForm);
           markAsBackedUp(newForm.id);
           console.log('Auto-saved PDF:', filename);
+
+          // Upload PDF to Google Drive (non-blocking — form is already saved)
+          if (typeof GoogleDriveSync !== 'undefined' && GoogleDriveSync.isConnected()) {
+            try {
+              const { doc } = PDFGenerator.generate(newForm);
+              const pdfBlob = doc.output('blob');
+              GoogleDriveSync.uploadPDF(pdfBlob, filename, formType)
+                .then(function(r) { if (r) console.log('PDF uploaded to Drive:', filename); })
+                .catch(function(e) { console.error('Drive PDF upload error:', e); });
+            } catch (driveErr) {
+              console.error('Drive PDF generation error:', driveErr);
+            }
+          }
         } catch (pdfErr) {
           console.error('PDF generation error:', pdfErr);
         }
