@@ -4,6 +4,7 @@ node_modules/
 # Build outputs
 dist/
 build/
+js/app.js
 
 # Test coverage
 coverage/

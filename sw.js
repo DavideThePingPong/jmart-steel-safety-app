@@ -9,7 +9,7 @@
  * - v4: Pinned CDN versions (supply-chain hardening)
  */
 
-const CACHE_VERSION = 'v66';
+const CACHE_VERSION = 'v67';
 const STATIC_CACHE = `jmart-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `jmart-dynamic-${CACHE_VERSION}`;
 const CDN_CACHE = `jmart-cdn-${CACHE_VERSION}`;
@@ -41,23 +41,7 @@ const STATIC_FILES = [
   './js/formValidator.js',
   './js/formConstants.js',
   './js/toastNotifier.js',
-  './js/components/shared.jsx',
-  './js/components/hooks.jsx',
-  './js/components/modals.jsx',
-  './js/components/auth.jsx',
-  './js/components/app.jsx',
-  './js/components/dashboard.jsx',
-  './js/components/training.jsx',
-  './js/components/form-prestart.jsx',
-  './js/components/form-incident.jsx',
-  './js/components/form-toolbox.jsx',
-  './js/components/form-inspection.jsx',
-  './js/components/form-itp.jsx',
-  './js/components/form-steel-itp.jsx',
-  './js/components/view-emergency.jsx',
-  './js/components/view-settings.jsx',
-  './js/components/view-recordings.jsx',
-  './js/components/bootstrap.jsx',
+  './js/app.js',  // Pre-compiled React app (replaces 17 individual .jsx files)
   './manifest.json',
   './offline.html',
   './icons/icon-192x192.png',
@@ -74,8 +58,7 @@ const CDN_RESOURCES = [
   'https://unpkg.com/react@18.2.0/umd/react.production.min.js',
   'https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js',
 
-  // Babel (CRITICAL — app fails without this, pinned version)
-  'https://unpkg.com/@babel/standalone@7.24.0/babel.min.js',
+  // Babel removed — JSX is pre-compiled at build time
 
   // Icons (pinned version — was @latest which is a supply-chain risk)
   'https://unpkg.com/lucide@0.344.0/dist/umd/lucide.min.js',
@@ -87,9 +70,6 @@ const CDN_RESOURCES = [
   'https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js',
   'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js',
   'https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js',
-
-  // Babel fallback CDN (different path than primary)
-  'https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.0/babel.min.js'
 
   // NOTE: Google Identity Services (accounts.google.com/gsi/client) intentionally
   // excluded — it's a live endpoint that must always load fresh from Google.

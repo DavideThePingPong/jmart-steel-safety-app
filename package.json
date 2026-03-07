@@ -4,6 +4,7 @@
   "description": "JMart Steel Safety Management App - Pre-Start Checklists, Site Inspections, ITP Forms, Toolbox Talks, and Incident Reports",
   "main": "index.html",
   "scripts": {
+    "build": "node scripts/build-jsx.js",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",

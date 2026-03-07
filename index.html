@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://cdnjs.cloudflare.com https://cdn.tailwindcss.com https://cdn.jsdelivr.net https://www.gstatic.com https://apis.google.com https://accounts.google.com; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://unpkg.com; connect-src 'self' https://unpkg.com https://cdnjs.cloudflare.com https://www.gstatic.com https://*.firebaseio.com https://*.firebasedatabase.app https://*.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://accounts.google.com wss://*.firebaseio.com wss://*.firebasedatabase.app; img-src 'self' data: blob:; font-src 'self' https://unpkg.com; frame-src https://accounts.google.com https://*.firebaseapp.com; worker-src 'self'; media-src 'self' blob:;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com https://cdnjs.cloudflare.com https://cdn.tailwindcss.com https://cdn.jsdelivr.net https://www.gstatic.com https://apis.google.com https://accounts.google.com; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://unpkg.com; connect-src 'self' https://unpkg.com https://cdnjs.cloudflare.com https://www.gstatic.com https://*.firebaseio.com https://*.firebasedatabase.app https://*.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://accounts.google.com wss://*.firebaseio.com wss://*.firebasedatabase.app; img-src 'self' data: blob:; font-src 'self' https://unpkg.com; frame-src https://accounts.google.com https://*.firebaseapp.com; worker-src 'self'; media-src 'self' blob:;">
   <title>J&M Artsteel Safety</title>
 
   <!-- PWA Meta Tags -->
@@ -58,13 +58,13 @@
       var cdnScripts = [
         'https://unpkg.com/react@18.2.0/umd/react.production.min.js',
         'https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js',
-        'https://unpkg.com/@babel/standalone@7.24.0/babel.min.js',
+        // Babel removed — JSX is pre-compiled at build time (scripts/build-jsx.js)
         'https://unpkg.com/lucide@0.344.0/dist/umd/lucide.min.js',
         'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'
       ];
 
       // Critical scripts — if eval fails for these, the app cannot run
-      var criticalScripts = ['react.production', 'react-dom.production', 'babel.min'];
+      var criticalScripts = ['react.production', 'react-dom.production'];
 
       // Load each script sequentially using fetch + eval to bypass SW script interception
       function loadScript(url) {
@@ -265,9 +265,9 @@
     };
   </script>
 
-  <!-- React Components — wait for CDN + services, then compile JSX -->
+  <!-- React Components — pre-compiled by scripts/build-jsx.js (no runtime Babel needed) -->
   <script>
-    (async function loadComponents() {
+    (async function loadApp() {
       // Wait for CDN libraries AND service scripts to be ready
       try {
         await window.__servicesReady;
@@ -280,8 +280,8 @@
       await loadScriptTag('js/toastNotifier.js');
 
       // Check that critical libs are available
-      if (typeof React === 'undefined' || typeof Babel === 'undefined') {
-        console.error('[LOADER] Critical CDN libs missing after dynamic load');
+      if (typeof React === 'undefined') {
+        console.error('[LOADER] React not loaded');
         document.getElementById('root').innerHTML =
           '<div style="padding:40px;text-align:center;font-family:system-ui;">' +
           '<h2 style="color:#dc2626;">Failed to Load App</h2>' +
@@ -291,43 +291,13 @@
         return;
       }
 
-      const files = [
-        'js/components/shared.jsx',
-        'js/components/hooks.jsx',
-        'js/components/modals.jsx',
-        'js/components/auth.jsx',
-        'js/components/app.jsx',
-        'js/components/dashboard.jsx',
-        'js/components/training.jsx',
-        'js/components/form-prestart.jsx',
-        'js/components/form-incident.jsx',
-        'js/components/form-toolbox.jsx',
-        'js/components/form-inspection.jsx',
-        'js/components/form-itp.jsx',
-        'js/components/form-steel-itp.jsx',
-        'js/components/view-emergency.jsx',
-        'js/components/view-settings.jsx',
-        'js/components/view-recordings.jsx',
-        'js/components/bootstrap.jsx'
-      ];
+      // Load pre-compiled React app (built by scripts/build-jsx.js)
       try {
-        console.log('[LOADER] Fetching', files.length, 'component files...');
-        const sources = await Promise.all(
-          files.map(f => fetch(f).then(r => {
-            if (!r.ok) throw new Error('Failed to load ' + f);
-            return r.text();
-          }))
-        );
-        console.log('[LOADER] All files fetched, compiling with Babel...');
-        const combined = sources.join('\n\n');
-        const compiled = Babel.transform(combined, { presets: ['react'] }).code;
-        console.log('[LOADER] Babel compiled', compiled.length, 'chars. Appending script...');
-        const script = document.createElement('script');
-        script.textContent = compiled;
-        document.body.appendChild(script);
-        console.log('[LOADER] Script appended. Root innerHTML length:', document.getElementById('root').innerHTML.length);
+        console.log('[LOADER] Loading pre-compiled app...');
+        await loadScriptTag('js/app.js');
+        console.log('[LOADER] App loaded. Root innerHTML length:', document.getElementById('root').innerHTML.length);
       } catch (err) {
-        console.error('[LOADER] Component loading error:', err);
+        console.error('[LOADER] App loading error:', err);
         var errRoot = document.getElementById('root');
         errRoot.innerHTML =
           '<div style="padding:40px;text-align:center;font-family:system-ui;">' +
