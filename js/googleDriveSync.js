@@ -37,25 +37,38 @@ const GoogleDriveSync = {
     }
 
     try {
+      var self = this;
       this.tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: GOOGLE_CLIENT_ID,
         scope: DRIVE_SCOPES,
         callback: (response) => {
           if (response.error) {
             console.error('Google Auth error:', response.error);
-            this._notifyConnectionChange(false, 'Google sign-in failed: ' + response.error);
+            self._notifyConnectionChange(false, 'Google sign-in failed: ' + response.error);
             return;
           }
-          this.accessToken = response.access_token;
+          self.accessToken = response.access_token;
           // Store token with timestamp so we know when it expires (~1hr)
           localStorage.setItem('google-drive-token', JSON.stringify({
             token: response.access_token,
             savedAt: Date.now()
           }));
           console.log('Google Drive connected!');
-          this._notifyConnectionChange(true, null);
-          this.getOrCreateFolder();
+          self._notifyConnectionChange(true, null);
+          self.getOrCreateFolder();
         },
+        error_callback: (error) => {
+          console.error('Google OAuth error:', error);
+          var msg = 'Google sign-in failed';
+          if (error && error.type === 'popup_failed_to_open') {
+            msg = 'Popup blocked. Allow popups for this site, or open in your browser (not the app icon).';
+          } else if (error && error.type === 'popup_closed') {
+            msg = 'Sign-in window was closed. Tap Connect again to retry.';
+          } else if (error && error.message) {
+            msg = error.message;
+          }
+          self._notifyConnectionChange(false, msg);
+        }
       });
       this.isInitialized = true;
       console.log('Google Drive initialized');
@@ -618,24 +631,29 @@ const GoogleDriveSync = {
 };
 
 // Initialize Google Drive when API loads (with robust retry)
-// Use addEventListener instead of window.onload to avoid overwriting other handlers
-window.addEventListener('load', function() {
-  if (isGoogleDriveConfigured) {
-    const tryInit = (attempt) => {
-      if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
-        GoogleDriveSync.init();
-        console.log('Google Drive init succeeded on attempt', attempt);
-      } else if (attempt < 30) {
-        // Retry every 1s for up to 30 seconds (mobile networks can be slow)
-        const delay = 1000;
-        if (attempt % 5 === 0) {
-          console.log('Google API not ready, retrying... (attempt', attempt, ')');
-        }
-        setTimeout(() => tryInit(attempt + 1), delay);
-      } else {
-        console.error('Google API failed to load after 30 attempts');
+// Handles both: script loaded before window.load, and after window.load already fired
+(function() {
+  if (!isGoogleDriveConfigured) return;
+
+  var tryInit = function(attempt) {
+    if (GoogleDriveSync.isInitialized) return; // Already done
+    if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
+      GoogleDriveSync.init();
+      console.log('Google Drive init succeeded on attempt', attempt);
+    } else if (attempt < 30) {
+      if (attempt % 5 === 0) {
+        console.log('Google API not ready, retrying... (attempt', attempt, ')');
       }
-    };
+      setTimeout(function() { tryInit(attempt + 1); }, 1000);
+    } else {
+      console.error('Google API failed to load after 30 attempts');
+    }
+  };
+
+  if (document.readyState === 'complete') {
+    // Page already loaded — start trying immediately
     tryInit(1);
+  } else {
+    window.addEventListener('load', function() { tryInit(1); });
   }
-});
+})();

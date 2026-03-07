@@ -9,7 +9,7 @@
  * - v4: Pinned CDN versions (supply-chain hardening)
  */
 
-const CACHE_VERSION = 'v65';
+const CACHE_VERSION = 'v66';
 const STATIC_CACHE = `jmart-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `jmart-dynamic-${CACHE_VERSION}`;
 const CDN_CACHE = `jmart-cdn-${CACHE_VERSION}`;
@@ -89,10 +89,11 @@ const CDN_RESOURCES = [
   'https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js',
 
   // Babel fallback CDN (different path than primary)
-  'https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.0/babel.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.0/babel.min.js'
 
-  // Google Identity Services
-  'https://accounts.google.com/gsi/client'
+  // NOTE: Google Identity Services (accounts.google.com/gsi/client) intentionally
+  // excluded — it's a live endpoint that must always load fresh from Google.
+  // The SW must NOT intercept it (see fetch handler skip below).
 ];
 
 // Cache strategies
@@ -353,6 +354,11 @@ self.addEventListener('fetch', (event) => {
 
   // NEVER intercept reset.html — it must always load fresh from network
   if (event.request.url.includes('reset.html')) return;
+
+  // NEVER intercept Google Auth/API scripts — these MUST go directly to Google.
+  // The SW's forced CORS mode + cache-first strategy breaks the GSI sign-in library.
+  if (event.request.url.includes('accounts.google.com') ||
+      event.request.url.includes('apis.google.com')) return;
 
   const strategy = getStrategy(event.request);
   const url = new URL(event.request.url);
