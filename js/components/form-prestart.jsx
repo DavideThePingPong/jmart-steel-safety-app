@@ -412,6 +412,7 @@ function PrestartView({ onSubmit, onUpdate, editingForm, previousPrestarts = [],
         </div>
 
         <NoteMediaBox label="Work Areas" value={workAreas.value} notes={workAreas.notes} media={workAreas.media}
+          siteName={siteConducted}
           onValueChange={(val) => setWorkAreas(prev => ({...prev, value: val}))}
           onAddNote={(note) => setWorkAreas(prev => ({...prev, notes: [...prev.notes, note]}))}
           onAddMedia={(item) => { console.log('Work Areas onAddMedia called with:', item?.name); setWorkAreas(prev => ({...prev, media: [...prev.media, item]})); }}
@@ -419,6 +420,7 @@ function PrestartView({ onSubmit, onUpdate, editingForm, previousPrestarts = [],
           onRemoveMedia={(idx) => setWorkAreas(prev => ({...prev, media: prev.media.filter((_, i) => i !== idx)}))} />
 
         <NoteMediaBox label="Task to be Completed this Shift" value={tasksThisShift.value} notes={tasksThisShift.notes} media={tasksThisShift.media}
+          siteName={siteConducted}
           onValueChange={(val) => setTasksThisShift(prev => ({...prev, value: val}))}
           onAddNote={(note) => setTasksThisShift(prev => ({...prev, notes: [...prev.notes, note]}))}
           onAddMedia={(item) => { console.log('Tasks onAddMedia called with:', item?.name); setTasksThisShift(prev => ({...prev, media: [...prev.media, item]})); }}
@@ -443,6 +445,7 @@ function PrestartView({ onSubmit, onUpdate, editingForm, previousPrestarts = [],
         {/* Conditional Machinery Controls - only shows if Plant/Equipment is Yes */}
         {isPlantEquipmentUsed === true && (
           <NoteMediaBox label="Controls Required for Machinery / Plants" value={machineryControls.value} notes={machineryControls.notes} media={machineryControls.media}
+            siteName={siteConducted}
             onValueChange={(val) => setMachineryControls(prev => ({...prev, value: val}))}
             onAddNote={(note) => setMachineryControls(prev => ({...prev, notes: [...prev.notes, note]}))}
             onAddMedia={(item) => { console.log('Machinery onAddMedia called with:', item?.name); setMachineryControls(prev => ({...prev, media: [...prev.media, item]})); }}
@@ -522,6 +525,7 @@ function PrestartView({ onSubmit, onUpdate, editingForm, previousPrestarts = [],
         {/* Conditional Safety Issues Box - only shows if Yes */}
         {hasSafetyIssues === true && (
           <NoteMediaBox label="Safety Issues/Incidents Details" value={safetyIssuesPreviousShift.value} notes={safetyIssuesPreviousShift.notes} media={safetyIssuesPreviousShift.media}
+            siteName={siteConducted}
             onValueChange={(val) => setSafetyIssuesPreviousShift(prev => ({...prev, value: val}))}
             onAddNote={(note) => setSafetyIssuesPreviousShift(prev => ({...prev, notes: [...prev.notes, note]}))}
             onAddMedia={(item) => { console.log('Safety Issues onAddMedia called with:', item?.name); setSafetyIssuesPreviousShift(prev => ({...prev, media: [...prev.media, item]})); }}

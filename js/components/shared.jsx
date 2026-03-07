@@ -343,11 +343,15 @@ function SignaturePad({ onSave, onCancel, name }) {
 }
 
 // Note Media Box Component
-function NoteMediaBox({ label, iconName, value, notes, media, onValueChange, onAddNote, onAddMedia, onRemoveNote, onRemoveMedia }) {
+// MAX_PHOTOS_PER_SECTION: prevents memory/storage issues from too many photos
+const MAX_PHOTOS_PER_SECTION = 5;
+
+function NoteMediaBox({ label, iconName, value, notes, media, onValueChange, onAddNote, onAddMedia, onRemoveNote, onRemoveMedia, siteName }) {
   const cameraInputRef = useRef(null);
   const galleryInputRef = useRef(null);
   const [showNoteInput, setShowNoteInput] = useState(false);
   const [newNote, setNewNote] = useState('');
+  const [uploadStatus, setUploadStatus] = useState(''); // Drive upload feedback
 
   const handleAddNote = () => {
     if (newNote.trim()) {
@@ -361,7 +365,20 @@ function NoteMediaBox({ label, iconName, value, notes, media, onValueChange, onA
     const files = e.target.files;
     console.log('handleMediaCapture called, files:', files?.length);
     if (files && files.length > 0) {
-      Array.from(files).forEach(file => {
+      // Enforce per-section photo limit
+      const currentCount = (media || []).length;
+      const remaining = MAX_PHOTOS_PER_SECTION - currentCount;
+      if (remaining <= 0) {
+        alert('Maximum ' + MAX_PHOTOS_PER_SECTION + ' photos per section. Remove a photo to add more.');
+        e.target.value = '';
+        return;
+      }
+      const filesToProcess = Array.from(files).slice(0, remaining);
+      if (filesToProcess.length < files.length) {
+        alert('Only adding ' + filesToProcess.length + ' of ' + files.length + ' photos (limit: ' + MAX_PHOTOS_PER_SECTION + ' per section).');
+      }
+
+      filesToProcess.forEach(file => {
         console.log('Processing file:', file.name, 'type:', file.type, 'size:', file.size);
 
         // Compress image before storing to avoid localStorage quota issues on mobile
@@ -450,6 +467,31 @@ function NoteMediaBox({ label, iconName, value, notes, media, onValueChange, onA
           img.src = dataUrl;
         };
 
+        // Helper: add photo to form state AND upload to Drive in background
+        const addPhotoAndUpload = (photoData, fileName) => {
+          onAddMedia({ name: fileName, type: 'image/jpeg', data: photoData });
+          // Upload to Google Drive immediately if connected (non-blocking)
+          if (typeof GoogleDriveSync !== 'undefined' && GoogleDriveSync.isConnected()) {
+            const site = siteName || 'Unknown Site';
+            setUploadStatus('☁️ Uploading to Drive...');
+            GoogleDriveSync.uploadJobPhoto(photoData, fileName, site, new Date())
+              .then(result => {
+                if (result) {
+                  setUploadStatus('✅ Saved to Drive');
+                  console.log('Photo uploaded to Drive:', fileName);
+                } else {
+                  setUploadStatus('⚠️ Drive upload failed');
+                }
+                setTimeout(() => setUploadStatus(''), 3000);
+              })
+              .catch(err => {
+                console.error('Drive photo upload error:', err);
+                setUploadStatus('⚠️ Drive upload failed');
+                setTimeout(() => setUploadStatus(''), 3000);
+              });
+          }
+        };
+
         compressImage(file).then(compressedData => {
           console.log('compressImage resolved, data:', compressedData ? 'yes' : 'no');
           if (compressedData) {
@@ -459,10 +501,10 @@ function NoteMediaBox({ label, iconName, value, notes, media, onValueChange, onA
               console.warn('Photo still large (' + Math.round(compressedData.length/1024) + 'KB base64), re-compressing at 600px/0.4 quality');
               compressImage(file, 600, 0.4).then(smallerData => {
                 console.log('Re-compressed to:', Math.round((smallerData || compressedData).length/1024) + 'KB');
-                onAddMedia({ name: file.name, type: 'image/jpeg', data: smallerData || compressedData });
+                addPhotoAndUpload(smallerData || compressedData, file.name);
               });
             } else {
-              onAddMedia({ name: file.name, type: 'image/jpeg', data: compressedData });
+              addPhotoAndUpload(compressedData, file.name);
             }
           } else {
             console.error('No compressed data returned for', file.name);
@@ -486,19 +528,30 @@ function NoteMediaBox({ label, iconName, value, notes, media, onValueChange, onA
           className="flex-1 bg-blue-50 border border-blue-200 text-blue-700 py-2 px-3 rounded-lg text-sm font-medium">
           📝 Add Note
         </button>
-        <button onClick={() => cameraInputRef.current?.click()}
-          className="flex-1 bg-purple-50 border border-purple-200 text-purple-700 py-2 px-3 rounded-lg text-sm font-medium">
-          📷 Camera
-        </button>
-        <button onClick={() => galleryInputRef.current?.click()}
-          className="flex-1 bg-green-50 border border-green-200 text-green-700 py-2 px-3 rounded-lg text-sm font-medium">
-          🖼️ Gallery
-        </button>
+        {(media || []).length < MAX_PHOTOS_PER_SECTION ? (
+          <>
+            <button onClick={() => cameraInputRef.current?.click()}
+              className="flex-1 bg-purple-50 border border-purple-200 text-purple-700 py-2 px-3 rounded-lg text-sm font-medium">
+              📷 Camera
+            </button>
+            <button onClick={() => galleryInputRef.current?.click()}
+              className="flex-1 bg-green-50 border border-green-200 text-green-700 py-2 px-3 rounded-lg text-sm font-medium">
+              🖼️ Gallery
+            </button>
+          </>
+        ) : (
+          <span className="flex-1 text-center text-xs text-gray-400 py-2">
+            📷 {MAX_PHOTOS_PER_SECTION}/{MAX_PHOTOS_PER_SECTION} max
+          </span>
+        )}
         {/* Camera input - with capture attribute to open camera */}
         <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={handleMediaCapture} className="hidden" />
         {/* Gallery input - without capture attribute to open photo library */}
         <input ref={galleryInputRef} type="file" accept="image/*" multiple onChange={handleMediaCapture} className="hidden" />
       </div>
+      {uploadStatus && (
+        <p className="text-xs text-center text-gray-500">{uploadStatus}</p>
+      )}
       {showNoteInput && (
         <div className="flex gap-2">
           <input type="text" value={newNote} onChange={(e) => setNewNote(e.target.value)}
@@ -520,7 +573,7 @@ function NoteMediaBox({ label, iconName, value, notes, media, onValueChange, onA
       )}
       {media && media.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs font-medium text-gray-500 uppercase">Photos:</p>
+          <p className="text-xs font-medium text-gray-500 uppercase">Photos ({media.length}/{MAX_PHOTOS_PER_SECTION}):</p>
           <div className="grid grid-cols-3 gap-2">
             {media.map((item, idx) => (
               <div key={idx} className="relative">
