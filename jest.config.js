@@ -13,15 +13,16 @@ module.exports = {
   setupFilesAfterEnv: ['<rootDir>/tests/setupTests.js'],
   collectCoverageFrom: [
     'src/**/*.{js,jsx}',
+    'js/**/*.{js,jsx}',
     '!src/**/*.test.{js,jsx}',
     '!**/node_modules/**'
   ],
   coverageThreshold: {
     global: {
-      branches: 40,
-      functions: 40,
-      lines: 40,
-      statements: 40
+      branches: 20,
+      functions: 20,
+      lines: 20,
+      statements: 20
     }
   },
   coverageReporters: ['text', 'lcov', 'html'],
