@@ -39,6 +39,7 @@ const PhotoUploadManager = {
       return GoogleDriveSync.folderId;
     } catch (error) {
       console.error('Error creating job folder:', error);
+      if (typeof ToastNotifier !== 'undefined') ToastNotifier.warning('Could not create photo folder on Drive');
       return null;
     }
   },
@@ -119,6 +120,7 @@ const PhotoUploadManager = {
       return { fileId: data.id, filename };
     } catch (error) {
       console.error('Drive upload error:', error);
+      if (typeof ToastNotifier !== 'undefined') ToastNotifier.error('Photo upload to Drive failed');
       return null;
     }
   },
@@ -142,6 +144,7 @@ const PhotoUploadManager = {
         console.log(`Photo queued for offline upload: ${file.name}`);
       } catch (e) {
         console.error('Error queueing photo:', e);
+        if (typeof ToastNotifier !== 'undefined') ToastNotifier.error('Failed to save photo for later upload');
         if (onProgress) onProgress('Failed to queue photo', 100);
       }
       return results;
@@ -170,6 +173,7 @@ const PhotoUploadManager = {
         await firebaseDb.ref('jmart-safety/photoUploads').push(uploadLog);
       } catch (e) {
         console.error('Error logging upload:', e);
+        if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(e, 'photo-upload-log');
       }
     }
 

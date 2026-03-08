@@ -36,6 +36,7 @@ const AuditLogManager = {
       localStorage.setItem('jmart-audit-log', json);
     } catch (e) {
       console.error('Error saving audit log locally:', e);
+      if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(e, 'audit-local');
     }
 
     // Sync to Firebase if connected
@@ -44,6 +45,7 @@ const AuditLogManager = {
         await firebaseDb.ref('jmart-safety/auditLog/' + logEntry.id).set(logEntry);
       } catch (e) {
         console.error('Error syncing audit log to Firebase:', e);
+        if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(e, 'audit-firebase');
       }
     }
 

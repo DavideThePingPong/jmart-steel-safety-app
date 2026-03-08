@@ -20,7 +20,7 @@ const GoogleDriveSync = {
   _notifyConnectionChange: function(connected, error) {
     this._lastError = error || null;
     this._onConnectCallbacks.forEach(function(cb) {
-      try { cb(connected, error); } catch (e) { console.error('Drive callback error:', e); }
+      try { cb(connected, error); } catch (e) { console.error('Drive callback error:', e); if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(e, 'drive-callback'); }
     });
   },
 
@@ -95,6 +95,7 @@ const GoogleDriveSync = {
       }
     } catch (error) {
       console.error('Google Drive init error:', error);
+      if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(error, 'drive-init');
     }
   },
 
@@ -244,6 +245,7 @@ const GoogleDriveSync = {
       return this.folderId;
     } catch (error) {
       console.error('Error getting/creating folder:', error);
+      if (typeof ToastNotifier !== 'undefined') ToastNotifier.warning('Could not access Google Drive folder');
       return null;
     }
   },
@@ -345,6 +347,7 @@ const GoogleDriveSync = {
       return data;
     } catch (error) {
       console.error('Upload error:', error);
+      if (typeof ToastNotifier !== 'undefined') ToastNotifier.error('Failed to upload PDF to Google Drive');
       return null;
     }
   },
@@ -381,6 +384,7 @@ const GoogleDriveSync = {
         }
       } catch (error) {
         console.error('Error uploading form:', form.id, error);
+        if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(error, 'drive-form-upload');
       }
     }
 
@@ -547,6 +551,7 @@ const GoogleDriveSync = {
       return dateFolderId;
     } catch (error) {
       console.error('Error creating recordings folder structure:', error);
+      if (typeof ToastNotifier !== 'undefined') ToastNotifier.warning('Could not create Drive folder for recordings');
       return null;
     }
   },
@@ -604,6 +609,7 @@ const GoogleDriveSync = {
       return data;
     } catch (error) {
       console.error('Upload photo error:', error);
+      if (typeof ToastNotifier !== 'undefined') ToastNotifier.error('Photo upload to Drive failed');
       return null;
     }
   },

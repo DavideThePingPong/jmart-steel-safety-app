@@ -9,7 +9,7 @@
  * - v4: Pinned CDN versions (supply-chain hardening)
  */
 
-const CACHE_VERSION = 'v67';
+const CACHE_VERSION = 'v68';
 const STATIC_CACHE = `jmart-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `jmart-dynamic-${CACHE_VERSION}`;
 const CDN_CACHE = `jmart-cdn-${CACHE_VERSION}`;
@@ -34,6 +34,7 @@ const STATIC_FILES = [
   './js/photoUploadManager.js',
   './js/offlinePhotoQueue.js',
   './js/networkStatus.js',
+  './js/errorTelemetry.js',
   './js/pdfConfig.js',
   './js/pdfGenerator.js',
   './js/trainingCourseData.js',

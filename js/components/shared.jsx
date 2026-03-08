@@ -42,6 +42,11 @@ class ErrorBoundary extends React.Component {
         });
       } catch (e) { /* non-fatal */ }
     }
+
+    // Report to ErrorTelemetry if available
+    if (typeof ErrorTelemetry !== 'undefined') {
+      ErrorTelemetry.captureError(error, 'react-error-boundary');
+    }
   }
 
   render() {

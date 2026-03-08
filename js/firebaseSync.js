@@ -68,6 +68,7 @@ const FirebaseSync = {
       }
     } catch (e) {
       console.error('Error loading sync queue:', e);
+      if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(e, 'sync-queue-load');
       this.pendingQueue = [];
     }
   },
@@ -117,6 +118,7 @@ const FirebaseSync = {
       this.consecutiveStorageErrors = 0;
     } catch (e) {
       console.error('Error saving sync queue:', e);
+      if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(e, 'sync-queue-save');
       this.consecutiveStorageErrors++;
       if (this.consecutiveStorageErrors >= this.CIRCUIT_BREAKER_THRESHOLD && !this.circuitOpen) {
         this.circuitOpen = true;
@@ -444,6 +446,8 @@ const FirebaseSync = {
       if (data) callback(data);
     }, (error) => {
       console.error('Firebase listener error:', error);
+      if (typeof ToastNotifier !== 'undefined') ToastNotifier.error('Lost connection to form updates');
+      if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(error, 'firebase-listener');
     });
     return () => ref.off();
   },
@@ -457,6 +461,7 @@ const FirebaseSync = {
       if (data) callback(data);
     }, (error) => {
       console.error('Firebase sites listener error:', error);
+      if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(error, 'firebase-sites-listener');
     });
     return () => ref.off();
   },
@@ -470,6 +475,7 @@ const FirebaseSync = {
       if (data) callback(data);
     }, (error) => {
       console.error('Firebase training listener error:', error);
+      if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(error, 'firebase-training-listener');
     });
     return () => ref.off();
   },

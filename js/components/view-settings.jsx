@@ -1,6 +1,102 @@
 // SettingsView Component
 // Extracted from views.jsx
 
+// ========================================
+// SYSTEM HEALTH CARD
+// Shows error telemetry status in Settings
+// ========================================
+function SystemHealthCard() {
+  const [health, setHealth] = useState(null);
+  const [showLog, setShowLog] = useState(false);
+  const [errors, setErrors] = useState([]);
+
+  useEffect(() => {
+    function refresh() {
+      if (typeof ErrorTelemetry !== 'undefined') {
+        setHealth(ErrorTelemetry.getHealth());
+        if (showLog) {
+          setErrors(ErrorTelemetry.getRecentErrors(20));
+        }
+      }
+    }
+    refresh();
+    const interval = setInterval(refresh, 5000);
+    return () => clearInterval(interval);
+  }, [showLog]);
+
+  if (typeof ErrorTelemetry === 'undefined') return null;
+  if (!health) return null;
+
+  const statusColors = {
+    healthy: { bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-700', dot: 'bg-green-500', label: 'Healthy' },
+    degraded: { bg: 'bg-yellow-50', border: 'border-yellow-200', text: 'text-yellow-700', dot: 'bg-yellow-500', label: 'Degraded' },
+    critical: { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-700', dot: 'bg-red-500', label: 'Critical' }
+  };
+  const s = statusColors[health.status] || statusColors.healthy;
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-base font-bold text-gray-800">System Health</h3>
+        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${s.bg} ${s.border} border ${s.text}`}>
+          <span className={`w-2 h-2 rounded-full ${s.dot} mr-1.5`}></span>
+          {s.label}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        <div className="bg-gray-50 rounded-lg p-2">
+          <p className="text-xs text-gray-500">Errors (last hr)</p>
+          <p className="text-lg font-bold text-gray-800">{health.errorsLastHour}</p>
+        </div>
+        <div className="bg-gray-50 rounded-lg p-2">
+          <p className="text-xs text-gray-500">Total captured</p>
+          <p className="text-lg font-bold text-gray-800">{health.totalErrors}</p>
+        </div>
+        <div className="bg-gray-50 rounded-lg p-2">
+          <p className="text-xs text-gray-500">Sync queue</p>
+          <p className="text-lg font-bold text-gray-800">{health.syncQueueSize}</p>
+        </div>
+        <div className="bg-gray-50 rounded-lg p-2">
+          <p className="text-xs text-gray-500">Circuit breaker</p>
+          <p className="text-lg font-bold text-gray-800 capitalize">{health.circuitBreakerState || 'closed'}</p>
+        </div>
+      </div>
+
+      {health.lastSyncTime && (
+        <p className="text-xs text-gray-400 mb-2">Last sync: {new Date(health.lastSyncTime).toLocaleTimeString()}</p>
+      )}
+
+      <button
+        onClick={() => { setShowLog(!showLog); if (!showLog) setErrors(ErrorTelemetry.getRecentErrors(20)); }}
+        className="w-full py-2 text-sm text-orange-600 font-medium rounded-lg bg-orange-50 active:bg-orange-100"
+      >
+        {showLog ? 'Hide Error Log' : 'View Error Log'}
+      </button>
+
+      {showLog && (
+        <div className="mt-3 max-h-64 overflow-y-auto">
+          {errors.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-3">No errors recorded</p>
+          ) : (
+            errors.map((err, i) => (
+              <div key={i} className="border-b border-gray-100 py-2 last:border-0">
+                <div className="flex items-start justify-between">
+                  <p className="text-xs font-medium text-red-600 flex-1">{err.message || err.msg || 'Unknown error'}</p>
+                  <span className="text-xs text-gray-400 ml-2 whitespace-nowrap">
+                    {err.timestamp ? new Date(err.timestamp).toLocaleTimeString() : ''}
+                  </span>
+                </div>
+                {err.context && <p className="text-xs text-gray-400 mt-0.5">{err.context}</p>}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSignatures, isAdmin = false, isDeviceAdmin = false, canViewDevices = false, canRevokeDevices = false, pendingDevices = [], approvedDevices = [] }) {
   const [newSite, setNewSite] = useState('');
   const [showAddSite, setShowAddSite] = useState(false);
@@ -692,6 +788,9 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
           </button>
         )}
       </div>
+
+      {/* System Health Section */}
+      <SystemHealthCard />
 
       <div className="bg-white rounded-xl shadow-sm p-4">
         <p className="text-sm text-gray-600">J&M Artsteel Safety App v1.0</p>

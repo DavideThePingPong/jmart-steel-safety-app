@@ -104,9 +104,10 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
               const pdfBlob = doc.output('blob');
               GoogleDriveSync.uploadPDF(pdfBlob, filename, formType)
                 .then(function(r) { if (r) console.log('PDF uploaded to Drive:', filename); })
-                .catch(function(e) { console.error('Drive PDF upload error:', e); });
+                .catch(function(e) { console.error('Drive PDF upload error:', e); if (typeof ToastNotifier !== 'undefined') ToastNotifier.warning('PDF saved locally but Drive upload failed'); });
             } catch (driveErr) {
               console.error('Drive PDF generation error:', driveErr);
+              if (typeof ToastNotifier !== 'undefined') ToastNotifier.warning('Could not generate PDF for Drive backup');
             }
           }
         } catch (pdfErr) {
@@ -383,6 +384,8 @@ function useDataSync({ setForms, setSites, deletingFormRef }) {
         console.log('Loaded from localStorage:', localForms.length, 'forms');
       } catch (e) {
         console.error('Error parsing localStorage forms:', e);
+        if (typeof ToastNotifier !== 'undefined') ToastNotifier.warning('Form data may be corrupted. Try Fix Everything in Settings.');
+        if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(e, 'forms-parse');
       }
     }
 
@@ -402,6 +405,7 @@ function useDataSync({ setForms, setSites, deletingFormRef }) {
         localStorage.setItem('jmart-safety-sites', JSON.stringify(sanitized));
       } catch (e) {
         console.error('Error parsing localStorage sites:', e);
+        if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(e, 'sites-parse');
       }
     }
 

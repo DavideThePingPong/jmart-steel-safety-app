@@ -79,7 +79,7 @@
       'js/deviceAuth.js', 'js/googleDriveConfig.js', 'js/googleDriveSync.js',
       'js/dailyBackupScheduler.js', 'js/auditLogManager.js', 'js/firebaseSync.js',
       'js/jobsManager.js', 'js/deviceAuthManager.js', 'js/photoUploadManager.js',
-      'js/offlinePhotoQueue.js', 'js/networkStatus.js',
+      'js/offlinePhotoQueue.js', 'js/networkStatus.js', 'js/errorTelemetry.js',
       'js/pdfConfig.js', 'js/pdfGenerator.js',
       'js/trainingCourseData.js', 'js/trainingCertGenerator.js',
       'js/formConstants.js'
@@ -219,14 +219,21 @@
   <script>
     document.getElementById('root').innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:#f3f4f6;"><div class="spinner"></div><p style="margin-top:16px;color:#6b7280;font-family:system-ui;">Loading J&M Artsteel Safety...</p></div>';
   </script>
-  <!-- Global error handler for debugging -->
+  <!-- Bootstrap error capture — ErrorTelemetry.init() replaces these handlers -->
   <script>
     window.__appErrors = [];
     window.onerror = function(msg, src, line, col, err) {
-      var e = {msg:msg, src:src, line:line, col:col, stack: err && err.stack ? err.stack.substring(0,300) : ''};
+      var e = {msg:msg, src:src, line:line, col:col, stack: err && err.stack ? err.stack.substring(0,300) : '', ts: Date.now()};
       window.__appErrors.push(e);
       console.error('[GLOBAL ERROR]', msg, 'at', src, line+':'+col);
       return false;
+    };
+    window.onunhandledrejection = function(event) {
+      var reason = event.reason;
+      var msg = reason instanceof Error ? reason.message : String(reason || 'Unknown rejection');
+      var e = {msg: 'Unhandled rejection: ' + msg, src: 'promise', stack: reason && reason.stack ? reason.stack.substring(0,300) : '', ts: Date.now()};
+      window.__appErrors.push(e);
+      console.error('[UNHANDLED REJECTION]', msg);
     };
   </script>
 

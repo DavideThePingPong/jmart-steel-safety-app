@@ -22,6 +22,7 @@ const OfflinePhotoQueue = {
       }
     } catch (e) {
       console.error('Error loading photo queue:', e);
+      if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(e, 'photo-queue-load');
       this.queue = [];
     }
 
@@ -42,6 +43,7 @@ const OfflinePhotoQueue = {
       }
     } catch (e) {
       console.error('Error saving photo queue:', e);
+      if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(e, 'photo-queue-save');
     }
   },
 

@@ -36,6 +36,14 @@ describe('ErrorBoundary', () => {
     expect(code).toMatch(/AuditLogManager\.log\(['"]error['"]/);
   });
 
+  it('should report to ErrorTelemetry when available', () => {
+    expect(code).toMatch(/ErrorTelemetry\.captureError\(error,\s*['"]react-error-boundary['"]\)/);
+  });
+
+  it('should guard ErrorTelemetry with typeof check', () => {
+    expect(code).toMatch(/typeof ErrorTelemetry\s*!==\s*['"]undefined['"]/);
+  });
+
   it('should show "Something Went Wrong" message', () => {
     expect(code).toMatch(/Something Went Wrong/);
   });
