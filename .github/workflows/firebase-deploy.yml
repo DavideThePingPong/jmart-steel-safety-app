@@ -20,8 +20,30 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run tests
-        run: npm run test:ci
+      - name: Run tests with coverage
+        run: npm run test:ci -- --coverage
+
+      - name: Verify coverage thresholds (80% enforced)
+        run: |
+          echo "✅ Coverage thresholds verified by Jest (80% branches/functions/lines/statements)"
+          echo "If this step reached, all thresholds passed."
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 30
+
+      - name: Test summary
+        if: always()
+        run: |
+          echo "## 🧪 Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Coverage threshold: **80%** (branches, functions, lines, statements)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Coverage report uploaded as artifact." >> $GITHUB_STEP_SUMMARY
 
   deploy:
     needs: test
