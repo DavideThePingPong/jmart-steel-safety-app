@@ -559,11 +559,19 @@ function useDataSync({ setForms, setSites, deletingFormRef }) {
         return;
       }
 
-      if (FirebaseSync.isConnected() && isOnline && forms.length > 0) {
+      // Always call syncForms — it handles offline/disconnected by queuing internally.
+      // Previously gated behind isConnected() && isOnline, which silently skipped
+      // the sync AND the queue when offline.
+      if (forms.length > 0) {
         setSyncStatus('syncing');
-        FirebaseSync.syncForms(forms).then(() => {
-          setSyncStatus('synced');
-          console.log('Forms synced to Firebase:', forms.length, 'forms');
+        FirebaseSync.syncForms(forms).then((result) => {
+          if (result && result.queued) {
+            setSyncStatus('pending');
+            console.log('Forms queued for sync when connected');
+          } else {
+            setSyncStatus('synced');
+            console.log('Forms synced to Firebase:', forms.length, 'forms');
+          }
         }).catch((err) => {
           setSyncStatus('offline');
           console.error('Firebase sync failed:', err);
@@ -582,9 +590,19 @@ function useDataSync({ setForms, setSites, deletingFormRef }) {
         return;
       }
 
-      if (FirebaseSync.isConnected() && isOnline) {
-        FirebaseSync.syncSites(sites);
-      }
+      // Always call syncSites — it handles offline/disconnected by queuing internally.
+      // Previously gated behind isConnected() && isOnline, which silently skipped
+      // the sync AND the queue, so sites added offline never reached Firebase.
+      FirebaseSync.syncSites(sites).then(result => {
+        if (result && result.queued) {
+          setSyncStatus('pending');
+          console.log('Sites queued for sync when connected');
+        } else if (result && result.success) {
+          console.log('Sites synced to Firebase');
+        }
+      }).catch(err => {
+        console.error('Sites sync error:', err);
+      });
     }
   };
 
