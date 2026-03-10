@@ -85,13 +85,34 @@ const GoogleDriveSync = {
             this._notifyConnectionChange(true, null);
             this.getOrCreateFolder();
           } else {
-            // Token expired — clear it
+            // Token expired — try silent refresh instead of giving up
+            console.log('Google Drive token expired, attempting silent refresh...');
             localStorage.removeItem('google-drive-token');
+            try {
+              this.tokenClient.requestAccessToken({ prompt: '' });
+            } catch (refreshErr) {
+              console.log('Silent refresh failed, user will need to reconnect manually');
+            }
           }
         }
       } catch (e) {
         // Handle old format (raw string, not JSON)
         localStorage.removeItem('google-drive-token');
+      }
+
+      // Proactive token refresh every 45 minutes to stay connected
+      var driveRef = this;
+      if (!this._refreshInterval) {
+        this._refreshInterval = setInterval(function() {
+          if (driveRef.accessToken && driveRef.tokenClient) {
+            console.log('Google Drive: proactive token refresh');
+            try {
+              driveRef.tokenClient.requestAccessToken({ prompt: '' });
+            } catch (e) {
+              console.warn('Proactive Drive refresh failed:', e.message);
+            }
+          }
+        }, 45 * 60 * 1000); // 45 minutes
       }
     } catch (error) {
       console.error('Google Drive init error:', error);
@@ -113,7 +134,9 @@ const GoogleDriveSync = {
       }
       if (!self.isInitialized) return false;
       try {
-        self.tokenClient.requestAccessToken({ prompt: 'consent' });
+        // Try silent token refresh first (no popup if user already granted consent)
+        // Falls back to consent popup only if silent fails
+        self.tokenClient.requestAccessToken({ prompt: '' });
         return true;
       } catch (e) {
         console.error('Drive authorize error:', e);
