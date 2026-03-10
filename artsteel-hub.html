@@ -50,6 +50,44 @@
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // HUB CONFIGURATION — centralised constants for maintainability
+    // ═══════════════════════════════════════════════════════════════════════════
+    const HUB_VERSION = '1.4.0';
+
+    const HUB_CONFIG = {
+        company: {
+            name: 'J&M Art Steel Fabrication P/L',
+            shortName: 'J&M Artsteel',
+            address: 'Unit 2/ 28-30 Lillian Flower Place, Marrickville NSW 2204',
+            phone: '02 8021 6707',
+            mobile: '0421 470 043',
+            abn: '94 164 562 207',
+            manager: 'Scott Seeho'
+        },
+        api: {
+            defaultModel: 'claude-sonnet-4-5-20250929',
+            lightModel: 'claude-haiku-4-5-20251001',
+            anthropicVersion: '2023-06-01',
+            maxTokensDefault: 1024,
+            maxTokensSWMS: 4000
+        },
+        limits: {
+            maxReceipts: 100,
+            maxSwmsHistory: 20,
+            maxPriceListDisplay: 100,
+            statusRefreshMs: 30000,
+            autoUpdateCooldownDays: 7
+        },
+        defaults: {
+            weatherLat: -33.87,
+            weatherLon: 151.21,
+            defaultTemp: 20,
+            stainlessFactor: 1.02,
+            fittingsPercent: 0.10
+        }
+    };
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // DEVICE AUTHORIZATION SYSTEM
     // Same system as Safety App - approved devices can use both apps
     // ═══════════════════════════════════════════════════════════════════════════
@@ -971,7 +1009,7 @@
             padding-bottom: 15px;
             border-bottom: 1px solid rgba(255,255,255,0.1);
         }
-        .igor-totals { }
+        .igor-totals { margin-top: 5px; }
         .igor-total-row {
             display: flex;
             justify-content: space-between;
@@ -1681,9 +1719,7 @@
             margin: 10px 20px;
             border: 1px solid rgba(255,255,255,0.2);
         }
-        .grip-range {
-            display: none; /* Hide old single range div */
-        }
+        .grip-range { display: none; }
         .grip-marker {
             position: absolute;
             top: -25px;
@@ -1973,7 +2009,7 @@
 <body>
     <div class="header">
         <h1>🔩 J&M Artsteel Hub</h1>
-        <p>AI-Powered Steel Operations Centre</p>
+        <p>AI-Powered Steel Operations Centre <span id="hubVersionBadge" style="font-size:10px;background:rgba(102,126,234,0.3);padding:2px 6px;border-radius:4px;color:#667eea;"></span></p>
         <!-- Live connection indicators -->
         <div id="hubStatusBar" style="display:flex;gap:14px;justify-content:center;margin-top:8px;font-size:11px;opacity:0.8;">
             <span id="hubFirebaseStatus" style="color:#4CAF50;">🔥 Firebase</span>
@@ -4296,8 +4332,8 @@
 
     // Process uploaded file
     async function igorProcessFile(file) {
-        const console = document.getElementById('igorConsole');
-        console.textContent = `💰 Processing ${file.name}...`;
+        const consoleEl = document.getElementById('igorConsole');
+        consoleEl.textContent = `💰 Processing ${file.name}...`;
 
         const ext = file.name.split('.').pop().toLowerCase();
 
@@ -4312,7 +4348,7 @@
                 throw new Error('Unsupported file type: ' + ext);
             }
         } catch (error) {
-            console.textContent = `❌ Error: ${error.message}`;
+            consoleEl.textContent = `❌ Error: ${error.message}`;
             alert('Failed to process file: ' + error.message);
         }
     }
@@ -6017,7 +6053,7 @@
                         }
                     ]
                 }],
-                { model: 'claude-3-5-haiku-20241022', maxTokens: 1024 }
+                { model: HUB_CONFIG.api.lightModel, maxTokens: 1024 }
             );
 
             // Extract text from response
@@ -6117,7 +6153,7 @@
 
         // Save to Firebase + localStorage
         hannaReceipts.unshift(receipt);
-        if (hannaReceipts.length > 100) hannaReceipts = hannaReceipts.slice(0, 100); // Keep last 100
+        if (hannaReceipts.length > HUB_CONFIG.limits.maxReceipts) hannaReceipts = hannaReceipts.slice(0, HUB_CONFIG.limits.maxReceipts);
         hannaSaveReceipts();
 
         // Update UI
@@ -6413,7 +6449,7 @@
         }
 
         const body = {
-            model: options.model || 'claude-3-5-haiku-20241022',
+            model: options.model || HUB_CONFIG.api.defaultModel,
             max_tokens: options.maxTokens || 1024,
             messages: messages
         };
@@ -6450,7 +6486,7 @@
     let victorActiveFilter = 'all'; // 'all', 'current', 'expiring', 'expired'
     let victorAutoUpdateRunning = false;
     let victorAutoUpdateQueue = [];
-    const VICTOR_AUTO_UPDATE_COOLDOWN = 7 * 24 * 60 * 60 * 1000; // 7 days between auto-checks for first attempt
+    const VICTOR_AUTO_UPDATE_COOLDOWN = HUB_CONFIG.limits.autoUpdateCooldownDays * 24 * 60 * 60 * 1000;
 
     // Check if today falls in the 2nd Sunday window (Sun–Tue) of the current month
     function victorIsSecondSundayWindow() {
@@ -6938,7 +6974,7 @@
 
             const result = await callClaudeAPI(
                 [{ role: 'user', content: searchPrompt }],
-                { model: 'claude-3-5-haiku-20241022', maxTokens: 1024, tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 4 }] }
+                { model: HUB_CONFIG.api.lightModel, maxTokens: 1024, tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 4 }] }
             );
 
             let text = '';
@@ -7110,7 +7146,7 @@
             const result = await callClaudeAPI(
                 [{ role: 'user', content: searchPrompt }],
                 {
-                    model: 'claude-3-5-haiku-20241022',
+                    model: HUB_CONFIG.api.lightModel,
                     maxTokens: 1024,
                     tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 4 }]
                 }
@@ -7373,8 +7409,8 @@
             const result = await callClaudeAPI(
                 [{ role: 'user', content: userPrompt }],
                 {
-                    model: 'claude-sonnet-4-5-20250929',
-                    maxTokens: 4000,
+                    model: HUB_CONFIG.api.defaultModel,
+                    maxTokens: HUB_CONFIG.api.maxTokensSWMS,
                     temperature: 0,
                     system: systemPrompt
                 }
@@ -7516,7 +7552,7 @@
                 date: today,
                 html: html
             });
-            if (frankHistory.length > 20) frankHistory = frankHistory.slice(0, 20);
+            if (frankHistory.length > HUB_CONFIG.limits.maxSwmsHistory) frankHistory = frankHistory.slice(0, HUB_CONFIG.limits.maxSwmsHistory);
             frankSaveHistory();
             frankRenderHistory();
 
@@ -7562,6 +7598,8 @@
         }
 
         // Device approved - initialize app
+        var vBadge = document.getElementById('hubVersionBadge');
+        if (vBadge) vBadge.textContent = 'v' + HUB_VERSION;
         hobartUpdate();
         // IGOR dropdowns are already in HTML
         chuckGetLocation(); // Get weather/temp on load
