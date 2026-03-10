@@ -264,6 +264,44 @@ const DeviceAuth = {
         return { approved: true, admin: true, adminRecovery: true };
       }
 
+      // ========================================
+      // PERMANENT DEVICE AUTO-APPROVAL
+      // Per CLAUDE.md: 3 devices are always approved regardless of device ID changes.
+      // Davide's Android = admin, Mac = approved, S.s Samsung = approved.
+      // ========================================
+      const ua = navigator.userAgent;
+      const isSamsung = /Samsung|SM-/i.test(ua);
+      const PERMANENT_DEVICES = [
+        { match: function(info) { return isSamsung && /Android/i.test(ua); }, isAdmin: false, name: "S.s Samsung" },
+        { match: function(info) { return info.type === 'Android Phone' && !isSamsung; }, isAdmin: true, name: "Davide's Android" },
+        { match: function(info) { return info.type === 'Mac'; }, isAdmin: false, name: "Davide's Mac" }
+      ];
+
+      const deviceInfo = this.deviceInfo || this.getDeviceInfo();
+      const permanentMatch = PERMANENT_DEVICES.find(function(pd) { return pd.match(deviceInfo); });
+
+      if (permanentMatch) {
+        console.log('PERMANENT DEVICE AUTO-APPROVE:', permanentMatch.name, '(' + deviceInfo.type + ')');
+        await this.registerAsApproved(permanentMatch.isAdmin);
+
+        // Mark as permanently approved so cleanup never removes it
+        await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId + '/permanentlyApproved').set(true);
+        await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId + '/name').set(permanentMatch.name);
+
+        if (typeof AuditLogManager !== 'undefined') {
+          try {
+            AuditLogManager.log('permanent_device_auto_approve', {
+              deviceId: this.deviceId,
+              deviceType: deviceInfo.type,
+              name: permanentMatch.name,
+              isAdmin: permanentMatch.isAdmin
+            });
+          } catch (e) { /* non-fatal */ }
+        }
+
+        return { approved: true, admin: permanentMatch.isAdmin, permanentDevice: true };
+      }
+
       // Check if already pending
       const pendingResult = await firebaseRead('jmart-safety/devices/pending/' + this.deviceId);
       if (!pendingResult.exists) {
