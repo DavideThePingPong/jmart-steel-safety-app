@@ -285,18 +285,24 @@ const DeviceAuth = {
   registerAsPending: async function() {
     if (!firebaseDb) return;
 
-    const deviceData = {
-      ...this.deviceInfo,
-      authUid: firebaseAuthUid || null,
-      requestedAt: new Date().toISOString(),
-      status: 'pending'
-    };
+    try {
+      // Wait for auth to be fully ready
+      await firebaseAuthReady;
 
-    await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).set(deviceData);
-    console.log('Device registered as pending approval');
+      const deviceData = {
+        ...this.deviceInfo,
+        authUid: firebaseAuthUid || null,
+        requestedAt: new Date().toISOString(),
+        status: 'pending'
+      };
 
-    // Notify all admins of new device request
-    this.notifyAdminsOfNewDevice(deviceData);
+      await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).set(deviceData);
+      console.log('Device registered as pending approval');
+      this.notifyAdminsOfNewDevice(deviceData);
+    } catch (e) {
+      // Non-fatal - app continues working, just won't auto-approve until manually approved
+      console.log('[DeviceAuth] Registration skipped (auth timing):', e.message.substring(0, 100));
+    }
   },
 
   // Self-healing: Remove invalid device entries (null, undefined, empty IDs)
