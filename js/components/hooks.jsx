@@ -47,7 +47,8 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
     setSavedSignatures(newSignatures);
     if (typeof StorageQuotaManager !== 'undefined' && StorageQuotaManager.safeSignaturesWrite) { StorageQuotaManager.safeSignaturesWrite(newSignatures); } else { localStorage.setItem('jmart-team-signatures', JSON.stringify(newSignatures)); }
     if (FirebaseSync.isConnected()) {
-      FirebaseSync.db.ref('signatures').set(newSignatures);
+      firebaseDb.ref('signatures').set(newSignatures)
+        .catch(err => console.error('Signature sync error:', err));
     }
   };
 
@@ -195,7 +196,7 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
       // Version check: read remote version from Firebase before writing
       if (FirebaseSync.isConnected() && form.id) {
         try {
-          const remoteSnap = await FirebaseSync.db.ref('jmart-safety/forms/' + form.id).once('value');
+          const remoteSnap = await firebaseDb.ref('jmart-safety/forms/' + form.id).once('value');
           const remoteForm = remoteSnap.val();
           if (remoteForm && remoteForm.version && originalForm && originalForm.version) {
             if (remoteForm.version > originalForm.version) {

@@ -461,9 +461,6 @@ describe('FirebaseSync (runtime)', () => {
       expect(FirebaseSync.isConnected()).toBe(false);
     });
 
-    it('db getter returns firebaseDb', () => {
-      expect(FirebaseSync.db).toBe(global.firebaseDb);
-    });
   });
 
   // =====================================================
