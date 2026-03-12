@@ -20,15 +20,44 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
     } catch (e) { console.warn('Could not parse backed-up forms:', e); }
     return [];
   });
-  const [savedSignatures, setSavedSignatures] = useState(() => {
-    try {
-      const saved = localStorage.getItem('jmart-team-signatures');
-      return saved ? JSON.parse(saved) : {};
-    } catch (e) {
-      console.warn('Could not parse team signatures:', e);
-      return {};
-    }
-  });
+  // Signatures are stored ENCRYPTED in localStorage/Firebase.
+  // In-memory state holds decrypted signatures for the current session.
+  const [savedSignatures, _setSavedSignatures] = useState({});
+  const [signaturesLoaded, setSignaturesLoaded] = useState(false);
+
+  // Wrapper to keep window.__decryptedSignatures in sync for SignaturePad
+  const setSavedSignatures = (sigs) => {
+    _setSavedSignatures(sigs);
+    window.__decryptedSignatures = sigs;
+  };
+
+  // Load and decrypt signatures on mount (password must already be cached from login)
+  useEffect(() => {
+    (async function loadSignatures() {
+      try {
+        const saved = localStorage.getItem('jmart-team-signatures');
+        if (!saved) { setSignaturesLoaded(true); return; }
+        const parsed = JSON.parse(saved);
+        // Check if signatures are encrypted
+        if (typeof SignatureEncryption !== 'undefined' && SignatureEncryption.hasEncryptedSignatures(parsed)) {
+          const pw = SignatureEncryption.getCachedPassword();
+          if (pw) {
+            const decrypted = await SignatureEncryption.decryptSignatures(parsed, pw);
+            setSavedSignatures(decrypted);
+          } else {
+            // No cached password yet — store raw (encrypted) data; will decrypt when password is provided
+            setSavedSignatures(parsed);
+          }
+        } else {
+          // Legacy unencrypted signatures — migrate to encrypted on next save
+          setSavedSignatures(parsed);
+        }
+      } catch (e) {
+        console.warn('Could not parse team signatures:', e);
+      }
+      setSignaturesLoaded(true);
+    })();
+  }, []);
 
   const deletingFormRef = useRef(false);
 
@@ -42,12 +71,39 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
   // Check if form is backed up
   const isFormBackedUp = (formId) => backedUpForms.includes(formId);
 
-  // Update team signatures
-  const updateSignatures = (newSignatures) => {
+  // Update team signatures — encrypts before writing to storage
+  const updateSignatures = async (newSignatures) => {
     setSavedSignatures(newSignatures);
-    if (typeof StorageQuotaManager !== 'undefined' && StorageQuotaManager.safeSignaturesWrite) { StorageQuotaManager.safeSignaturesWrite(newSignatures); } else { localStorage.setItem('jmart-team-signatures', JSON.stringify(newSignatures)); }
+    // Encrypt before persisting
+    let toStore = newSignatures;
+    if (typeof SignatureEncryption !== 'undefined') {
+      const pw = SignatureEncryption.getCachedPassword();
+      if (pw) {
+        try {
+          toStore = await SignatureEncryption.encryptSignatures(newSignatures, pw);
+        } catch (e) {
+          console.warn('[updateSignatures] Encryption failed, storing unencrypted:', e.message);
+        }
+      }
+    }
+    if (typeof StorageQuotaManager !== 'undefined' && StorageQuotaManager.safeSignaturesWrite) { StorageQuotaManager.safeSignaturesWrite(toStore); } else { localStorage.setItem('jmart-team-signatures', JSON.stringify(toStore)); }
     if (FirebaseSync.isConnected()) {
-      FirebaseSync.db.ref('signatures').set(newSignatures);
+      FirebaseSync.db.ref('signatures').set(toStore);
+    }
+  };
+
+  // Decrypt signatures after login (called when password is verified)
+  const decryptSignaturesWithPassword = async (password) => {
+    try {
+      const saved = localStorage.getItem('jmart-team-signatures');
+      if (!saved) return;
+      const parsed = JSON.parse(saved);
+      if (SignatureEncryption.hasEncryptedSignatures(parsed)) {
+        const decrypted = await SignatureEncryption.decryptSignatures(parsed, password);
+        setSavedSignatures(decrypted);
+      }
+    } catch (e) {
+      console.warn('[decryptSignaturesWithPassword] Failed:', e.message);
     }
   };
 
@@ -276,11 +332,33 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
     setCurrentView('dashboard');
   };
 
+  // Check if a form contains any signature data
+  const formHasSignatures = (form) => {
+    if (!form?.data) return false;
+    const sigFields = ['translatorSignature', 'completedBySignature', 'managerSignature', 'builderSignature', 'signature'];
+    return sigFields.some(f => form.data[f] && form.data[f].startsWith('data:image'));
+  };
+
+  // Password-gated PDF download — prompts for password if form has signatures
+  const passwordGatedPDFDownload = async (form) => {
+    if (!form) return;
+    if (formHasSignatures(form)) {
+      const password = prompt('This PDF contains signatures. Enter the app password to export:');
+      if (!password) return;
+      const isValid = await DeviceAuthManager.verifyPassword(password);
+      if (!isValid) {
+        alert('Incorrect password. PDF export cancelled.');
+        return;
+      }
+    }
+    const filename = PDFGenerator.download(form);
+    markAsBackedUp(form.id);
+    console.log('Downloaded and backed up:', filename);
+  };
+
   const handleDownloadPDF = () => {
     if (successModal?.form) {
-      const filename = PDFGenerator.download(successModal.form);
-      markAsBackedUp(successModal.form.id);
-      console.log('Downloaded and backed up:', filename);
+      passwordGatedPDFDownload(successModal.form);
     }
   };
 
@@ -352,7 +430,10 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
     markAsBackedUp,
     isFormBackedUp,
     updateSignatures,
-    signatureReuseWarning
+    signatureReuseWarning,
+    decryptSignaturesWithPassword,
+    signaturesLoaded,
+    passwordGatedPDFDownload
   };
 }
 

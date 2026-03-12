@@ -39,7 +39,8 @@ function JMartSteelSafetyApp({ isAdmin = false }) {
     closeSuccessModal,
     markAsBackedUp,
     isFormBackedUp,
-    updateSignatures
+    updateSignatures,
+    passwordGatedPDFDownload
   } = formManager;
 
   // Data sync (Firebase + localStorage)
@@ -186,13 +187,13 @@ function JMartSteelSafetyApp({ isAdmin = false }) {
         viewFormModal={viewFormModal}
         onClose={() => setViewFormModal(null)}
         onEdit={(form) => { setEditingForm(form); setViewFormModal(null); setCurrentView(form.type); }}
-        onDownloadPDF={(form) => { PDFGenerator.download(form); markAsBackedUp(form.id); }}
+        onDownloadPDF={(form) => { passwordGatedPDFDownload(form); }}
         onDelete={(form) => setDeleteConfirmModal(form)}
       />
       <DeleteConfirmModal
         deleteConfirmModal={deleteConfirmModal}
         isFormBackedUp={isFormBackedUp}
-        onDownloadPDF={(form) => { PDFGenerator.download(form); markAsBackedUp(form.id); }}
+        onDownloadPDF={(form) => { passwordGatedPDFDownload(form); }}
         onDelete={(formId) => deleteForm(formId)}
         onCancel={() => setDeleteConfirmModal(null)}
       />

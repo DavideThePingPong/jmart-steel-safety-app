@@ -142,11 +142,20 @@ function SignaturePad({ onSave, onCancel, name }) {
   const [hasSignature, setHasSignature] = useState(false);
   const [showSavedOptions, setShowSavedOptions] = useState(false);
 
-  // Get saved signatures from localStorage
+  // Get saved signatures — prefer decrypted in-memory cache, fallback to localStorage
   const savedSignatures = useMemo(() => {
+    // Use global decrypted signatures if available (set by useFormManager)
+    if (window.__decryptedSignatures && Object.keys(window.__decryptedSignatures).length > 0) {
+      return window.__decryptedSignatures;
+    }
     try {
       const saved = localStorage.getItem('jmart-team-signatures');
-      return saved ? JSON.parse(saved) : {};
+      const parsed = saved ? JSON.parse(saved) : {};
+      // If encrypted, don't expose raw — return empty (need password)
+      if (typeof SignatureEncryption !== 'undefined' && SignatureEncryption.hasEncryptedSignatures(parsed)) {
+        return {};
+      }
+      return parsed;
     } catch (e) {
       return {};
     }
@@ -196,60 +205,54 @@ function SignaturePad({ onSave, onCancel, name }) {
   };
   const saveSignature = () => onSave(canvasRef.current.toDataURL('image/png'));
 
-  // SIGNATURE SECURITY: Require verification before using saved signatures
-  const [verificationCode, setVerificationCode] = useState('');
+  // SIGNATURE SECURITY: Require app password before using saved signatures
+  const [passwordInput, setPasswordInput] = useState('');
   const [showVerification, setShowVerification] = useState(false);
   const [selectedMember, setSelectedMember] = useState(null);
   const [verificationError, setVerificationError] = useState('');
+  const [verifying, setVerifying] = useState(false);
 
-  // Generate a simple verification code based on name (last 4 chars of name hash)
-  const getVerificationCode = (memberName) => {
-    let hash = 0;
-    const str = memberName.toLowerCase().replace(/\s/g, '');
-    for (let i = 0; i < str.length; i++) {
-      hash = ((hash << 5) - hash) + str.charCodeAt(i);
-      hash = hash & hash;
-    }
-    return Math.abs(hash % 10000).toString().padStart(4, '0');
-  };
-
-  // Use saved signature - requires verification
+  // Use saved signature - requires app password verification
   const useSavedSignature = () => {
     if (hasSavedSignature) {
       setSelectedMember(name);
       setShowVerification(true);
       setVerificationError('');
+      setPasswordInput('');
     }
   };
 
   // Use another team member's saved signature - DISABLED for security
-  // Each person must sign their own signature
   const useOtherSignature = (memberName) => {
-    // SECURITY FIX: Do not allow using other people's signatures
-    // Instead, show a message that each person must sign their own
     alert(`Security Notice: ${memberName} must sign their own signature. Please have them sign directly on this device.`);
     setShowSavedOptions(false);
   };
 
-  // Verify and apply signature
-  const verifyAndApplySignature = () => {
-    if (!selectedMember) return;
+  // Verify app password and apply signature
+  const verifyAndApplySignature = async () => {
+    if (!selectedMember || !passwordInput || verifying) return;
+    setVerifying(true);
+    setVerificationError('');
 
-    const expectedCode = getVerificationCode(selectedMember);
-    if (verificationCode === expectedCode) {
-      // Verification passed - apply signature with audit log
-      AuditLogManager.log('signature_used', {
-        signerName: selectedMember,
-        usedBy: DeviceAuthManager.deviceId,
-        method: 'saved_signature',
-        timestamp: new Date().toISOString()
-      });
-      onSave(savedSignatures[selectedMember]);
-      setShowVerification(false);
-      setVerificationCode('');
-    } else {
-      setVerificationError('Incorrect code. Please enter your personal verification code.');
+    try {
+      const isValid = await DeviceAuthManager.verifyPassword(passwordInput);
+      if (isValid) {
+        AuditLogManager.log('signature_used', {
+          signerName: selectedMember,
+          usedBy: DeviceAuthManager.deviceId,
+          method: 'saved_signature',
+          timestamp: new Date().toISOString()
+        });
+        onSave(savedSignatures[selectedMember]);
+        setShowVerification(false);
+        setPasswordInput('');
+      } else {
+        setVerificationError('Incorrect password. Enter the app password to use this signature.');
+      }
+    } catch (e) {
+      setVerificationError('Verification failed. Please try again.');
     }
+    setVerifying(false);
   };
 
   // Get list of team members with saved signatures (for display only)
@@ -268,37 +271,35 @@ function SignaturePad({ onSave, onCancel, name }) {
         {/* Verification Modal */}
         {showVerification && (
           <div className="p-4 bg-amber-50 border-b border-amber-200">
-            <p className="text-sm text-amber-800 mb-2 font-medium">🔐 Signature Verification Required</p>
+            <p className="text-sm text-amber-800 mb-2 font-medium">🔐 Password Required</p>
             <p className="text-xs text-amber-700 mb-3">
-              To use {selectedMember}'s saved signature, please enter your personal verification code.
-              <br/>
-              <span className="text-amber-600">(Hint: Your code is based on your name)</span>
+              Enter the app password to use {selectedMember}'s saved signature.
             </p>
             <input
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              maxLength={4}
-              value={verificationCode}
-              onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, ''))}
-              placeholder="Enter 4-digit code"
-              className="w-full border border-amber-300 rounded-lg px-3 py-2 mb-2 text-center text-lg tracking-widest"
+              type="password"
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') verifyAndApplySignature(); }}
+              placeholder="Enter app password"
+              className="w-full border border-amber-300 rounded-lg px-3 py-2 mb-2"
+              autoFocus
             />
             {verificationError && (
               <p className="text-red-600 text-sm mb-2">{verificationError}</p>
             )}
             <div className="flex gap-2">
               <button
-                onClick={() => { setShowVerification(false); setVerificationCode(''); setVerificationError(''); }}
+                onClick={() => { setShowVerification(false); setPasswordInput(''); setVerificationError(''); }}
                 className="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg"
               >
                 Cancel
               </button>
               <button
                 onClick={verifyAndApplySignature}
-                className="flex-1 bg-amber-600 text-white py-2 rounded-lg font-medium"
+                disabled={verifying || !passwordInput}
+                className="flex-1 bg-amber-600 text-white py-2 rounded-lg font-medium disabled:bg-gray-300"
               >
-                Verify & Sign
+                {verifying ? 'Verifying...' : 'Verify & Sign'}
               </button>
             </div>
           </div>

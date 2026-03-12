@@ -213,13 +213,23 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
   // Get all members (default + any custom added via signatures)
   const allMembers = [...new Set([...defaultMembers, ...Object.keys(signatures).filter(name => !defaultMembers.includes(name))])];
 
-  const saveSignature = (name, signatureData) => {
+  const saveSignature = async (name, signatureData) => {
+    // Require app password to save/update a signature
+    const password = prompt('Enter app password to save this signature:');
+    if (!password) return;
+    const valid = await DeviceAuthManager.verifyPassword(password);
+    if (!valid) { alert('Incorrect password. Signature not saved.'); return; }
     const newSignatures = { ...signatures, [name]: signatureData };
     onUpdateSignatures(newSignatures);
     setShowSignaturePad(null);
   };
 
-  const deleteSignature = (name) => {
+  const deleteSignature = async (name) => {
+    // Require app password to delete a signature
+    const password = prompt('Enter app password to delete this signature:');
+    if (!password) return;
+    const valid = await DeviceAuthManager.verifyPassword(password);
+    if (!valid) { alert('Incorrect password. Signature not deleted.'); return; }
     const newSignatures = { ...signatures };
     delete newSignatures[name];
     onUpdateSignatures(newSignatures);
@@ -706,8 +716,10 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
             <div key={name} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
               <div className="flex items-center gap-3 flex-1">
                 <span className="text-sm font-medium text-gray-700">{name}</span>
-                {signatures[name] ? (
+                {signatures[name] && signatures[name].startsWith('data:image') ? (
                   <img src={signatures[name]} alt={`${name}'s signature`} className="h-8 border rounded bg-white px-2" />
+                ) : signatures[name] && signatures[name].startsWith('enc:') ? (
+                  <span className="text-xs text-amber-600 italic">🔒 Encrypted (enter password to view)</span>
                 ) : (
                   <span className="text-xs text-gray-400 italic">No signature saved</span>
                 )}

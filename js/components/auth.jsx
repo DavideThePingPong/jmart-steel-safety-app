@@ -36,6 +36,10 @@ function LoginScreen({ onAuthenticated, authStatus }) {
       await Promise.race([
         (async () => {
           await DeviceAuthManager.setPassword(newPassword);
+          // Cache password for signature encryption
+          if (typeof SignatureEncryption !== 'undefined') {
+            SignatureEncryption.cachePassword(newPassword);
+          }
           await DeviceAuthManager.registerDevice(deviceName || 'Admin Device');
           await DeviceAuthManager.approveAsAdmin();
         })(),
@@ -68,6 +72,10 @@ function LoginScreen({ onAuthenticated, authStatus }) {
     setError('');
 
     if (await DeviceAuthManager.verifyPassword(password)) {
+      // Cache password for signature encryption/decryption
+      if (typeof SignatureEncryption !== 'undefined') {
+        SignatureEncryption.cachePassword(password);
+      }
       // Password correct - grant access IMMEDIATELY
       onAuthenticated(true);
       // Save device name locally so it's remembered next time
