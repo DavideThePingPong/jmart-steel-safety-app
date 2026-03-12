@@ -181,5 +181,50 @@ const PhotoUploadManager = {
   }
 };
 
+// ========================================
+// PHOTO DOWNLOAD HELPER
+// Handles data: URLs, HTTP URLs (Firebase Storage), and [in-firebase] stubs
+// ========================================
+function downloadPhotoFile(photoData, filename) {
+  if (!photoData || photoData === '[in-firebase]') {
+    if (typeof ToastNotifier !== 'undefined') ToastNotifier.info('Photo is in the cloud — not available for local download');
+    return;
+  }
+
+  // data: URL — use <a download> (works same-origin)
+  if (photoData.startsWith('data:')) {
+    var link = document.createElement('a');
+    link.href = photoData;
+    link.download = filename || 'photo.jpg';
+    link.click();
+    return;
+  }
+
+  // HTTP/HTTPS URL (e.g. Firebase Storage) — fetch as blob then download
+  if (photoData.startsWith('http')) {
+    fetch(photoData, { mode: 'cors' })
+      .then(function(resp) {
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        return resp.blob();
+      })
+      .then(function(blob) {
+        var url = URL.createObjectURL(blob);
+        var link = document.createElement('a');
+        link.href = url;
+        link.download = filename || 'photo.jpg';
+        link.click();
+        setTimeout(function() { URL.revokeObjectURL(url); }, 5000);
+      })
+      .catch(function(err) {
+        console.error('Photo download failed, opening in new tab:', err);
+        window.open(photoData, '_blank');
+      });
+    return;
+  }
+
+  // Unknown format — try opening directly
+  if (typeof ToastNotifier !== 'undefined') ToastNotifier.warning('Unrecognised photo format');
+}
+
 // Initialize Photo Upload Manager
 PhotoUploadManager.init();

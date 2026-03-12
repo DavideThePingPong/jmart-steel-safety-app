@@ -205,15 +205,17 @@ function RecordingsView({ forms, sites }) {
     setTimeout(() => setUploadStatus(''), 5000);
   };
 
-  // Download photos as ZIP (using individual downloads since we can't create ZIP in browser easily)
+  // Download photos individually
   const downloadPhotos = () => {
-    photos.forEach((photo, idx) => {
-      const link = document.createElement('a');
-      link.href = photo.data;
-      link.download = `${selectedJob?.name || 'job'}-photo-${idx + 1}.jpg`;
-      link.click();
+    const downloadable = photos.filter(p => p.data && p.data !== '[in-firebase]');
+    if (downloadable.length === 0) {
+      ToastNotifier.info('No photos available for local download — they are in the cloud');
+      return;
+    }
+    downloadable.forEach((photo, idx) => {
+      downloadPhotoFile(photo.data, `${selectedJob?.name || 'job'}-photo-${idx + 1}.jpg`);
     });
-    setUploadStatus(`Downloaded ${photos.length} photos!`);
+    setUploadStatus(`Downloaded ${downloadable.length} photos!`);
     setTimeout(() => setUploadStatus(''), 3000);
   };
 
@@ -493,10 +495,7 @@ function RecordingsView({ forms, sites }) {
               <button
                 onClick={() => {
                   viewingRecording.photos.forEach((photo, idx) => {
-                    const link = document.createElement('a');
-                    link.href = photo.data;
-                    link.download = `${viewingRecording.jobName}-photo-${idx + 1}.jpg`;
-                    link.click();
+                    downloadPhotoFile(photo.data, `${viewingRecording.jobName}-photo-${idx + 1}.jpg`);
                   });
                 }}
                 className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold flex items-center justify-center gap-2"
