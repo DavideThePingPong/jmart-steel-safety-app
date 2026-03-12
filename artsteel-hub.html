@@ -6,6 +6,9 @@
     <title>J&M Artsteel Hub</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔩</text></svg>">
 
+    <!-- Content Security Policy -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.firebaseio.com https://*.googleapis.com https://api.anthropic.com https://api.open-meteo.com https://*.firebasedatabase.app wss://*.firebaseio.com; img-src 'self' data: blob:; font-src 'self' data:;">
+
     <!-- Firebase SDK for Device Authorization (shared with Safety App) -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
@@ -52,7 +55,7 @@
     // ═══════════════════════════════════════════════════════════════════════════
     // HUB CONFIGURATION — centralised constants for maintainability
     // ═══════════════════════════════════════════════════════════════════════════
-    const HUB_VERSION = '1.4.0';
+    const HUB_VERSION = '2.0.0';
 
     const HUB_CONFIG = {
         company: {
@@ -86,6 +89,87 @@
             fittingsPercent: 0.10
         }
     };
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SECURE SCRIPT LOADER — loads CDN scripts with crossorigin for isolation
+    // ═══════════════════════════════════════════════════════════════════════════
+    /** @param {string} url - CDN script URL @returns {Promise<void>} */
+    function loadSecureScript(url) {
+        return new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = url;
+            script.crossOrigin = 'anonymous';
+            script.onload = resolve;
+            script.onerror = () => reject(new Error('Failed to load script: ' + url));
+            document.head.appendChild(script);
+        });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // HUB ERROR LOGGER — structured error reporting (replaces silent catches)
+    // ═══════════════════════════════════════════════════════════════════════════
+    const HubErrors = [];
+    /** @param {string} context @param {Error|string} error @param {string} [severity='warn'] */
+    function hubLogError(context, error, severity) {
+        severity = severity || 'warn';
+        const entry = {
+            context: context,
+            message: error instanceof Error ? error.message : String(error),
+            severity: severity,
+            time: new Date().toISOString()
+        };
+        HubErrors.push(entry);
+        if (HubErrors.length > 50) HubErrors.shift();
+        if (severity === 'error') console.error('[HUB ' + context + ']', entry.message);
+        else console.warn('[HUB ' + context + ']', entry.message);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // TOAST NOTIFICATION SYSTEM — replaces alert() with non-blocking UI
+    // ═══════════════════════════════════════════════════════════════════════════
+    /** @param {string} message @param {string} [type='info'] - 'info'|'success'|'warning'|'error' @param {number} [durationMs=3000] */
+    function hubToast(message, type, durationMs) {
+        type = type || 'info';
+        durationMs = durationMs || 3000;
+        let container = document.getElementById('hubToastContainer');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'hubToastContainer';
+            container.style.cssText = 'position:fixed;top:16px;right:16px;z-index:10000;display:flex;flex-direction:column;gap:8px;pointer-events:none;';
+            document.body.appendChild(container);
+        }
+        const colors = { info: '#3b82f6', success: '#22c55e', warning: '#f59e0b', error: '#ef4444' };
+        const icons = { info: 'ℹ️', success: '✅', warning: '⚠️', error: '❌' };
+        const toast = document.createElement('div');
+        toast.style.cssText = 'pointer-events:auto;background:#1e1e2e;border-left:4px solid ' + (colors[type] || colors.info) + ';color:#eee;padding:12px 16px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.4);font-size:14px;max-width:340px;opacity:0;transform:translateX(40px);transition:all 0.3s ease;';
+        toast.textContent = (icons[type] || '') + ' ' + message;
+        container.appendChild(toast);
+        requestAnimationFrame(() => { toast.style.opacity = '1'; toast.style.transform = 'translateX(0)'; });
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateX(40px)';
+            setTimeout(() => toast.remove(), 300);
+        }, durationMs);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // FIREBASE SAVE WITH RETRY — prevents data loss from transient failures
+    // ═══════════════════════════════════════════════════════════════════════════
+    /** @param {string} path @param {*} data @param {number} [retries=2] @returns {Promise<boolean>} */
+    async function firebaseSaveWithRetry(path, data, retries) {
+        retries = retries || 2;
+        if (!firebaseDb) return false;
+        for (let attempt = 0; attempt <= retries; attempt++) {
+            try {
+                await firebaseDb.ref(path).set(data);
+                return true;
+            } catch (e) {
+                hubLogError('firebase/save', path + ' attempt ' + (attempt + 1) + ': ' + e.message);
+                if (attempt < retries) await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+            }
+        }
+        return false;
+    }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // DEVICE AUTHORIZATION SYSTEM
@@ -178,9 +262,10 @@
 
             } catch (error) {
                 console.error('Auth error:', error);
-                // On error, allow access (don't lock out users due to network issues)
+                // On error, allow access but NOT admin (don't lock out users due to network issues)
                 this.isApproved = true;
-                return { approved: true, error: error.message };
+                this.isAdmin = false;
+                return { approved: true, admin: false, error: error.message };
             }
         },
 
@@ -3154,6 +3239,10 @@
         if (id === 'settings') { loadSettingsData(); loadApiKeyStatus(); }
         // Refresh dashboard stats when returning to it
         if (id === 'dashboard') { dashboardRefresh(); }
+        // Lazy-start Firebase listeners only when agent tab is first visited
+        if (id === 'hanna' && typeof hannaStartSync === 'function') hannaStartSync();
+        if (id === 'victor' && typeof victorStartSync === 'function') victorStartSync();
+        if (id === 'frank' && typeof frankStartSync === 'function') frankStartSync();
     }
 
     // Keyboard shortcuts: Ctrl+0 through Ctrl+8
@@ -3175,64 +3264,63 @@
         // MSDS stats
         try {
             let msdsOk = 0, msdsAlert = 0;
-            (typeof victorProducts !== 'undefined' ? victorProducts : []).forEach(function(p) {
-                var c = typeof victorCalcCompliance === 'function' ? victorCalcCompliance(p.msds_date) : 'unknown';
+            (typeof victorProducts !== 'undefined' ? victorProducts : []).forEach(p => {
+                const c = typeof victorCalcCompliance === 'function' ? victorCalcCompliance(p.msds_date) : 'unknown';
                 if (c === 'current') msdsOk++;
                 else if (c === 'expiring' || c === 'expired') msdsAlert++;
             });
-            var elOk = document.getElementById('dashMsdsOk');
-            var elAlert = document.getElementById('dashMsdsAlert');
+            const elOk = document.getElementById('dashMsdsOk');
+            const elAlert = document.getElementById('dashMsdsAlert');
             if (elOk) elOk.textContent = msdsOk;
             if (elAlert) elAlert.textContent = msdsAlert;
-        } catch(e) {}
+        } catch(e) { hubLogError('dashboard/msds', e); }
 
         // SWMS count
         try {
-            var swms = typeof frankHistory !== 'undefined' ? frankHistory.length : 0;
-            var elSwms = document.getElementById('dashSwmsCount');
+            const swms = typeof frankHistory !== 'undefined' ? frankHistory.length : 0;
+            const elSwms = document.getElementById('dashSwmsCount');
             if (elSwms) elSwms.textContent = swms;
-        } catch(e) {}
+        } catch(e) { hubLogError('dashboard/swms', e); }
 
         // Receipts this month + spend
         try {
-            var now = new Date();
-            var monthReceipts = (typeof hannaReceipts !== 'undefined' ? hannaReceipts : []).filter(function(r) {
-                var d = new Date(r.saved_at);
+            const now = new Date();
+            const monthReceipts = (typeof hannaReceipts !== 'undefined' ? hannaReceipts : []).filter(r => {
+                const d = new Date(r.saved_at);
                 return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
             });
-            var elRec = document.getElementById('dashReceiptMonth');
+            const elRec = document.getElementById('dashReceiptMonth');
             if (elRec) elRec.textContent = monthReceipts.length;
-            var monthSpend = monthReceipts.reduce(function(s, r) { return s + (r.total || 0); }, 0);
-            var elSpend = document.getElementById('dashSpendMonth');
+            const monthSpend = monthReceipts.reduce((s, r) => s + (r.total || 0), 0);
+            const elSpend = document.getElementById('dashSpendMonth');
             if (elSpend) elSpend.textContent = '$' + monthSpend.toFixed(0);
-        } catch(e) {}
+        } catch(e) { hubLogError('dashboard/receipts', e); }
 
         // Activity feed - combine recent SWMS + receipts
         try {
-            var feed = [];
-            (typeof frankHistory !== 'undefined' ? frankHistory : []).slice(0, 5).forEach(function(h) {
+            const feed = [];
+            (typeof frankHistory !== 'undefined' ? frankHistory : []).slice(0, 5).forEach(h => {
                 feed.push({ time: h.date || '', icon: '🦺', text: 'SWMS: ' + (h.jobDesc || '').substring(0, 50), type: 'frank' });
             });
-            (typeof hannaReceipts !== 'undefined' ? hannaReceipts : []).slice(0, 5).forEach(function(r) {
+            (typeof hannaReceipts !== 'undefined' ? hannaReceipts : []).slice(0, 5).forEach(r => {
                 feed.push({ time: r.saved_at ? new Date(r.saved_at).toLocaleDateString('en-AU') : '', icon: '🧾', text: (r.store_name || 'Receipt') + ' $' + (r.total || 0).toFixed(2), type: 'hanna' });
             });
-            // Sort newest first (rough sort by date string)
-            feed.sort(function(a, b) { return (b.time || '').localeCompare(a.time || ''); });
-            var feedEl = document.getElementById('dashActivityFeed');
+            feed.sort((a, b) => (b.time || '').localeCompare(a.time || ''));
+            const feedEl = document.getElementById('dashActivityFeed');
             if (feedEl) {
                 if (feed.length === 0) {
                     feedEl.innerHTML = '<div style="color:#666;text-align:center;padding:12px;">No recent activity — start using the agents!</div>';
                 } else {
-                    feedEl.innerHTML = feed.slice(0, 8).map(function(f) {
-                        return '<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);display:flex;gap:8px;align-items:center;">' +
-                            '<span>' + f.icon + '</span>' +
-                            '<span style="flex:1;color:#ccc;">' + escapeHtml(f.text) + '</span>' +
-                            '<span style="color:#666;font-size:11px;white-space:nowrap;">' + escapeHtml(f.time) + '</span>' +
-                            '</div>';
-                    }).join('');
+                    feedEl.innerHTML = feed.slice(0, 8).map(f =>
+                        '<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);display:flex;gap:8px;align-items:center;">' +
+                        '<span>' + f.icon + '</span>' +
+                        '<span style="flex:1;color:#ccc;">' + escapeHtml(f.text) + '</span>' +
+                        '<span style="color:#666;font-size:11px;white-space:nowrap;">' + escapeHtml(f.time) + '</span>' +
+                        '</div>'
+                    ).join('');
                 }
             }
-        } catch(e) {}
+        } catch(e) { hubLogError('dashboard/feed', e); }
 
         // Status bar updates
         dashboardUpdateStatus();
@@ -3240,38 +3328,38 @@
 
     function dashboardUpdateStatus() {
         // Firebase status
-        var fbEl = document.getElementById('hubFirebaseStatus');
+        const fbEl = document.getElementById('hubFirebaseStatus');
         if (fbEl) {
             if (firebaseDb && firebaseAuthUid) { fbEl.style.color = '#4CAF50'; fbEl.textContent = '🔥 Connected'; }
             else if (firebaseDb) { fbEl.style.color = '#f2994a'; fbEl.textContent = '🔥 No Auth'; }
             else { fbEl.style.color = '#f44336'; fbEl.textContent = '🔥 Offline'; }
         }
         // API key status
-        var apiEl = document.getElementById('hubApiStatus');
+        const apiEl = document.getElementById('hubApiStatus');
         if (apiEl) {
-            var hasKey = typeof getApiKey === 'function' && getApiKey();
+            const hasKey = typeof getApiKey === 'function' && getApiKey();
             apiEl.style.color = hasKey ? '#4CAF50' : '#888';
             apiEl.textContent = hasKey ? '🔑 Ready' : '🔑 No Key';
         }
         // Network
-        var netEl = document.getElementById('hubNetStatus');
+        const netEl = document.getElementById('hubNetStatus');
         if (netEl) {
             netEl.style.color = navigator.onLine ? '#4CAF50' : '#f44336';
             netEl.textContent = navigator.onLine ? '🌐 Online' : '🌐 Offline';
         }
         // Storage usage
-        var stEl = document.getElementById('hubStorageStatus');
+        const stEl = document.getElementById('hubStorageStatus');
         if (stEl) {
             try {
-                var totalBytes = 0;
-                for (var key in localStorage) {
+                let totalBytes = 0;
+                for (const key in localStorage) {
                     if (localStorage.hasOwnProperty(key)) totalBytes += localStorage[key].length * 2;
                 }
-                var mb = (totalBytes / (1024 * 1024)).toFixed(1);
-                var pct = ((totalBytes / (1024 * 1024)) / 5 * 100).toFixed(0);
+                const mb = (totalBytes / (1024 * 1024)).toFixed(1);
+                const pct = ((totalBytes / (1024 * 1024)) / 5 * 100).toFixed(0);
                 stEl.textContent = '💾 ' + mb + 'MB (' + pct + '%)';
                 stEl.style.color = pct > 80 ? '#f44336' : pct > 60 ? '#f2994a' : '#888';
-            } catch(e) { stEl.textContent = '💾 --'; }
+            } catch(e) { hubLogError('dashboard/storage', e); stEl.textContent = '💾 --'; }
         }
     }
 
@@ -3594,7 +3682,7 @@
         const qty = parseInt(qtyInput.value) || 1;
 
         if (!section || !length) {
-            alert('Please select a section and enter a length');
+            hubToast('Please select a section and enter a length', 'warning');
             return;
         }
 
@@ -3636,7 +3724,7 @@
     // Calculate total weight
     function igorCalculateTotal() {
         if (igorMembers.length === 0) {
-            alert('Please add at least one steel member');
+            hubToast('Please add at least one steel member', 'warning');
             return;
         }
 
@@ -3669,13 +3757,7 @@
 
         // Load ExcelJS library dynamically (supports styling)
         if (typeof ExcelJS === 'undefined') {
-            await new Promise((resolve, reject) => {
-                const script = document.createElement('script');
-                script.src = 'https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js';
-                script.onload = resolve;
-                script.onerror = reject;
-                document.head.appendChild(script);
-            });
+            await loadSecureScript('https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js');
         }
 
         const workbook = new ExcelJS.Workbook();
@@ -4349,7 +4431,7 @@
             }
         } catch (error) {
             consoleEl.textContent = `❌ Error: ${error.message}`;
-            alert('Failed to process file: ' + error.message);
+            hubToast('Failed to process file: ' + error.message, 'error');
         }
     }
 
@@ -4394,13 +4476,7 @@
     async function igorParseExcel(file) {
         // Load SheetJS if not already loaded
         if (typeof XLSX === 'undefined') {
-            await new Promise((resolve, reject) => {
-                const script = document.createElement('script');
-                script.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
-                script.onload = resolve;
-                script.onerror = reject;
-                document.head.appendChild(script);
-            });
+            await loadSecureScript('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js');
         }
 
         const data = await file.arrayBuffer();
@@ -4445,16 +4521,8 @@
     async function igorParsePDF(file) {
         // Load PDF.js if not already loaded
         if (typeof pdfjsLib === 'undefined') {
-            await new Promise((resolve, reject) => {
-                const script = document.createElement('script');
-                script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-                script.onload = () => {
-                    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-                    resolve();
-                };
-                script.onerror = reject;
-                document.head.appendChild(script);
-            });
+            await loadSecureScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
         }
 
         const arrayBuffer = await file.arrayBuffer();
@@ -4638,7 +4706,7 @@
 
         // Validate required columns
         if (sizeCol === '' && priceCol === '') {
-            alert('Please select at least the Size and Price columns');
+            hubToast('Please select at least the Size and Price columns', 'warning');
             return;
         }
 
@@ -4719,7 +4787,7 @@
         });
 
         if (imported === 0) {
-            alert('No valid price data found. Please check column mapping.');
+            hubToast('No valid price data found. Check column mapping.', 'error');
             return;
         }
 
@@ -4960,7 +5028,7 @@
     function igorAddSupplier() {
         const name = document.getElementById('igorNewSupplierName').value.trim();
         if (!name) {
-            alert('Please enter a supplier name');
+            hubToast('Please enter a supplier name', 'warning');
             return;
         }
 
@@ -5432,7 +5500,7 @@
                 gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
                 oscillator.start();
                 setTimeout(() => { oscillator.stop(); audioCtx.close(); }, 300);
-            } catch(e) {}
+            } catch(e) { hubLogError('chuck/audio', e); }
 
             document.getElementById('chuckConsole').textContent = '✅ CURE COMPLETE! Anchors ready to load!';
             return;
@@ -5950,11 +6018,7 @@
     let hannaFirebaseListenerActive = false;
 
     function hannaSaveReceipts() {
-        if (firebaseDb) {
-            try {
-                firebaseDb.ref('jmart-safety/hanna/receipts').set(hannaReceipts);
-            } catch (e) { console.warn('Hanna Firebase save failed:', e.message); }
-        }
+        firebaseSaveWithRetry('jmart-safety/hanna/receipts', hannaReceipts);
         localStorage.setItem('hannaReceipts', JSON.stringify(hannaReceipts));
     }
 
@@ -5964,7 +6028,8 @@
         firebaseDb.ref('jmart-safety/hanna/receipts').on('value', (snap) => {
             const data = snap.val();
             if (data && Array.isArray(data)) {
-                hannaReceipts = data;
+                // Validate: filter out corrupt entries missing required fields
+                hannaReceipts = data.filter(r => r && typeof r === 'object' && r.saved_at);
                 localStorage.setItem('hannaReceipts', JSON.stringify(data));
             } else if (data === null) {
                 const local = JSON.parse(localStorage.getItem('hannaReceipts') || '[]');
@@ -6358,13 +6423,13 @@
 
     async function saveThisDeviceName() {
         const name = document.getElementById('thisDeviceName').value.trim();
-        if (!name) { alert('Please enter a device name'); return; }
+        if (!name) { hubToast('Please enter a device name', 'warning'); return; }
         if (!firebaseDb) return;
         try {
             await firebaseDb.ref('jmart-safety/devices/approved/' + SteelAuth.deviceId + '/name').set(name);
             document.getElementById('settingsConsole').textContent = '✅ Device name saved: ' + name;
         } catch (error) {
-            alert('Failed to save device name');
+            hubToast('Failed to save device name', 'error');
         }
     }
 
@@ -6382,30 +6447,30 @@
         const input = document.getElementById('renameInput-' + deviceId);
         if (!input) return;
         const newName = input.value.trim();
-        if (!newName) { alert('Device name cannot be empty'); return; }
+        if (!newName) { hubToast('Device name cannot be empty', 'warning'); return; }
         const success = await SteelAuth.renameDevice(deviceId, newName);
         editingDeviceId = null;
         if (!success) {
-            alert('Failed to rename device');
+            hubToast('Failed to rename device', 'error');
         }
     }
 
     async function handleApproveDevice(deviceId) {
         if (!confirm('Approve this device?')) return;
         const success = await SteelAuth.approveDevice(deviceId);
-        if (!success) alert('Failed to approve device');
+        if (!success) hubToast('Failed to approve device', 'error');
     }
 
     async function handleDenyDevice(deviceId) {
         if (!confirm('Deny and remove this device request?')) return;
         const success = await SteelAuth.denyDevice(deviceId);
-        if (!success) alert('Failed to deny device');
+        if (!success) hubToast('Failed to deny device', 'error');
     }
 
     async function handleRemoveDevice(deviceId) {
         if (!confirm('Remove this device? It will need to be re-approved.')) return;
         const success = await SteelAuth.removeDevice(deviceId);
-        if (!success) alert('Failed to remove device');
+        if (!success) hubToast('Failed to remove device', 'error');
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -6528,11 +6593,7 @@
     ];
 
     function victorSaveProducts() {
-        if (firebaseDb) {
-            try {
-                firebaseDb.ref('jmart-safety/victor/products').set(victorProducts);
-            } catch (e) { console.warn('Victor Firebase save failed:', e.message); }
-        }
+        firebaseSaveWithRetry('jmart-safety/victor/products', victorProducts);
         localStorage.setItem('victor-products', JSON.stringify(victorProducts));
     }
 
@@ -6636,13 +6697,13 @@
     // ═══════════════════════════════════════
     function toggleApiPopover(e) {
         e.stopPropagation();
-        var pop = document.getElementById('apiPopover');
-        var isOpen = pop.classList.contains('show');
+        const pop = document.getElementById('apiPopover');
+        const isOpen = pop.classList.contains('show');
         pop.classList.toggle('show');
         if (!isOpen) {
             // Show current status
-            var key = getApiKey();
-            var status = document.getElementById('apiPopoverStatus');
+            const key = getApiKey();
+            const status = document.getElementById('apiPopoverStatus');
             if (key) {
                 status.textContent = 'Configured (sk-...' + key.slice(-4) + ')';
                 status.style.color = '#4CAF50';
@@ -6653,7 +6714,7 @@
         }
     }
     function saveApiKeyFromPopover() {
-        var key = document.getElementById('apiKeyPopoverInput').value.trim();
+        const key = document.getElementById('apiKeyPopoverInput').value.trim();
         if (!key.startsWith('sk-')) {
             document.getElementById('apiPopoverStatus').textContent = 'Invalid — must start with sk-';
             document.getElementById('apiPopoverStatus').style.color = '#f44336';
@@ -6668,13 +6729,13 @@
     }
     // Close popover when clicking outside
     document.addEventListener('click', function(e) {
-        var pop = document.getElementById('apiPopover');
+        const pop = document.getElementById('apiPopover');
         if (pop && pop.classList.contains('show') && !pop.contains(e.target) && e.target.id !== 'apiNavBtn') {
             pop.classList.remove('show');
         }
         // Also close MSDS dropdown when clicking outside
-        var dd = document.getElementById('victorSearchDropdown');
-        var input = document.getElementById('victorFilterText');
+        const dd = document.getElementById('victorSearchDropdown');
+        const input = document.getElementById('victorFilterText');
         if (dd && dd.classList.contains('show') && !dd.contains(e.target) && e.target !== input) {
             dd.classList.remove('show');
         }
@@ -6693,34 +6754,34 @@
     }
 
     function victorShowDropdown() {
-        var input = document.getElementById('victorFilterText');
-        var dd = document.getElementById('victorSearchDropdown');
+        const input = document.getElementById('victorFilterText');
+        const dd = document.getElementById('victorSearchDropdown');
         if (!input || !dd) return;
-        var query = input.value.toLowerCase().trim();
+        const query = input.value.toLowerCase().trim();
         if (query.length === 0) {
             dd.classList.remove('show');
             return;
         }
 
-        // Find matches in existing products
-        var matches = [];
-        victorProducts.forEach(function(p, i) {
-            var nameMatch = (p.name || '').toLowerCase().indexOf(query) >= 0;
-            var mfrMatch = (p.manufacturer || '').toLowerCase().indexOf(query) >= 0;
-            var summaryMatch = (p.summary || '').toLowerCase().indexOf(query) >= 0;
-            if (nameMatch || mfrMatch || summaryMatch) {
-                matches.push({ p: p, i: i, compliance: victorCalcCompliance(p.msds_date) });
+        // Find matches using fuzzy search (split query into tokens, all must match somewhere)
+        const tokens = query.split(/\s+/).filter(Boolean);
+        const matches = [];
+        victorProducts.forEach((p, i) => {
+            const haystack = ((p.name || '') + ' ' + (p.manufacturer || '') + ' ' + (p.summary || '')).toLowerCase();
+            const allMatch = tokens.every(t => haystack.includes(t));
+            if (allMatch) {
+                matches.push({ p, i, compliance: victorCalcCompliance(p.msds_date) });
             }
         });
 
         // Sort matches alphabetically
-        matches.sort(function(a, b) { return a.p.name.localeCompare(b.p.name); });
+        matches.sort((a, b) => a.p.name.localeCompare(b.p.name));
 
-        var html = '';
+        let html = '';
         if (matches.length > 0) {
-            matches.forEach(function(m) {
-                var statusColor = m.compliance === 'current' ? '#4CAF50' : m.compliance === 'expiring' ? '#f2994a' : m.compliance === 'expired' ? '#f44336' : '#888';
-                var statusBg = m.compliance === 'current' ? 'rgba(76,175,80,0.15)' : m.compliance === 'expiring' ? 'rgba(242,153,74,0.15)' : m.compliance === 'expired' ? 'rgba(244,67,54,0.15)' : 'rgba(255,255,255,0.05)';
+            matches.forEach(m => {
+                const statusColor = m.compliance === 'current' ? '#4CAF50' : m.compliance === 'expiring' ? '#f2994a' : m.compliance === 'expired' ? '#f44336' : '#888';
+                const statusBg = m.compliance === 'current' ? 'rgba(76,175,80,0.15)' : m.compliance === 'expiring' ? 'rgba(242,153,74,0.15)' : m.compliance === 'expired' ? 'rgba(244,67,54,0.15)' : 'rgba(255,255,255,0.05)';
                 html += '<div class="msds-drop-item" onclick="victorScrollToProduct(' + m.i + ')">';
                 html += '<div><span class="msds-drop-name">' + escapeHtml(m.p.name) + '</span>';
                 html += '<span class="msds-drop-status" style="color:' + statusColor + ';background:' + statusBg + ';">' + (m.compliance || 'unknown').toUpperCase() + '</span></div>';
@@ -6739,38 +6800,38 @@
 
     function victorScrollToProduct(idx) {
         // Close dropdown
-        var dd = document.getElementById('victorSearchDropdown');
+        const dd = document.getElementById('victorSearchDropdown');
         if (dd) dd.classList.remove('show');
 
         // Clear filter to show all, then highlight the product
-        var input = document.getElementById('victorFilterText');
-        var productName = victorProducts[idx]?.name || '';
+        const input = document.getElementById('victorFilterText');
+        const productName = victorProducts[idx]?.name || '';
         if (input) input.value = productName;
         victorSetFilter('all');
 
         // Scroll to the product card after render
-        setTimeout(function() {
-            var cards = document.querySelectorAll('#victorProductList > div');
-            cards.forEach(function(card) {
+        setTimeout(() => {
+            const cards = document.querySelectorAll('#victorProductList > div');
+            cards.forEach(card => {
                 if (card.textContent.indexOf(productName) >= 0) {
                     card.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     card.style.transition = 'box-shadow 0.3s';
                     card.style.boxShadow = '0 0 0 2px #667eea';
-                    setTimeout(function() { card.style.boxShadow = ''; }, 2000);
+                    setTimeout(() => { card.style.boxShadow = ''; }, 2000);
                 }
             });
         }, 100);
     }
 
     function victorSearchFromDropdown() {
-        var input = document.getElementById('victorFilterText');
-        var dd = document.getElementById('victorSearchDropdown');
+        const input = document.getElementById('victorFilterText');
+        const dd = document.getElementById('victorSearchDropdown');
         if (dd) dd.classList.remove('show');
 
         // Set the hidden fields for backwards compatibility with victorSearch()
-        var nameInput = document.getElementById('victorProductName');
+        const nameInput = document.getElementById('victorProductName');
         if (nameInput) nameInput.value = input ? input.value.trim() : '';
-        var mfrInput = document.getElementById('victorManufacturer');
+        const mfrInput = document.getElementById('victorManufacturer');
         if (mfrInput) mfrInput.value = '';
 
         victorSearch();
@@ -6936,7 +6997,7 @@
 
         // Check API key first
         if (!getApiKey()) {
-            alert('No API key configured. Go to Settings (⚙️) and add your Anthropic API key first.');
+            hubToast('No API key configured. Go to Settings and add your API key first.', 'warning', 5000);
             victorLog('⚠️ API key needed — go to Settings to add it');
             return;
         }
@@ -7108,7 +7169,7 @@
     async function victorSearch() {
         const productName = document.getElementById('victorProductName').value.trim();
         const manufacturer = document.getElementById('victorManufacturer').value.trim();
-        if (!productName) { alert('Enter a product name'); return; }
+        if (!productName) { hubToast('Enter a product name', 'warning'); return; }
 
         const console_el = document.getElementById('victorConsole');
         const searching = document.getElementById('victorSearching');
@@ -7228,11 +7289,7 @@
     let frankFirebaseListenerActive = false;
 
     function frankSaveHistory() {
-        if (firebaseDb) {
-            try {
-                firebaseDb.ref('jmart-safety/frank/history').set(frankHistory);
-            } catch (e) { console.warn('Frank Firebase save failed:', e.message); }
-        }
+        firebaseSaveWithRetry('jmart-safety/frank/history', frankHistory);
         localStorage.setItem('frank-history', JSON.stringify(frankHistory));
     }
 
@@ -7598,7 +7655,7 @@
         }
 
         // Device approved - initialize app
-        var vBadge = document.getElementById('hubVersionBadge');
+        const vBadge = document.getElementById('hubVersionBadge');
         if (vBadge) vBadge.textContent = 'v' + HUB_VERSION;
         hobartUpdate();
         // IGOR dropdowns are already in HTML
@@ -7610,17 +7667,12 @@
         hannaInit(); // Initialize HANNA receipt scanner
         loadApiKeyStatus(); // Show API key status in settings
 
-        // Start Firebase sync for Victor, Frank & Hanna (real-time across all devices)
-        victorStartSync();
-        frankStartSync();
-        hannaStartSync();
-        // Fallback render from localStorage if Firebase hasn't loaded yet
-        if (!victorFirebaseListenerActive) {
-            const localVictor = JSON.parse(localStorage.getItem('victor-products') || '[]');
-            victorProducts = localVictor.length > 0 ? localVictor : VICTOR_SEED_DATA.slice();
-            victorRenderProducts();
-        }
-        if (!frankFirebaseListenerActive) { frankHistory = JSON.parse(localStorage.getItem('frank-history') || '[]'); frankRenderHistory(); }
+        // Firebase sync is now lazy — listeners start when agent tab is first visited (showSection).
+        // Pre-load from localStorage so dashboard stats are available immediately.
+        const localVictor = JSON.parse(localStorage.getItem('victor-products') || '[]');
+        victorProducts = localVictor.length > 0 ? localVictor : VICTOR_SEED_DATA.slice();
+        frankHistory = JSON.parse(localStorage.getItem('frank-history') || '[]');
+        hannaReceipts = JSON.parse(localStorage.getItem('hannaReceipts') || '[]');
 
         // Initialize dashboard and status bar
         dashboardRefresh();
