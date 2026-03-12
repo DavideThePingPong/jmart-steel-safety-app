@@ -31,6 +31,7 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
   });
 
   const deletingFormRef = useRef(false);
+  const deletedFormIdsRef = useRef(new Set(JSON.parse(localStorage.getItem('jmart-deleted-form-ids') || '[]')));
 
   // Mark form as backed up (after PDF download)
   const markAsBackedUp = (formId) => {
@@ -297,6 +298,12 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
     setDeleteConfirmModal(null);
     setViewFormModal(null);
 
+    // Persist deleted form ID so Firebase listener won't merge it back when reconnecting
+    deletedFormIdsRef.current.add(formId);
+    try {
+      localStorage.setItem('jmart-deleted-form-ids', JSON.stringify([...deletedFormIdsRef.current]));
+    } catch (e) { console.warn('Could not persist deleted form IDs:', e.message); }
+
     setForms(prevForms => {
       const deletedForm = prevForms.find(f => f.id === formId);
       const updatedForms = prevForms.filter(f => f.id !== formId);
@@ -319,6 +326,9 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
         FirebaseSync.syncForms(updatedForms).then(() => {
           console.log('Deletion synced to Firebase');
           deletingFormRef.current = false;
+          // Clean up the persisted deleted ID since Firebase is now in sync
+          deletedFormIdsRef.current.delete(formId);
+          try { localStorage.setItem('jmart-deleted-form-ids', JSON.stringify([...deletedFormIdsRef.current])); } catch (e) {}
         }).catch(err => {
           console.error('Failed to sync deletion to Firebase:', err);
           deletingFormRef.current = false;
@@ -341,6 +351,7 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
     backedUpForms,
     savedSignatures,
     deletingFormRef,
+    deletedFormIdsRef,
     // Functions
     addForm,
     updateForm,
@@ -361,8 +372,9 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
 // =============================================
 // useDataSync - Firebase/localStorage sync
 // =============================================
-function useDataSync({ setForms, setSites, deletingFormRef }) {
+function useDataSync({ setForms, setSites, deletingFormRef, deletedFormIdsRef }) {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const isOnlineRef = useRef(isOnline);
   const [lastSynced, setLastSynced] = useState(null);
   const [syncStatus, setSyncStatus] = useState(FirebaseSync.isConnected() ? 'synced' : 'local');
   const [pendingSyncCount, setPendingSyncCount] = useState(FirebaseSync.getPendingCount());
@@ -432,7 +444,11 @@ function useDataSync({ setForms, setSites, deletingFormRef }) {
         if (formsArray.length > 0) {
           const formMap = new Map();
 
+          // Filter out forms that were deleted offline but haven't been purged from Firebase yet
+          const deletedIds = deletedFormIdsRef ? deletedFormIdsRef.current : new Set();
+
           formsArray.forEach(form => {
+            if (deletedIds.has(form.id)) return; // Skip forms deleted offline
             formMap.set(form.id, { ...form, source: 'firebase' });
           });
 
@@ -561,7 +577,7 @@ function useDataSync({ setForms, setSites, deletingFormRef }) {
         return;
       }
 
-      if (FirebaseSync.isConnected() && isOnline && forms.length > 0) {
+      if (FirebaseSync.isConnected() && isOnlineRef.current && forms.length > 0) {
         setSyncStatus('syncing');
         FirebaseSync.syncForms(forms).then(() => {
           setSyncStatus('synced');
@@ -584,7 +600,7 @@ function useDataSync({ setForms, setSites, deletingFormRef }) {
         return;
       }
 
-      if (FirebaseSync.isConnected() && isOnline) {
+      if (FirebaseSync.isConnected() && isOnlineRef.current) {
         FirebaseSync.syncSites(sites);
       }
     }
@@ -592,8 +608,8 @@ function useDataSync({ setForms, setSites, deletingFormRef }) {
 
   // Online/Offline detection
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
+    const handleOnline = () => { setIsOnline(true); isOnlineRef.current = true; };
+    const handleOffline = () => { setIsOnline(false); isOnlineRef.current = false; };
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
     return () => {
@@ -823,18 +839,25 @@ function useAutoSave(formKey, formData, intervalMs) {
   const saveInterval = intervalMs || 30000; // default 30 seconds
   const draftKey = 'jmart-draft-' + formKey;
 
+  // Keep a ref to the latest formData so the interval callback always reads current data
+  const formDataRef = useRef(formData);
+  useEffect(() => { formDataRef.current = formData; }, [formData]);
+
+  // Stabilize dependency: only restart the interval when the serialized data actually changes
+  const formDataStr = JSON.stringify(formData);
+
   // Save draft periodically
   useEffect(() => {
-    if (!formData || !formKey) return;
+    if (!formDataRef.current || !formKey) return;
     const timer = IntervalRegistry.setInterval(() => {
       try {
-        localStorage.setItem(draftKey, JSON.stringify({ data: formData, savedAt: Date.now() }));
+        localStorage.setItem(draftKey, JSON.stringify({ data: formDataRef.current, savedAt: Date.now() }));
       } catch (e) {
         console.warn('[AutoSave] Could not save draft:', e.message);
       }
     }, saveInterval, 'useAutoSave-' + formKey);
     return () => IntervalRegistry.clearInterval(timer);
-  }, [formData, formKey]);
+  }, [formDataStr, formKey]);
 
   // Load existing draft
   const loadDraft = () => {

@@ -69,17 +69,17 @@ const ErrorTelemetry = {
   _installGlobalHandlers: function() {
     var self = this;
 
-    window.onerror = function(msg, src, line, col, err) {
+    // Use addEventListener instead of assignment to avoid overwriting other handlers
+    window.addEventListener('error', function(event) {
       self.captureError({
-        message: msg || 'Unknown error',
-        source: src ? (src + ':' + line + ':' + col) : 'unknown',
-        stack: err && err.stack ? err.stack.substring(0, 500) : '',
+        message: event.message || 'Unknown error',
+        source: event.filename ? (event.filename + ':' + event.lineno + ':' + event.colno) : 'unknown',
+        stack: event.error && event.error.stack ? event.error.stack.substring(0, 500) : '',
         context: 'global'
       });
-      return false;  // Let browser also log it
-    };
+    });
 
-    window.onunhandledrejection = function(event) {
+    window.addEventListener('unhandledrejection', function(event) {
       var reason = event.reason;
       var msg = reason instanceof Error ? reason.message : String(reason || 'Unknown rejection');
       var stack = reason && reason.stack ? reason.stack.substring(0, 500) : '';
@@ -89,7 +89,7 @@ const ErrorTelemetry = {
         stack: stack,
         context: 'unhandled-rejection'
       });
-    };
+    });
   },
 
   // =========================================================================

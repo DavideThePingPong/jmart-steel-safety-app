@@ -1,6 +1,45 @@
 // ITPFormView Component
 // Extracted from forms.jsx
 
+// Sub-components defined outside ITPFormView to avoid re-creation on every render
+const YesNoNAButtons = ({ value, onChange, label }) => (
+  <div className="bg-white rounded-xl p-4 shadow-sm">
+    <p className="text-gray-700 mb-3 font-medium">{label}</p>
+    <div className="flex gap-2">
+      <button onClick={() => onChange('yes')}
+        className={`flex-1 py-2 rounded-lg font-medium text-sm border-2 ${value === 'yes' ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 text-gray-700'}`}>
+        Yes
+      </button>
+      <button onClick={() => onChange('no')}
+        className={`flex-1 py-2 rounded-lg font-medium text-sm border-2 ${value === 'no' ? 'bg-red-500 border-red-500 text-white' : 'border-gray-300 text-gray-700'}`}>
+        No
+      </button>
+      <button onClick={() => onChange('na')}
+        className={`flex-1 py-2 rounded-lg font-medium text-sm border-2 ${value === 'na' ? 'bg-gray-500 border-gray-500 text-white' : 'border-gray-300 text-gray-700'}`}>
+        N/A
+      </button>
+    </div>
+  </div>
+);
+
+const TextInputBox = ({ value, onChange, label, placeholder }) => (
+  <div className="bg-white rounded-xl p-4 shadow-sm">
+    <p className="text-gray-700 mb-2 font-medium">{label}</p>
+    <input type="text" value={value} onChange={(e) => onChange(e.target.value)}
+      className="w-full border border-gray-300 rounded-lg p-3 text-sm" placeholder={placeholder || "Tap to edit"} />
+  </div>
+);
+
+const SectionHeader = ({ title, progress }) => (
+  <div className="bg-indigo-400 rounded-xl p-3 flex justify-between items-center">
+    <div className="flex items-center gap-2">
+      <span className="text-white">▼</span>
+      <span className="text-white font-medium">{title}</span>
+    </div>
+    {progress && <span className="text-white text-sm">{progress}</span>}
+  </div>
+);
+
 function ITPFormView({ onSubmit, onUpdate, editingForm, sites = [] }) {
   const isEditing = !!editingForm;
   const editData = editingForm?.data || {};
@@ -115,47 +154,6 @@ function ITPFormView({ onSubmit, onUpdate, editingForm, sites = [] }) {
       setIsLocating(false);
     }
   };
-
-  // Yes/No/NA Button Component
-  const YesNoNAButtons = ({ value, onChange, label }) => (
-    <div className="bg-white rounded-xl p-4 shadow-sm">
-      <p className="text-gray-700 mb-3 font-medium">{label}</p>
-      <div className="flex gap-2">
-        <button onClick={() => onChange('yes')}
-          className={`flex-1 py-2 rounded-lg font-medium text-sm border-2 ${value === 'yes' ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 text-gray-700'}`}>
-          Yes
-        </button>
-        <button onClick={() => onChange('no')}
-          className={`flex-1 py-2 rounded-lg font-medium text-sm border-2 ${value === 'no' ? 'bg-red-500 border-red-500 text-white' : 'border-gray-300 text-gray-700'}`}>
-          No
-        </button>
-        <button onClick={() => onChange('na')}
-          className={`flex-1 py-2 rounded-lg font-medium text-sm border-2 ${value === 'na' ? 'bg-gray-500 border-gray-500 text-white' : 'border-gray-300 text-gray-700'}`}>
-          N/A
-        </button>
-      </div>
-    </div>
-  );
-
-  // Text Input Box Component
-  const TextInputBox = ({ value, onChange, label, placeholder }) => (
-    <div className="bg-white rounded-xl p-4 shadow-sm">
-      <p className="text-gray-700 mb-2 font-medium">{label}</p>
-      <input type="text" value={value} onChange={(e) => onChange(e.target.value)}
-        className="w-full border border-gray-300 rounded-lg p-3 text-sm" placeholder={placeholder || "Tap to edit"} />
-    </div>
-  );
-
-  // Section Header Component
-  const SectionHeader = ({ title, progress }) => (
-    <div className="bg-indigo-400 rounded-xl p-3 flex justify-between items-center">
-      <div className="flex items-center gap-2">
-        <span className="text-white">▼</span>
-        <span className="text-white font-medium">{title}</span>
-      </div>
-      {progress && <span className="text-white text-sm">{progress}</span>}
-    </div>
-  );
 
   const handleSubmit = () => {
     let errors = [];

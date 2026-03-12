@@ -403,7 +403,7 @@ function SignaturePad({
   const useOtherSignature = memberName => {
     // SECURITY FIX: Do not allow using other people's signatures
     // Instead, show a message that each person must sign their own
-    ToastNotifier.warning('Security Notice: ' + memberName + ' must sign their own signature. Please have them sign directly on this device.');
+    if (typeof ToastNotifier !== 'undefined') ToastNotifier.warning('Security Notice: ' + memberName + ' must sign their own signature. Please have them sign directly on this device.');
     setShowSavedOptions(false);
   };
 
@@ -413,12 +413,14 @@ function SignaturePad({
     const expectedCode = getVerificationCode(selectedMember);
     if (verificationCode === expectedCode) {
       // Verification passed - apply signature with audit log
-      AuditLogManager.log('signature_used', {
-        signerName: selectedMember,
-        usedBy: DeviceAuthManager.deviceId,
-        method: 'saved_signature',
-        timestamp: new Date().toISOString()
-      });
+      if (typeof AuditLogManager !== 'undefined') {
+        AuditLogManager.log('signature_used', {
+          signerName: selectedMember,
+          usedBy: DeviceAuthManager.deviceId,
+          method: 'saved_signature',
+          timestamp: new Date().toISOString()
+        });
+      }
       onSave(savedSignatures[selectedMember]);
       setShowVerification(false);
       setVerificationCode('');
@@ -585,13 +587,13 @@ function NoteMediaBox({
       const currentCount = (media || []).length;
       const remaining = MAX_PHOTOS_PER_SECTION - currentCount;
       if (remaining <= 0) {
-        ToastNotifier.warning('Maximum ' + MAX_PHOTOS_PER_SECTION + ' photos per section. Remove a photo to add more.');
+        if (typeof ToastNotifier !== 'undefined') ToastNotifier.warning('Maximum ' + MAX_PHOTOS_PER_SECTION + ' photos per section. Remove a photo to add more.');
         e.target.value = '';
         return;
       }
       const filesToProcess = Array.from(files).slice(0, remaining);
       if (filesToProcess.length < files.length) {
-        ToastNotifier.info('Only adding ' + filesToProcess.length + ' of ' + files.length + ' photos (limit: ' + MAX_PHOTOS_PER_SECTION + ' per section).');
+        if (typeof ToastNotifier !== 'undefined') ToastNotifier.info('Only adding ' + filesToProcess.length + ' of ' + files.length + ' photos (limit: ' + MAX_PHOTOS_PER_SECTION + ' per section).');
       }
       filesToProcess.forEach(file => {
         console.log('Processing file:', file.name, 'type:', file.type, 'size:', file.size);
@@ -1144,7 +1146,11 @@ function useFormManager({
         console.log('setForms update, new length:', updatedForms.length);
 
         // Safe write to localStorage (strips large data, trims to fit)
-        StorageQuotaManager.safeFormsWrite(updatedForms);
+        if (typeof StorageQuotaManager !== 'undefined') {
+          StorageQuotaManager.safeFormsWrite(updatedForms);
+        } else {
+          localStorage.setItem(STORAGE_KEYS.FORMS, JSON.stringify(updatedForms));
+        }
 
         // Sync full form (with photos) to Firebase — Firebase is the source of truth
         if (FirebaseSync.isConnected()) {
@@ -1158,6 +1164,7 @@ function useFormManager({
       // Auto-download PDF + upload to Drive
       setTimeout(() => {
         try {
+          if (typeof PDFGenerator === 'undefined') throw new Error('PDFGenerator not loaded');
           const filename = PDFGenerator.download(newForm);
           markAsBackedUp(newForm.id);
           console.log('Auto-saved PDF:', filename);
@@ -1186,26 +1193,28 @@ function useFormManager({
       }, 500);
 
       // AUDIT LOG
-      AuditLogManager.log('create', {
-        formId: newForm.id,
-        formType: formType,
-        site: formData.siteConducted || formData.site || 'Unknown',
-        action: 'Form created'
-      });
+      if (typeof AuditLogManager !== 'undefined') {
+        AuditLogManager.log('create', {
+          formId: newForm.id,
+          formType: formType,
+          site: formData.siteConducted || formData.site || 'Unknown',
+          action: 'Form created'
+        });
+      }
       setSuccessModal({
         form: newForm,
         type: formType
       });
     } catch (err) {
       console.error('Error saving form:', err);
-      ToastNotifier.error('Error saving form: ' + err.message + '. Please try again.');
+      if (typeof ToastNotifier !== 'undefined') ToastNotifier.error('Error saving form: ' + err.message + '. Please try again.');
     }
   };
 
   // Unlock a locked form (admin only)
   const unlockForm = formId => {
     if (!DeviceAuthManager.isAdmin) {
-      ToastNotifier.warning('Only admins can unlock submitted forms for editing.');
+      if (typeof ToastNotifier !== 'undefined') ToastNotifier.warning('Only admins can unlock submitted forms for editing.');
       return false;
     }
     setForms(prevForms => {
@@ -1216,10 +1225,12 @@ function useFormManager({
       StorageQuotaManager.safeFormsWrite(updated);
       return updated;
     });
-    AuditLogManager.log('unlock', {
-      formId,
-      action: 'Form unlocked for editing by admin'
-    });
+    if (typeof AuditLogManager !== 'undefined') {
+      AuditLogManager.log('unlock', {
+        formId,
+        action: 'Form unlocked for editing by admin'
+      });
+    }
     return true;
   };
 
@@ -1228,7 +1239,7 @@ function useFormManager({
     // Check if form is locked — only admins can edit locked forms
     if (editingForm?.locked) {
       if (!DeviceAuthManager.isAdmin) {
-        ToastNotifier.warning('This form has been submitted and locked. Only an admin can edit it.');
+        if (typeof ToastNotifier !== 'undefined') ToastNotifier.warning('This form has been submitted and locked. Only an admin can edit it.');
         return;
       }
       // Admin can proceed — form will be unlocked during update
@@ -1296,7 +1307,7 @@ function useFormManager({
           console.warn('Version check skipped (non-fatal):', versionErr.message);
         }
       }
-      if (GoogleDriveSync.isConnected() && siteName) {
+      if (typeof GoogleDriveSync !== 'undefined' && GoogleDriveSync.isConnected() && siteName) {
         console.log('Searching for old PDFs to delete...');
         await GoogleDriveSync.deleteOldFormPDFs(form.id, siteName);
       }
@@ -1325,18 +1336,20 @@ function useFormManager({
         }
         return updatedForms;
       });
-      const filename = PDFGenerator.download(form);
-      markAsBackedUp(form.id);
+      const filename = typeof PDFGenerator !== 'undefined' ? PDFGenerator.download(form) : null;
+      if (filename) markAsBackedUp(form.id);
       console.log('Downloaded updated PDF:', filename);
-      if (GoogleDriveSync.isConnected()) {
-        const {
-          doc
-        } = PDFGenerator.generate(form);
-        const pdfBlob = doc.output('blob');
-        await GoogleDriveSync.uploadPDF(pdfBlob, filename, form.type);
-        console.log('Uploaded new PDF to Drive:', form.type);
+      if (typeof GoogleDriveSync !== 'undefined' && GoogleDriveSync.isConnected()) {
+        if (typeof PDFGenerator !== 'undefined') {
+          const {
+            doc
+          } = PDFGenerator.generate(form);
+          const pdfBlob = doc.output('blob');
+          await GoogleDriveSync.uploadPDF(pdfBlob, filename, form.type);
+          console.log('Uploaded new PDF to Drive:', form.type);
+        }
       }
-      AuditLogManager.log('update', {
+      if (typeof AuditLogManager !== 'undefined') AuditLogManager.log('update', {
         formId: form.id,
         formType: formType,
         site: formData.siteConducted || formData.site || 'Unknown',
@@ -1354,7 +1367,7 @@ function useFormManager({
     } catch (error) {
       console.error('Error during update:', error);
       setIsUpdating(false);
-      ToastNotifier.error('Error updating form. Please try again.');
+      if (typeof ToastNotifier !== 'undefined') ToastNotifier.error('Error updating form. Please try again.');
     }
   };
 
@@ -1365,7 +1378,7 @@ function useFormManager({
     setCurrentView('dashboard');
   };
   const handleDownloadPDF = () => {
-    if (successModal?.form) {
+    if (successModal?.form && typeof PDFGenerator !== 'undefined') {
       const filename = PDFGenerator.download(successModal.form);
       markAsBackedUp(successModal.form.id);
       console.log('Downloaded and backed up:', filename);
@@ -1384,14 +1397,16 @@ function useFormManager({
     setForms(prevForms => {
       const deletedForm = prevForms.find(f => f.id === formId);
       const updatedForms = prevForms.filter(f => f.id !== formId);
-      AuditLogManager.log('delete', {
-        formId: formId,
-        formType: deletedForm?.type || 'unknown',
-        site: deletedForm?.data?.siteConducted || deletedForm?.data?.site || 'Unknown',
-        originalCreatedBy: deletedForm?.createdBy,
-        originalCreatedAt: deletedForm?.createdAt,
-        action: 'Form deleted'
-      });
+      if (typeof AuditLogManager !== 'undefined') {
+        AuditLogManager.log('delete', {
+          formId: formId,
+          formType: deletedForm?.type || 'unknown',
+          site: deletedForm?.data?.siteConducted || deletedForm?.data?.site || 'Unknown',
+          originalCreatedBy: deletedForm?.createdBy,
+          originalCreatedAt: deletedForm?.createdAt,
+          action: 'Form deleted'
+        });
+      }
       StorageQuotaManager.safeFormsWrite(updatedForms);
       console.log('Form deleted, saved to localStorage:', updatedForms.length, 'forms remaining');
       deletingFormRef.current = true;
@@ -1823,7 +1838,7 @@ function useDeviceAuth() {
         const unsubOwnStatus = DeviceAuth.listenForOwnDeviceStatus(status => {
           if (status.revoked) {
             setDeviceAuthStatus('denied');
-            ToastNotifier.error('Your device access has been revoked by an administrator.', { duration: 10000 });
+            if (typeof ToastNotifier !== 'undefined') ToastNotifier.error('Your device access has been revoked by an administrator.', { duration: 10000 });
           }
         });
         if (unsubOwnStatus) cleanups.push(unsubOwnStatus);
@@ -1836,7 +1851,7 @@ function useDeviceAuth() {
             if (snapshot.exists()) {
               const data = snapshot.val();
               setDeviceAuthStatus('approved');
-              setIsDeviceAdmin(data.role === 'admin');
+              setIsDeviceAdmin(data.isAdmin === true);
               approvalRef.off('value');
               window.location.reload();
             }
@@ -2105,7 +2120,7 @@ function SuccessModal({
     className: "text-xl font-bold"
   }, "Form Submitted!"), /*#__PURE__*/React.createElement("p", {
     className: "text-green-100 text-sm mt-1"
-  }, PDFGenerator.folderMap[successModal.type] || successModal.type)), /*#__PURE__*/React.createElement("div", {
+  }, (typeof PDFGenerator !== 'undefined' && PDFGenerator.folderMap[successModal.type]) || successModal.type)), /*#__PURE__*/React.createElement("div", {
     className: "p-6 space-y-4"
   }, /*#__PURE__*/React.createElement("p", {
     className: "text-gray-600 text-center text-sm"
@@ -2156,7 +2171,7 @@ function ViewFormModal({
   }, /*#__PURE__*/React.createElement("h2", {
     id: "view-form-title",
     className: "text-lg font-bold"
-  }, PDFGenerator.folderMap[viewFormModal.type] || viewFormModal.type), /*#__PURE__*/React.createElement("button", {
+  }, (typeof PDFGenerator !== 'undefined' && PDFGenerator.folderMap[viewFormModal.type]) || viewFormModal.type), /*#__PURE__*/React.createElement("button", {
     onClick: onClose,
     className: "text-white text-2xl",
     "aria-label": "Close"
@@ -2305,7 +2320,7 @@ function UpdateConfirmModal({
     className: "text-blue-800 text-sm font-medium"
   }, "You've made changes to this form."), /*#__PURE__*/React.createElement("p", {
     className: "text-blue-700 text-xs mt-1"
-  }, GoogleDriveSync.isConnected() ? 'This will update Firebase and replace the old PDF on Google Drive.' : 'This will update the form in Firebase.')), updateConfirmModal.formData?.siteConducted && /*#__PURE__*/React.createElement("div", {
+  }, (typeof GoogleDriveSync !== 'undefined' && GoogleDriveSync.isConnected()) ? 'This will update Firebase and replace the old PDF on Google Drive.' : 'This will update the form in Firebase.')), updateConfirmModal.formData?.siteConducted && /*#__PURE__*/React.createElement("div", {
     className: "bg-gray-50 rounded-lg p-3"
   }, /*#__PURE__*/React.createElement("p", {
     className: "text-gray-600 text-xs"
@@ -3281,7 +3296,7 @@ function JMartSteelSafetyApp({
       setCurrentView(form.type);
     },
     onDownloadPDF: form => {
-      PDFGenerator.download(form);
+      if (typeof PDFGenerator !== 'undefined') PDFGenerator.download(form);
       markAsBackedUp(form.id);
     },
     onDelete: form => setDeleteConfirmModal(form)
@@ -3289,7 +3304,7 @@ function JMartSteelSafetyApp({
     deleteConfirmModal: deleteConfirmModal,
     isFormBackedUp: isFormBackedUp,
     onDownloadPDF: form => {
-      PDFGenerator.download(form);
+      if (typeof PDFGenerator !== 'undefined') PDFGenerator.download(form);
       markAsBackedUp(form.id);
     },
     onDelete: formId => deleteForm(formId),

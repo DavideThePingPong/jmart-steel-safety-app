@@ -131,16 +131,18 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
 
   // Listen for Google Drive connection status changes (real-time, no timeout)
   useEffect(() => {
-    const handleDriveChange = (connected, error) => {
+    if (typeof GoogleDriveSync === 'undefined') return;
+    let active = true;
+    GoogleDriveSync.onConnectionChange((connected, error) => {
+      if (!active) return;
       setDriveConnected(connected);
       if (error) {
         setDriveError(error);
       } else {
         setDriveError('');
       }
-    };
-    GoogleDriveSync.onConnectionChange(handleDriveChange);
-    // No cleanup needed — callbacks list is on the singleton
+    });
+    return () => { active = false; };
   }, []);
 
   const handleApproveDevice = async (deviceId) => {

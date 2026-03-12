@@ -315,7 +315,7 @@ const DeviceAuth = {
       const devices = approvedResult.val;
       if (!devices) return;
 
-      const invalidKeys = ['null', 'undefined', ''];
+      const invalidKeys = ['null', 'undefined'];
       for (const key of invalidKeys) {
         if (devices[key]) {
           console.warn('[DeviceAuth] Removing invalid device entry:', JSON.stringify(key));
@@ -342,10 +342,10 @@ const DeviceAuth = {
       const pendingResult = await firebaseRead('jmart-safety/devices/pending');
       const pending = pendingResult.val;
       if (pending) {
-        for (const key of invalidKeys) {
-          if (pending[key]) {
-            await firebaseDb.ref('jmart-safety/devices/pending/' + key).remove();
-            console.warn('[DeviceAuth] Removed invalid pending device:', key);
+        for (const pKey of invalidKeys) {
+          if (pending[pKey]) {
+            await firebaseDb.ref('jmart-safety/devices/pending/' + pKey).remove();
+            console.warn('[DeviceAuth] Removed invalid pending device:', pKey);
           }
         }
       }
@@ -498,21 +498,27 @@ const DeviceAuth = {
 
     const ref = firebaseDb.ref('jmart-safety/devices/pending');
 
-    ref.on('value', (snapshot) => {
+    const valueHandler = (snapshot) => {
       const data = snapshot.val();
       this.pendingDevices = data ? Object.entries(data).map(([id, info]) => ({ id, ...info })) : [];
       callback(this.pendingDevices);
-    });
+    };
+    ref.on('value', valueHandler);
 
     // Also listen for child_added for new device notifications
-    ref.on('child_added', (snapshot) => {
+    // Skip initial fire (child_added fires for all existing children on first attach)
+    let initialLoadComplete = false;
+    ref.once('value', () => { initialLoadComplete = true; });
+    const childHandler = (snapshot) => {
+      if (!initialLoadComplete) return;
       const newDevice = { id: snapshot.key, ...snapshot.val() };
       this.notifyNotificationListeners('new_device', newDevice);
-    });
+    };
+    ref.on('child_added', childHandler);
 
     return () => {
-      ref.off('value');
-      ref.off('child_added');
+      ref.off('value', valueHandler);
+      ref.off('child_added', childHandler);
     };
   },
 

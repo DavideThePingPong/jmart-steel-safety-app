@@ -10,7 +10,7 @@ const AuditLogManager = {
     const logEntry = {
       id: Date.now().toString(36) + '-' + Math.random().toString(36).substr(2, 9),
       action: action, // 'create', 'update', 'delete', 'view', 'export'
-      deviceId: DeviceAuthManager.deviceId || 'unknown',
+      deviceId: (typeof DeviceAuthManager !== 'undefined' ? DeviceAuthManager.deviceId : null) || 'unknown',
       userName: localStorage.getItem('jmart-user-name') || 'Unknown User',
       timestamp: Date.now(), // Must be number for Firebase validation rules
       timestampISO: new Date().toISOString(), // Human-readable version
@@ -40,7 +40,7 @@ const AuditLogManager = {
     }
 
     // Sync to Firebase if connected
-    if (firebaseDb && isFirebaseConfigured) {
+    if (typeof firebaseDb !== 'undefined' && firebaseDb && typeof isFirebaseConfigured !== 'undefined' && isFirebaseConfigured) {
       try {
         await firebaseDb.ref('jmart-safety/auditLog/' + logEntry.id).set(logEntry);
       } catch (e) {

@@ -39,7 +39,8 @@
         firebaseApp = firebase.initializeApp(firebaseConfig);
         firebaseDb = firebase.database();
         // Sign in anonymously so security rules can use auth.uid
-        firebase.auth().signInAnonymously().then(cred => {
+        // Store promise so SteelAuth.init() can await it
+        var _firebaseAuthPromise = firebase.auth().signInAnonymously().then(cred => {
             firebaseAuthUid = cred.user.uid;
             console.log('🔥 Firebase connected, auth uid:', firebaseAuthUid);
         }).catch(err => {
@@ -100,6 +101,11 @@
                 this.isApproved = true;
                 this.isAdmin = true;
                 return { approved: true, offline: true };
+            }
+
+            // Wait for Firebase auth to complete so firebaseAuthUid is set
+            if (typeof _firebaseAuthPromise !== 'undefined') {
+                try { await _firebaseAuthPromise; } catch(e) {}
             }
 
             try {
@@ -4296,8 +4302,8 @@
 
     // Process uploaded file
     async function igorProcessFile(file) {
-        const console = document.getElementById('igorConsole');
-        console.textContent = `💰 Processing ${file.name}...`;
+        const consoleEl = document.getElementById('igorConsole');
+        consoleEl.textContent = `💰 Processing ${file.name}...`;
 
         const ext = file.name.split('.').pop().toLowerCase();
 
@@ -4312,7 +4318,7 @@
                 throw new Error('Unsupported file type: ' + ext);
             }
         } catch (error) {
-            console.textContent = `❌ Error: ${error.message}`;
+            consoleEl.textContent = `❌ Error: ${error.message}`;
             alert('Failed to process file: ' + error.message);
         }
     }
@@ -6179,8 +6185,19 @@
         return e;
     }
 
+    // Track settings listener refs for cleanup
+    var _settingsApprovedRef = null;
+    var _settingsPendingRef = null;
+    function _settingsCleanupListeners() {
+        if (_settingsApprovedRef) { _settingsApprovedRef.off('value'); _settingsApprovedRef = null; }
+        if (_settingsPendingRef) { _settingsPendingRef.off('value'); _settingsPendingRef = null; }
+    }
+
     function loadSettingsData() {
         if (!firebaseDb) return;
+
+        // Clean up previous listeners to prevent stacking
+        _settingsCleanupListeners();
 
         // Show this device info
         document.getElementById('settingsDeviceId').textContent = 'Device ID: ' + SteelAuth.deviceId;
@@ -6191,7 +6208,8 @@
         });
 
         // Listen for approved devices
-        firebaseDb.ref('jmart-safety/devices/approved').on('value', snap => {
+        _settingsApprovedRef = firebaseDb.ref('jmart-safety/devices/approved');
+        _settingsApprovedRef.on('value', snap => {
             const container = document.getElementById('approvedDevicesList');
             container.textContent = '';
             if (!snap.exists()) {
@@ -6262,7 +6280,8 @@
         });
 
         // Listen for pending devices
-        firebaseDb.ref('jmart-safety/devices/pending').on('value', snap => {
+        _settingsPendingRef = firebaseDb.ref('jmart-safety/devices/pending');
+        _settingsPendingRef.on('value', snap => {
             const container = document.getElementById('pendingDevicesList');
             container.textContent = '';
             if (!snap.exists() || snap.numChildren() === 0) {
@@ -7536,8 +7555,11 @@
     }
 
     function frankPrint() {
-        const swmsContent = document.getElementById('frankSwmsContent');
-        if (!swmsContent) return;
+        const swmsContent = document.getElementById('frankSwmsContent') || document.getElementById('frankResultContent');
+        if (!swmsContent || !swmsContent.innerHTML.trim()) {
+            showToast('No SWMS to print', 'warning');
+            return;
+        }
         const printWindow = window.open('', '_blank');
         printWindow.document.write('<html><head><title>SWMS - J&M Artsteel</title>' +
             '<style>body{font-family:Arial,sans-serif;background:#fff;color:#000;padding:20px;} ' +

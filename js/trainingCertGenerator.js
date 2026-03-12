@@ -3,8 +3,14 @@
 
 const TrainingCertGenerator = {
   generate(workerName, selectedCourse, signatureData, calculateScore) {
-    if (!selectedCourse) {
-      console.warn('No course selected');
+    if (!selectedCourse || !selectedCourse.title || !selectedCourse.questions) {
+      console.warn('No course selected or course data incomplete');
+      if (typeof ToastNotifier !== 'undefined') ToastNotifier.warning('Cannot generate certificate — course data incomplete');
+      return;
+    }
+    if (!window.jspdf) {
+      console.error('jsPDF library not loaded');
+      if (typeof ToastNotifier !== 'undefined') ToastNotifier.error('PDF library not loaded — check your internet connection');
       return;
     }
     try {

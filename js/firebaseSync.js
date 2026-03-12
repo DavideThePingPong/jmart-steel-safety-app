@@ -441,43 +441,49 @@ const FirebaseSync = {
   onFormsChange: (callback) => {
     if (!firebaseDb || !isFirebaseConfigured) return () => {};
     const ref = firebaseDb.ref('jmart-safety/forms');
-    ref.on('value', (snapshot) => {
+    const handler = (snapshot) => {
       const data = snapshot.val();
       if (data) callback(data);
-    }, (error) => {
+    };
+    const errorHandler = (error) => {
       console.error('Firebase listener error:', error);
       if (typeof ToastNotifier !== 'undefined') ToastNotifier.error('Lost connection to form updates');
       if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(error, 'firebase-listener');
-    });
-    return () => ref.off();
+    };
+    ref.on('value', handler, errorHandler);
+    return () => ref.off('value', handler);
   },
 
   // Listen for real-time site updates
   onSitesChange: (callback) => {
     if (!firebaseDb || !isFirebaseConfigured) return () => {};
     const ref = firebaseDb.ref('jmart-safety/sites');
-    ref.on('value', (snapshot) => {
+    const handler = (snapshot) => {
       const data = snapshot.val();
       if (data) callback(data);
-    }, (error) => {
+    };
+    const errorHandler = (error) => {
       console.error('Firebase sites listener error:', error);
       if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(error, 'firebase-sites-listener');
-    });
-    return () => ref.off();
+    };
+    ref.on('value', handler, errorHandler);
+    return () => ref.off('value', handler);
   },
 
   // Listen for real-time training updates
   onTrainingChange: (callback) => {
     if (!firebaseDb || !isFirebaseConfigured) return () => {};
     const ref = firebaseDb.ref('jmart-safety/training');
-    ref.on('value', (snapshot) => {
+    const handler = (snapshot) => {
       const data = snapshot.val();
       if (data) callback(data);
-    }, (error) => {
+    };
+    const errorHandler = (error) => {
       console.error('Firebase training listener error:', error);
       if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(error, 'firebase-training-listener');
-    });
-    return () => ref.off();
+    };
+    ref.on('value', handler, errorHandler);
+    return () => ref.off('value', handler);
   },
 
   // Check if Firebase is configured and connected

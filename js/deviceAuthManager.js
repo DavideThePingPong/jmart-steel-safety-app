@@ -17,6 +17,11 @@ const DeviceAuthManager = {
   setPassword:   (pw)   => DeviceAuth.setPassword(pw),
   _legacyHash:   (pw)   => DeviceAuth._legacyHash(pw),
 
+  // initWithStatus() — alias for init(), used by AppWithAuth.checkAuth()
+  initWithStatus: async function() {
+    return this.init();
+  },
+
   // init() — translates DeviceAuth return format to DeviceAuthManager format
   // DeviceAuth returns: { approved, admin, pending, error, ... }
   // DeviceAuthManager returns: { status, canAccess, isAdmin }

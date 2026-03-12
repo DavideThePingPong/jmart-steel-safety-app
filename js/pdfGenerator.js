@@ -10,6 +10,11 @@ const PDFGenerator = {
   get colors() { return PDFConfig.colors; },
 
   generate: function(form) {
+    if (!window.jspdf) {
+      console.error('jsPDF library not loaded');
+      if (typeof ToastNotifier !== 'undefined') ToastNotifier.error('PDF library not loaded — check your internet connection');
+      return null;
+    }
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();

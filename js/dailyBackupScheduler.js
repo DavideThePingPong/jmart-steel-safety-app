@@ -21,6 +21,8 @@ const DailyBackupScheduler = {
     const today = now.toDateString();
     const hour = now.getHours();
 
+    // Re-read from localStorage each time to avoid stale cache from other tabs
+    this.lastBackupDate = localStorage.getItem('last-drive-backup-date');
     // Check if it's 7pm hour (19:00-19:59) and we haven't backed up today
     // Using the full hour window prevents missing the backup when the 60s
     // interval doesn't land exactly on minute === 0
@@ -31,7 +33,7 @@ const DailyBackupScheduler = {
   },
 
   performBackup: async function() {
-    if (!GoogleDriveSync.isConnected()) {
+    if (typeof GoogleDriveSync === 'undefined' || !GoogleDriveSync.isConnected()) {
       console.log('Google Drive not connected - skipping backup');
       return;
     }

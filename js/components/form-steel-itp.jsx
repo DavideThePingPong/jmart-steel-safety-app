@@ -1,6 +1,20 @@
 // SteelITPView Component
 // Extracted from forms.jsx
 
+// SelectField defined outside SteelITPView to avoid re-creation on every render
+const SelectField = ({ label, value, onChange }) => (
+  <div className="space-y-2">
+    <label className="block text-sm font-medium text-gray-700">{label}</label>
+    <div className="flex gap-2">
+      {['Yes', 'No', 'N/A'].map(opt => (
+        <button key={opt} onClick={() => onChange(opt)} className={`flex-1 p-2 rounded-lg border text-sm font-medium ${value === opt ? 'bg-orange-500 text-white border-orange-500' : 'bg-white border-gray-300'}`}>
+          {opt}
+        </button>
+      ))}
+    </div>
+  </div>
+);
+
 function SteelITPView({ onSubmit, onUpdate, editingForm, sites = [] }) {
   const isEditing = !!editingForm;
   const editData = editingForm?.data || {};
@@ -130,19 +144,6 @@ function SteelITPView({ onSubmit, onUpdate, editingForm, sites = [] }) {
     setSubmitted(false);
     setValidationErrors([]);
   }, [editingForm?.id]);
-
-  const SelectField = ({ label, value, onChange }) => (
-    <div className="space-y-2">
-      <label className="block text-sm font-medium text-gray-700">{label}</label>
-      <div className="flex gap-2">
-        {['Yes', 'No', 'N/A'].map(opt => (
-          <button key={opt} onClick={() => onChange(opt)} className={`flex-1 p-2 rounded-lg border text-sm font-medium ${value === opt ? 'bg-orange-500 text-white border-orange-500' : 'bg-white border-gray-300'}`}>
-            {opt}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
 
   const handleSubmit = () => {
     let errors = [];

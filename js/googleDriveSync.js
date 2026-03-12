@@ -12,8 +12,12 @@ const GoogleDriveSync = {
   _lastError: null,          // Last error message for UI display
 
   // Register a callback for when connection status changes
+  // Returns an unsubscribe function
   onConnectionChange: function(callback) {
     this._onConnectCallbacks.push(callback);
+    return () => {
+      this._onConnectCallbacks = this._onConnectCallbacks.filter(cb => cb !== callback);
+    };
   },
 
   // Fire all connection-change callbacks
@@ -157,7 +161,14 @@ const GoogleDriveSync = {
       'Authorization': `Bearer ${this.accessToken}`
     };
 
-    let response = await fetch(url, options);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    let response;
+    try {
+      response = await fetch(url, { ...options, signal: controller.signal });
+    } finally {
+      clearTimeout(timeout);
+    }
 
     // If token expired (401), try to refresh silently
     if (response.status === 401) {
@@ -222,6 +233,9 @@ const GoogleDriveSync = {
       const searchResponse = await this.apiCall(
         `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent("name='" + this._escapeQuery(DRIVE_FOLDER_NAME) + "' and mimeType='application/vnd.google-apps.folder' and trashed=false")}`
       );
+      if (!searchResponse.ok) {
+        throw new Error('Drive API error: ' + searchResponse.status);
+      }
       const searchData = await searchResponse.json();
 
       if (searchData.files && searchData.files.length > 0) {
@@ -239,6 +253,9 @@ const GoogleDriveSync = {
           mimeType: 'application/vnd.google-apps.folder',
         }),
       });
+      if (!createResponse.ok) {
+        throw new Error('Drive API error: ' + createResponse.status);
+      }
       const createData = await createResponse.json();
       this.folderId = createData.id;
       console.log('Created Drive folder:', this.folderId);
@@ -272,6 +289,9 @@ const GoogleDriveSync = {
         const searchResponse = await this.apiCall(
           `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent("name='" + this._escapeQuery(folderName) + "' and '" + currentParent + "' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false")}`
         );
+        if (!searchResponse.ok) {
+          throw new Error('Drive API error: ' + searchResponse.status);
+        }
         const searchData = await searchResponse.json();
 
         if (searchData.files && searchData.files.length > 0) {
@@ -287,6 +307,9 @@ const GoogleDriveSync = {
               parents: [currentParent],
             }),
           });
+          if (!createResponse.ok) {
+            throw new Error('Drive API error: ' + createResponse.status);
+          }
           const createData = await createResponse.json();
           currentParent = createData.id;
           console.log(`Created folder: ${folderName}`, currentParent);
@@ -342,6 +365,9 @@ const GoogleDriveSync = {
         }
       );
 
+      if (!response.ok) {
+        throw new Error('Drive API error: ' + response.status);
+      }
       const data = await response.json();
       console.log('Uploaded to Drive:', filename, 'in folder:', formType || 'root', data.id);
       return data;
@@ -401,6 +427,9 @@ const GoogleDriveSync = {
       const response = await this.apiCall(
         `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name,createdTime)`
       );
+      if (!response.ok) {
+        throw new Error('Drive API error: ' + response.status);
+      }
       const data = await response.json();
       return data.files || [];
     } catch (error) {
@@ -438,9 +467,13 @@ const GoogleDriveSync = {
       const files = await this.searchFiles(siteName);
       let deleted = 0;
 
+      // Only delete files that match this specific form ID to avoid deleting
+      // unrelated PDFs (searchFiles uses substring matching on siteName)
       for (const file of files) {
-        const result = await this.deleteFile(file.id);
-        if (result) deleted++;
+        if (file.name && file.name.indexOf(formId) !== -1) {
+          const result = await this.deleteFile(file.id);
+          if (result) deleted++;
+        }
       }
 
       console.log(`Deleted ${deleted} old PDF(s) for form ${formId}`);
@@ -478,6 +511,9 @@ const GoogleDriveSync = {
       const recordingsSearch = await this.apiCall(
         `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent("name='" + this._escapeQuery(recordingsFolderName) + "' and '" + this.folderId + "' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false")}`
       );
+      if (!recordingsSearch.ok) {
+        throw new Error('Drive API error: ' + recordingsSearch.status);
+      }
       const recordingsData = await recordingsSearch.json();
 
       if (recordingsData.files && recordingsData.files.length > 0) {
@@ -493,6 +529,9 @@ const GoogleDriveSync = {
             parents: [this.folderId],
           }),
         });
+        if (!createRecordings.ok) {
+          throw new Error('Drive API error: ' + createRecordings.status);
+        }
         const newRecordingsFolder = await createRecordings.json();
         recordingsFolderId = newRecordingsFolder.id;
       }
@@ -504,6 +543,9 @@ const GoogleDriveSync = {
       const siteSearch = await this.apiCall(
         `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent("name='" + this._escapeQuery(safeSiteName) + "' and '" + recordingsFolderId + "' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false")}`
       );
+      if (!siteSearch.ok) {
+        throw new Error('Drive API error: ' + siteSearch.status);
+      }
       const siteData = await siteSearch.json();
 
       if (siteData.files && siteData.files.length > 0) {
@@ -518,6 +560,9 @@ const GoogleDriveSync = {
             parents: [recordingsFolderId],
           }),
         });
+        if (!createSite.ok) {
+          throw new Error('Drive API error: ' + createSite.status);
+        }
         const newSiteFolder = await createSite.json();
         siteFolderId = newSiteFolder.id;
       }
@@ -529,6 +574,9 @@ const GoogleDriveSync = {
       const dateSearch = await this.apiCall(
         `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent("name='" + this._escapeQuery(dateStr) + "' and '" + siteFolderId + "' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false")}`
       );
+      if (!dateSearch.ok) {
+        throw new Error('Drive API error: ' + dateSearch.status);
+      }
       const dateData = await dateSearch.json();
 
       if (dateData.files && dateData.files.length > 0) {
@@ -543,6 +591,9 @@ const GoogleDriveSync = {
             parents: [siteFolderId],
           }),
         });
+        if (!createDate.ok) {
+          throw new Error('Drive API error: ' + createDate.status);
+        }
         const newDateFolder = await createDate.json();
         dateFolderId = newDateFolder.id;
       }
@@ -604,6 +655,9 @@ const GoogleDriveSync = {
         }
       );
 
+      if (!response.ok) {
+        throw new Error('Drive API error: ' + response.status);
+      }
       const data = await response.json();
       console.log('Uploaded photo to Drive:', filename, data.id);
       return data;

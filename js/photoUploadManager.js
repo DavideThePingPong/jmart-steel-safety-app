@@ -159,7 +159,7 @@ const PhotoUploadManager = {
     results.success = results.drive !== null;
 
     // Log to Firebase for tracking
-    if (firebaseDb && results.success) {
+    if (typeof firebaseDb !== 'undefined' && firebaseDb && results.success) {
       try {
         const uploadLog = {
           jobName,
@@ -168,7 +168,7 @@ const PhotoUploadManager = {
           type: file.type,
           uploadedAt: new Date().toISOString(),
           driveFileId: results.drive ? results.drive.fileId : null,
-          deviceId: DeviceAuthManager.deviceId
+          deviceId: typeof DeviceAuthManager !== 'undefined' ? DeviceAuthManager.deviceId : 'unknown'
         };
         await firebaseDb.ref('jmart-safety/photoUploads').push(uploadLog);
       } catch (e) {
