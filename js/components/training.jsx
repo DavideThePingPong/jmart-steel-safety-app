@@ -85,7 +85,7 @@ function TrainingView() {
                 <img src={'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(getAppUrl())} alt="QR Code" className="mx-auto" />
               </div>
               <div className="bg-gray-50 p-3 rounded-lg text-xs break-all text-gray-600 mb-4">{getAppUrl()}</div>
-              <button onClick={() => {navigator.clipboard.writeText(getAppUrl()); alert('Link copied!');}} className="w-full bg-orange-600 text-white p-3 rounded-lg font-semibold mb-2">📋 Copy Link</button>
+              <button onClick={() => {navigator.clipboard.writeText(getAppUrl()); ToastNotifier.success('Link copied!');}} className="w-full bg-orange-600 text-white p-3 rounded-lg font-semibold mb-2">📋 Copy Link</button>
               <button onClick={() => setShowQRCode(false)} className="w-full bg-gray-200 p-3 rounded-lg font-semibold">Close</button>
             </div>
           </div>

@@ -100,7 +100,7 @@ function PrestartView({ onSubmit, onUpdate, editingForm, previousPrestarts = [],
           }
           setIsLocating(false);
         },
-        () => { alert('Unable to get location'); setIsLocating(false); },
+        () => { ToastNotifier.error('Unable to get location'); setIsLocating(false); },
         { enableHighAccuracy: true, timeout: 10000 }
       );
     } else {

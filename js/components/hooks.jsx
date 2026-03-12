@@ -127,14 +127,14 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
       setSuccessModal({ form: newForm, type: formType });
     } catch (err) {
       console.error('Error saving form:', err);
-      alert('Error saving form: ' + err.message + '. Please try again.');
+      ToastNotifier.error('Error saving form: ' + err.message + '. Please try again.');
     }
   };
 
   // Unlock a locked form (admin only)
   const unlockForm = (formId) => {
     if (!DeviceAuthManager.isAdmin) {
-      alert('Only admins can unlock submitted forms for editing.');
+      ToastNotifier.warning('Only admins can unlock submitted forms for editing.');
       return false;
     }
     setForms(prevForms => {
@@ -151,7 +151,7 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
     // Check if form is locked — only admins can edit locked forms
     if (editingForm?.locked) {
       if (!DeviceAuthManager.isAdmin) {
-        alert('This form has been submitted and locked. Only an admin can edit it.');
+        ToastNotifier.warning('This form has been submitted and locked. Only an admin can edit it.');
         return;
       }
       // Admin can proceed — form will be unlocked during update
@@ -200,8 +200,9 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
           const remoteForm = remoteSnap.val();
           if (remoteForm && remoteForm.version && originalForm && originalForm.version) {
             if (remoteForm.version > originalForm.version) {
-              const overwrite = window.confirm(
-                'This form was updated by another device (v' + remoteForm.version + ' vs your v' + originalForm.version + '). Overwrite with your changes?'
+              const overwrite = await ConfirmDialog.show(
+                'This form was updated by another device (v' + remoteForm.version + ' vs your v' + originalForm.version + '). Overwrite with your changes?',
+                { title: 'Version Conflict', confirmLabel: 'Overwrite', destructive: true }
               );
               if (!overwrite) {
                 setIsUpdating(false);
@@ -266,7 +267,7 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
     } catch (error) {
       console.error('Error during update:', error);
       setIsUpdating(false);
-      alert('Error updating form. Please try again.');
+      ToastNotifier.error('Error updating form. Please try again.');
     }
   };
 
@@ -734,7 +735,7 @@ function useDeviceAuth() {
         const unsubOwnStatus = DeviceAuth.listenForOwnDeviceStatus((status) => {
           if (status.revoked) {
             setDeviceAuthStatus('denied');
-            alert('Your device access has been revoked by an administrator.');
+            ToastNotifier.error('Your device access has been revoked by an administrator.', { duration: 10000 });
           }
         });
         if (unsubOwnStatus) cleanups.push(unsubOwnStatus);

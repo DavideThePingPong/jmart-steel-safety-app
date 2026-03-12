@@ -403,7 +403,7 @@ function SignaturePad({
   const useOtherSignature = memberName => {
     // SECURITY FIX: Do not allow using other people's signatures
     // Instead, show a message that each person must sign their own
-    alert(`Security Notice: ${memberName} must sign their own signature. Please have them sign directly on this device.`);
+    ToastNotifier.warning('Security Notice: ' + memberName + ' must sign their own signature. Please have them sign directly on this device.');
     setShowSavedOptions(false);
   };
 
@@ -585,13 +585,13 @@ function NoteMediaBox({
       const currentCount = (media || []).length;
       const remaining = MAX_PHOTOS_PER_SECTION - currentCount;
       if (remaining <= 0) {
-        alert('Maximum ' + MAX_PHOTOS_PER_SECTION + ' photos per section. Remove a photo to add more.');
+        ToastNotifier.warning('Maximum ' + MAX_PHOTOS_PER_SECTION + ' photos per section. Remove a photo to add more.');
         e.target.value = '';
         return;
       }
       const filesToProcess = Array.from(files).slice(0, remaining);
       if (filesToProcess.length < files.length) {
-        alert('Only adding ' + filesToProcess.length + ' of ' + files.length + ' photos (limit: ' + MAX_PHOTOS_PER_SECTION + ' per section).');
+        ToastNotifier.info('Only adding ' + filesToProcess.length + ' of ' + files.length + ' photos (limit: ' + MAX_PHOTOS_PER_SECTION + ' per section).');
       }
       filesToProcess.forEach(file => {
         console.log('Processing file:', file.name, 'type:', file.type, 'size:', file.size);
@@ -1198,14 +1198,14 @@ function useFormManager({
       });
     } catch (err) {
       console.error('Error saving form:', err);
-      alert('Error saving form: ' + err.message + '. Please try again.');
+      ToastNotifier.error('Error saving form: ' + err.message + '. Please try again.');
     }
   };
 
   // Unlock a locked form (admin only)
   const unlockForm = formId => {
     if (!DeviceAuthManager.isAdmin) {
-      alert('Only admins can unlock submitted forms for editing.');
+      ToastNotifier.warning('Only admins can unlock submitted forms for editing.');
       return false;
     }
     setForms(prevForms => {
@@ -1228,7 +1228,7 @@ function useFormManager({
     // Check if form is locked — only admins can edit locked forms
     if (editingForm?.locked) {
       if (!DeviceAuthManager.isAdmin) {
-        alert('This form has been submitted and locked. Only an admin can edit it.');
+        ToastNotifier.warning('This form has been submitted and locked. Only an admin can edit it.');
         return;
       }
       // Admin can proceed — form will be unlocked during update
@@ -1285,7 +1285,7 @@ function useFormManager({
           const remoteForm = remoteSnap.val();
           if (remoteForm && remoteForm.version && originalForm && originalForm.version) {
             if (remoteForm.version > originalForm.version) {
-              const overwrite = window.confirm('This form was updated by another device (v' + remoteForm.version + ' vs your v' + originalForm.version + '). Overwrite with your changes?');
+              const overwrite = await ConfirmDialog.show('This form was updated by another device (v' + remoteForm.version + ' vs your v' + originalForm.version + '). Overwrite with your changes?', { title: 'Version Conflict', confirmLabel: 'Overwrite', destructive: true });
               if (!overwrite) {
                 setIsUpdating(false);
                 return;
@@ -1354,7 +1354,7 @@ function useFormManager({
     } catch (error) {
       console.error('Error during update:', error);
       setIsUpdating(false);
-      alert('Error updating form. Please try again.');
+      ToastNotifier.error('Error updating form. Please try again.');
     }
   };
 
@@ -1823,7 +1823,7 @@ function useDeviceAuth() {
         const unsubOwnStatus = DeviceAuth.listenForOwnDeviceStatus(status => {
           if (status.revoked) {
             setDeviceAuthStatus('denied');
-            alert('Your device access has been revoked by an administrator.');
+            ToastNotifier.error('Your device access has been revoked by an administrator.', { duration: 10000 });
           }
         });
         if (unsubOwnStatus) cleanups.push(unsubOwnStatus);

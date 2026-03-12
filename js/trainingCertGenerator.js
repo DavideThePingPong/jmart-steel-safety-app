@@ -310,7 +310,7 @@ const TrainingCertGenerator = {
 
     } catch (error) {
       console.error('Error generating certificate PDF:', error);
-      alert('Error generating certificate. Please try again.');
+      ToastNotifier.error('Error generating certificate. Please try again.');
     }
   }
 };

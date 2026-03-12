@@ -182,6 +182,67 @@ const ToastNotifier = {
   }
 };
 
+// ========================================
+// CONFIRM DIALOG — Promise-based replacement for window.confirm()
+// Returns a Promise<boolean> so callers can await the result.
+// ========================================
+const ConfirmDialog = {
+  show: function(message, options) {
+    options = options || {};
+    return new Promise(function(resolve) {
+      var overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:100000;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(2px);opacity:0;transition:opacity 0.2s ease;';
+
+      var dialog = document.createElement('div');
+      dialog.style.cssText = 'background:#fff;border-radius:16px;padding:24px;max-width:360px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3);font-family:system-ui,sans-serif;transform:scale(0.95);transition:transform 0.2s ease;';
+
+      var title = document.createElement('h3');
+      title.style.cssText = 'margin:0 0 12px;font-size:17px;font-weight:700;color:#1f2937;';
+      title.textContent = options.title || 'Confirm';
+
+      var msg = document.createElement('p');
+      msg.style.cssText = 'margin:0 0 20px;font-size:14px;color:#4b5563;line-height:1.5;white-space:pre-line;';
+      msg.textContent = message;
+
+      var btnRow = document.createElement('div');
+      btnRow.style.cssText = 'display:flex;gap:10px;justify-content:flex-end;';
+
+      var cancelBtn = document.createElement('button');
+      cancelBtn.textContent = options.cancelLabel || 'Cancel';
+      cancelBtn.style.cssText = 'padding:10px 20px;border-radius:10px;border:1px solid #d1d5db;background:#fff;color:#374151;font-size:14px;font-weight:600;cursor:pointer;';
+
+      var confirmBtn = document.createElement('button');
+      confirmBtn.textContent = options.confirmLabel || 'Confirm';
+      var btnColor = options.destructive ? '#ef4444' : '#2563eb';
+      confirmBtn.style.cssText = 'padding:10px 20px;border-radius:10px;border:none;background:' + btnColor + ';color:#fff;font-size:14px;font-weight:600;cursor:pointer;';
+
+      function close(result) {
+        overlay.style.opacity = '0';
+        dialog.style.transform = 'scale(0.95)';
+        setTimeout(function() { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); }, 200);
+        resolve(result);
+      }
+
+      cancelBtn.onclick = function() { close(false); };
+      confirmBtn.onclick = function() { close(true); };
+      overlay.onclick = function(e) { if (e.target === overlay) close(false); };
+
+      btnRow.appendChild(cancelBtn);
+      btnRow.appendChild(confirmBtn);
+      dialog.appendChild(title);
+      dialog.appendChild(msg);
+      dialog.appendChild(btnRow);
+      overlay.appendChild(dialog);
+      document.body.appendChild(overlay);
+
+      requestAnimationFrame(function() {
+        overlay.style.opacity = '1';
+        dialog.style.transform = 'scale(1)';
+      });
+    });
+  }
+};
+
 // Auto-initialize when DOM is ready
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', function() { ToastNotifier.init(); });

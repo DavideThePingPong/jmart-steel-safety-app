@@ -148,7 +148,7 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
     const success = await DeviceAuthManager.approveDevice(deviceId);
     setDeviceActionLoading(null);
     if (!success) {
-      alert('Failed to approve device');
+      ToastNotifier.error('Failed to approve device');
     }
   };
 
@@ -157,28 +157,28 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
     const success = await DeviceAuthManager.denyDevice(deviceId);
     setDeviceActionLoading(null);
     if (!success) {
-      alert('Failed to deny device');
+      ToastNotifier.error('Failed to deny device');
     }
   };
 
   const handleRevokeDevice = async (deviceId) => {
-    if (confirm('Are you sure you want to revoke access for this device?')) {
+    if (await ConfirmDialog.show('Are you sure you want to revoke access for this device?', { title: 'Revoke Device', confirmLabel: 'Revoke', destructive: true })) {
       setDeviceActionLoading(deviceId);
       const success = await DeviceAuth.revokeDevice(deviceId);
       setDeviceActionLoading(null);
       if (!success) {
-        alert('Failed to revoke device');
+        ToastNotifier.error('Failed to revoke device');
       }
     }
   };
 
   const handleRemoveDevice = async (deviceId) => {
-    if (confirm('Are you sure you want to remove this device?')) {
+    if (await ConfirmDialog.show('Are you sure you want to remove this device?', { title: 'Remove Device', confirmLabel: 'Remove', destructive: true })) {
       setDeviceActionLoading(deviceId);
       const success = await DeviceAuthManager.removeDevice(deviceId);
       setDeviceActionLoading(null);
       if (!success) {
-        alert('Failed to remove device');
+        ToastNotifier.error('Failed to remove device');
       }
     }
   };
@@ -190,7 +190,7 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
 
   const handleSaveRename = async (deviceId) => {
     if (!editingDeviceName.trim()) {
-      alert('Device name cannot be empty');
+      ToastNotifier.warning('Device name cannot be empty');
       return;
     }
     setDeviceActionLoading(deviceId);
@@ -199,7 +199,7 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
     setEditingDeviceId(null);
     setEditingDeviceName('');
     if (!success) {
-      alert('Failed to rename device');
+      ToastNotifier.error('Failed to rename device');
     }
   };
 
@@ -249,7 +249,7 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
     if (trimmed) {
       const isDuplicate = currentSites.some(s => s.toLowerCase() === trimmed.toLowerCase());
       if (isDuplicate) {
-        alert('This site already exists');
+        ToastNotifier.warning('This site already exists');
         return;
       }
       onUpdateSites([...currentSites, trimmed]);
@@ -311,7 +311,7 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
   }, []);
 
   const doFixEverything = async () => {
-    if (!confirm('This will strip photos from local cache and clear temp data.\n\nYour forms and credentials are preserved.\nPhotos are safe in Firebase & Drive.\n\nContinue?')) return;
+    if (!await ConfirmDialog.show('This will strip photos from local cache and clear temp data.\n\nYour forms and credentials are preserved.\nPhotos are safe in Firebase & Drive.\n\nContinue?', { title: 'Clear Cache', confirmLabel: 'Continue' })) return;
     setIsFixing(true);
     setFixDone(false);
     setFixStatus('Starting...');

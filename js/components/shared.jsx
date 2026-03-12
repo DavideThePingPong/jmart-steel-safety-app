@@ -227,7 +227,7 @@ function SignaturePad({ onSave, onCancel, name }) {
   const useOtherSignature = (memberName) => {
     // SECURITY FIX: Do not allow using other people's signatures
     // Instead, show a message that each person must sign their own
-    alert(`Security Notice: ${memberName} must sign their own signature. Please have them sign directly on this device.`);
+    ToastNotifier.warning(`Security Notice: ${memberName} must sign their own signature. Please have them sign directly on this device.`);
     setShowSavedOptions(false);
   };
 
@@ -374,13 +374,13 @@ function NoteMediaBox({ label, iconName, value, notes, media, onValueChange, onA
       const currentCount = (media || []).length;
       const remaining = MAX_PHOTOS_PER_SECTION - currentCount;
       if (remaining <= 0) {
-        alert('Maximum ' + MAX_PHOTOS_PER_SECTION + ' photos per section. Remove a photo to add more.');
+        ToastNotifier.warning('Maximum ' + MAX_PHOTOS_PER_SECTION + ' photos per section. Remove a photo to add more.');
         e.target.value = '';
         return;
       }
       const filesToProcess = Array.from(files).slice(0, remaining);
       if (filesToProcess.length < files.length) {
-        alert('Only adding ' + filesToProcess.length + ' of ' + files.length + ' photos (limit: ' + MAX_PHOTOS_PER_SECTION + ' per section).');
+        ToastNotifier.info('Only adding ' + filesToProcess.length + ' of ' + files.length + ' photos (limit: ' + MAX_PHOTOS_PER_SECTION + ' per section).');
       }
 
       filesToProcess.forEach(file => {
