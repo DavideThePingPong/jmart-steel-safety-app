@@ -16,6 +16,11 @@ const firebaseConfig = {
   appId: "1:920798274486:web:9d6cdd8853d82280665717"
 };
 
+// ========================================
+// COMPANY DETAILS
+// ========================================
+const COMPANY_ABN = '94 164 562 207';
+
 // Check if Firebase is configured
 const isFirebaseConfigured = firebaseConfig.apiKey !== "YOUR_API_KEY_HERE";
 
