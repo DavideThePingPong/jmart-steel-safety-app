@@ -1829,16 +1829,20 @@ function useDeviceAuth() {
         if (unsubOwnStatus) cleanups.push(unsubOwnStatus);
       } else {
         setDeviceAuthStatus('pending');
-        const pollInterval = IntervalRegistry.setInterval(async () => {
-          const checkResult = await DeviceAuth.checkDeviceStatus();
-          if (checkResult.approved) {
-            setDeviceAuthStatus('approved');
-            setIsDeviceAdmin(checkResult.admin);
-            IntervalRegistry.clearInterval(pollInterval);
-            window.location.reload();
-          }
-        }, 5000, 'DeviceApprovalPoll');
-        cleanups.push(() => IntervalRegistry.clearInterval(pollInterval));
+        // Real-time listener for device approval — replaces 5s polling
+        if (firebaseDb && DeviceAuth.deviceId) {
+          const approvalRef = firebaseDb.ref(FB_PATHS.DEVICES_APPROVED + '/' + DeviceAuth.deviceId);
+          approvalRef.on('value', snapshot => {
+            if (snapshot.exists()) {
+              const data = snapshot.val();
+              setDeviceAuthStatus('approved');
+              setIsDeviceAdmin(data.role === 'admin');
+              approvalRef.off('value');
+              window.location.reload();
+            }
+          });
+          cleanups.push(() => approvalRef.off('value'));
+        }
       }
     };
     initDeviceAuth();
