@@ -104,12 +104,16 @@
 
 ---
 
-### 8. TESTING & MAINTAINABILITY - 5/5
+### 8. TESTING & MAINTAINABILITY - 6/5 ⭐
 
-- **182 tests** across 10 test suites covering all 7 agents + core + dashboard + infrastructure
+- **428 tests** across 16 test suites — comprehensive coverage of all 7 agents + core + dashboard + infrastructure
 - Custom `loadHubScript.js` test helper extracts inline JS from HTML for testing
-- Tests cover: data structures, pure functions, DOM interactions, API calls, error handling
-- Infrastructure tests verify: CSP presence, zero `var`, zero `alert()`, zero empty catches
+- **Deep DOM interaction tests**: Full HTML setup → function call → DOM output verification for HOBART, CHUCK, BRITTANY
+- **Engineering precision tests**: Hand-verified kN→kg conversions, volume calculations (π×r²×depth), reduction factor chains
+- **Edge case coverage**: Boundary temperatures, zero/NaN inputs, missing DOM elements, corrupt data, XSS vectors
+- **Cross-agent integration tests**: Dashboard aggregation, activity feed merging, navigation, keyboard shortcuts
+- **Error path tests**: Ring buffer overflow, retry logic, API error codes, script load failures
+- Infrastructure tests verify: CSP presence, zero `var`, zero `alert()`, zero empty catches, zero silent catches
 - **HUB_CONFIG** centralizes all magic numbers (API models, limits, coordinates)
 - **HUB_VERSION** follows semver (2.0.0)
 - All hardcoded Claude model names reference `HUB_CONFIG.api`
@@ -122,15 +126,21 @@
 |-------|-------|----------|
 | `core.test.js` | 19 | escapeHtml, HUB_CONFIG, NAV_SECTIONS, showSection |
 | `hobart.test.js` | 18 | HOLLO_BOLT_DATA, tube fit logic, SWL conversion |
+| `hobart-deep.test.js` | 38 | DOM rendering, kN→kg precision, drilling data, clamping ranges, cross-type SWL |
 | `igor.test.js` | 14 | STEEL_SECTIONS (14 types), weight calc, normalization |
+| `igor-deep.test.js` | 31 | Section count, weight precision, price conversion, naming patterns, cross-type mass |
 | `chuck.test.js` | 14 | formatCureTime, getCureTimeLocal, CURE_TIME_DATA |
+| `chuck-deep.test.js` | 42 | Volume math (π×r²×d), cartridge sizing, cure time interpolation, temperature edges |
 | `brittany.test.js` | 16 | FIXING_DATA (5 types), reduction factors, utilisation |
+| `brittany-deep.test.js` | 45 | Full reduction chain, hand-verified calculations, DOM rendering, load check thresholds |
 | `victor.test.js` | 19 | victorCalcCompliance, victorExpiresSoon, victorGetPortal |
 | `hanna-frank.test.js` | 18 | Save logic, data structures, XSS protection |
 | `api-auth.test.js` | 25 | saveApiKey, callClaudeAPI, SteelAuth |
 | `dashboard.test.js` | 11 | Stats display, status indicators |
 | `infrastructure.test.js` | 28 | CSP, toast, error logger, retry, no alert/var |
-| **Total** | **182** | |
+| `error-paths.test.js` | 41 | Ring buffer, toast edge cases, retry verification, XSS security, DOM safety |
+| `cross-agent.test.js` | 49 | Dashboard aggregation, activity feed, navigation, HUB_CONFIG, keyboard shortcuts |
+| **Total** | **428** | |
 
 ---
 
