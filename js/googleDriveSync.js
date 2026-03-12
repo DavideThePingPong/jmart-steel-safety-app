@@ -10,6 +10,8 @@ const GoogleDriveSync = {
   isInitialized: false,
   _onConnectCallbacks: [],   // Listeners for connection state changes
   _lastError: null,          // Last error message for UI display
+  _silentRefreshInProgress: false,  // Track silent refresh attempts
+  _autoReconnectAttempted: false,   // Prevent infinite retry loops
 
   // Register a callback for when connection status changes
   onConnectionChange: function(callback) {
@@ -44,9 +46,24 @@ const GoogleDriveSync = {
         callback: (response) => {
           if (response.error) {
             console.error('Google Auth error:', response.error);
+            // If silent refresh got an error response, try popup fallback
+            if (self._silentRefreshInProgress && !self._autoReconnectAttempted) {
+              self._silentRefreshInProgress = false;
+              self._autoReconnectAttempted = true;
+              console.log('Silent refresh got error response, trying popup...');
+              try {
+                self.tokenClient.requestAccessToken({ prompt: '' });
+              } catch (e) {
+                self._notifyConnectionChange(false, 'Google Drive disconnected. Tap Connect to reconnect.');
+              }
+              return;
+            }
+            self._silentRefreshInProgress = false;
             self._notifyConnectionChange(false, 'Google sign-in failed: ' + response.error);
             return;
           }
+          self._silentRefreshInProgress = false;
+          self._autoReconnectAttempted = false; // Reset for next time
           self.accessToken = response.access_token;
           // Store token with timestamp so we know when it expires (~1hr)
           localStorage.setItem('google-drive-token', JSON.stringify({
@@ -54,11 +71,30 @@ const GoogleDriveSync = {
             savedAt: Date.now()
           }));
           console.log('Google Drive connected!');
+          localStorage.setItem('google-drive-was-connected', 'true');
           self._notifyConnectionChange(true, null);
           self.getOrCreateFolder();
         },
         error_callback: (error) => {
           console.error('Google OAuth error:', error);
+
+          // If this was a silent refresh attempt, auto-retry with popup
+          if (self._silentRefreshInProgress && !self._autoReconnectAttempted) {
+            self._silentRefreshInProgress = false;
+            self._autoReconnectAttempted = true;
+            console.log('Silent refresh failed, auto-reconnecting with popup...');
+            try {
+              self.tokenClient.requestAccessToken({ prompt: '' });
+              // prompt: '' without _silentRefreshInProgress flag = normal popup flow
+              // Google will auto-select account if user previously consented
+            } catch (retryErr) {
+              console.warn('Auto-reconnect popup also failed:', retryErr.message);
+              self._notifyConnectionChange(false, 'Google Drive disconnected. Tap Connect to reconnect.');
+            }
+            return;
+          }
+
+          self._silentRefreshInProgress = false;
           var msg = 'Google sign-in failed';
           if (error && error.type === 'popup_failed_to_open') {
             msg = 'Popup blocked. Allow popups for this site, or open in your browser (not the app icon).';
@@ -85,19 +121,76 @@ const GoogleDriveSync = {
             this._notifyConnectionChange(true, null);
             this.getOrCreateFolder();
           } else {
-            // Token expired — try silent refresh instead of giving up
+            // Token expired — try silent refresh, auto-fallback to popup if it fails
             console.log('Google Drive token expired, attempting silent refresh...');
             localStorage.removeItem('google-drive-token');
+            this._silentRefreshInProgress = true;
+            this._autoReconnectAttempted = false;
             try {
               this.tokenClient.requestAccessToken({ prompt: '' });
             } catch (refreshErr) {
-              console.log('Silent refresh failed, user will need to reconnect manually');
+              // Synchronous error — try popup fallback immediately
+              this._silentRefreshInProgress = false;
+              if (!this._autoReconnectAttempted) {
+                this._autoReconnectAttempted = true;
+                console.log('Silent refresh threw, auto-reconnecting with popup...');
+                try {
+                  this.tokenClient.requestAccessToken({ prompt: '' });
+                } catch (e) {
+                  console.log('Auto-reconnect failed, user will need to connect manually');
+                }
+              }
             }
+            // Safety timeout: if neither callback fires within 5 seconds, try popup
+            var self2 = this;
+            setTimeout(function() {
+              if (self2._silentRefreshInProgress && !self2.accessToken) {
+                self2._silentRefreshInProgress = false;
+                if (!self2._autoReconnectAttempted) {
+                  self2._autoReconnectAttempted = true;
+                  console.log('Silent refresh timed out after 5s, trying popup...');
+                  try {
+                    self2.tokenClient.requestAccessToken({ prompt: '' });
+                  } catch (e) {
+                    console.log('Timeout fallback failed, user will need to connect manually');
+                  }
+                }
+              }
+            }, 5000);
           }
         }
       } catch (e) {
         // Handle old format (raw string, not JSON)
         localStorage.removeItem('google-drive-token');
+      }
+
+      // If no stored token at all but user previously connected, try auto-reconnect
+      if (!this.accessToken && localStorage.getItem('google-drive-was-connected')) {
+        console.log('Google Drive was previously connected, attempting auto-reconnect...');
+        this._silentRefreshInProgress = true;
+        this._autoReconnectAttempted = false;
+        try {
+          this.tokenClient.requestAccessToken({ prompt: '' });
+        } catch (e) {
+          this._silentRefreshInProgress = false;
+          console.log('Auto-reconnect for previously-connected user failed');
+        }
+        // Timeout fallback
+        var self3 = this;
+        setTimeout(function() {
+          if (self3._silentRefreshInProgress && !self3.accessToken) {
+            self3._silentRefreshInProgress = false;
+            if (!self3._autoReconnectAttempted) {
+              self3._autoReconnectAttempted = true;
+              console.log('Previous-connection auto-reconnect timed out, trying popup...');
+              try {
+                self3.tokenClient.requestAccessToken({ prompt: '' });
+              } catch (e2) {
+                console.log('Fallback failed, user will need to connect manually');
+              }
+            }
+          }
+        }, 5000);
       }
 
       // Proactive token refresh every 45 minutes to stay connected
@@ -479,6 +572,7 @@ const GoogleDriveSync = {
     this.accessToken = null;
     this.folderId = null;
     localStorage.removeItem('google-drive-token');
+    localStorage.removeItem('google-drive-was-connected');
     this._notifyConnectionChange(false, null);
     console.log('Disconnected from Google Drive');
   },
