@@ -3825,6 +3825,17 @@
 
         const SS_FACTOR = 1.02; // Stainless steel factor (density 8000 vs 7850 kg/m³)
 
+        // Helper: convert 1-based column number to Excel letter (1=A, 26=Z, 27=AA, 28=AB...)
+        function colToLetter(col) {
+            let s = '';
+            while (col > 0) {
+                col--;
+                s = String.fromCharCode(65 + (col % 26)) + s;
+                col = Math.floor(col / 26);
+            }
+            return s;
+        }
+
         // Different colors for each sheet type
         const sheetColors = {
             'SHS': '1E88E5',  // Blue
@@ -3895,7 +3906,7 @@
             });
 
             // Store range reference for this type
-            listRanges[type] = `_Lists!$${String.fromCharCode(64 + listCol)}$1:$${String.fromCharCode(64 + listCol)}$${sizes.length}`;
+            listRanges[type] = `_Lists!$${colToLetter(listCol)}$1:$${colToLetter(listCol)}$${sizes.length}`;
             listCol++;
         });
 
@@ -3915,8 +3926,8 @@
                 lookupSheet.getCell(idx + 1, lookupCol + 1).value = mass;
             });
 
-            const colLetter1 = String.fromCharCode(64 + lookupCol);
-            const colLetter2 = String.fromCharCode(64 + lookupCol + 1);
+            const colLetter1 = colToLetter(lookupCol);
+            const colLetter2 = colToLetter(lookupCol + 1);
             lookupRanges[type] = `_Lookup!$${colLetter1}$1:$${colLetter2}$${entries.length}`;
             lookupCol += 2;
         });
@@ -3950,8 +3961,8 @@
                     priceRow++;
                 });
 
-                const colLetter1 = String.fromCharCode(64 + priceCol);
-                const colLetter2 = String.fromCharCode(64 + priceCol + 1);
+                const colLetter1 = colToLetter(priceCol);
+                const colLetter2 = colToLetter(priceCol + 1);
                 priceLookupRanges[type] = `_Prices!$${colLetter1}$1:$${colLetter2}$${entries.length}`;
                 priceCol += 2;
             });
@@ -4078,89 +4089,7 @@
             });
         });
 
-        // Create Summary sheet at the beginning
-        const summary = workbook.addWorksheet('Summary');
-
-        // Title - merge cells A1:D1
-        summary.mergeCells('A1:D1');
-        const titleCell = summary.getCell('A1');
-        titleCell.value = 'STEEL WEIGHT SUMMARY';
-        titleCell.font = titleFont;
-        titleCell.alignment = { horizontal: 'center' };
-
-        // Instructions
-        summary.mergeCells('A3:D3');
-        summary.getCell('A3').value = 'Enter linear metres in each sheet. Totals update automatically.';
-        summary.getCell('A3').font = { italic: true };
-
-        summary.mergeCells('A4:D4');
-        summary.getCell('A4').value = 'Stainless Steel weight = Mild Steel × 1.02 (density difference)';
-        summary.getCell('A4').font = { italic: true };
-
-        // Headers at row 6
-        const summaryHeaders = ['Category', 'Total Weight (kg)', 'Weight (tonnes)', 'Stainless (kg)'];
-        const summaryHeaderRow = summary.getRow(6);
-        summaryHeaders.forEach((h, idx) => {
-            const cell = summaryHeaderRow.getCell(idx + 1);
-            cell.value = h;
-            cell.fill = idx === 3 ? ssHeaderFill : summaryHeaderFill;
-            cell.font = headerFont;
-            cell.alignment = { horizontal: 'center', vertical: 'middle' };
-            cell.border = border;
-        });
-
-        // Data rows
-        sheetInfo.forEach((info, idx) => {
-            const rowNum = idx + 7;
-            const endRow = info.rows + 1;
-            const row = summary.getRow(rowNum);
-
-            row.getCell(1).value = info.name;
-            row.getCell(2).value = { formula: `SUM('${info.name}'!D2:D${endRow})` };
-            row.getCell(3).value = { formula: `B${rowNum}/1000` };
-            row.getCell(4).value = { formula: `B${rowNum}*${SS_FACTOR}` };
-
-            row.eachCell(cell => {
-                cell.alignment = { horizontal: 'center', vertical: 'middle' };
-                cell.border = border;
-            });
-            row.getCell(2).numFmt = '#,##0.00';
-            row.getCell(3).numFmt = '#,##0.000';
-            row.getCell(4).numFmt = '#,##0.00';
-        });
-
-        // Grand total row
-        const startDataRow = 7;
-        const endDataRow = 6 + sheetInfo.length;
-        const totalRowNum = endDataRow + 2;
-        const totalRow = summary.getRow(totalRowNum);
-
-        totalRow.getCell(1).value = 'GRAND TOTAL';
-        totalRow.getCell(1).font = { bold: true, size: 12 };
-        totalRow.getCell(2).value = { formula: `SUM(B${startDataRow}:B${endDataRow})` };
-        totalRow.getCell(3).value = { formula: `SUM(C${startDataRow}:C${endDataRow})` };
-        totalRow.getCell(4).value = { formula: `SUM(D${startDataRow}:D${endDataRow})` };
-
-        totalRow.eachCell(cell => {
-            cell.font = { bold: true };
-            cell.alignment = { horizontal: 'center', vertical: 'middle' };
-            cell.border = border;
-        });
-        totalRow.getCell(2).numFmt = '#,##0.00';
-        totalRow.getCell(3).numFmt = '#,##0.000';
-        totalRow.getCell(4).numFmt = '#,##0.00';
-
-        // Set column widths
-        summary.getColumn(1).width = 20;
-        summary.getColumn(2).width = 18;
-        summary.getColumn(3).width = 18;
-        summary.getColumn(4).width = 18;
-
-        // Freeze at row 7
-        summary.views = [{ state: 'frozen', ySplit: 6 }];
-
-        // Move Summary to first position
-        workbook.removeWorksheet('Summary');
+        // Create Summary sheet
         const summaryNew = workbook.addWorksheet('Summary');
 
         // Re-create Summary (ExcelJS doesn't support moving sheets easily)
