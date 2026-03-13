@@ -290,29 +290,35 @@ describe('ErrorTelemetry', () => {
   describe('Global handlers', () => {
     beforeEach(() => ErrorTelemetry.init());
 
-    it('window.onerror should capture errors', () => {
-      window.onerror('Test error', 'app.js', 10, 5, new Error('Test'));
+    it('error event listener should capture errors', () => {
+      const evt = new ErrorEvent('error', { message: 'Test error', filename: 'app.js', lineno: 10, colno: 5, error: new Error('Test') });
+      window.dispatchEvent(evt);
       expect(ErrorTelemetry.getErrorCount()).toBe(1);
       const recent = ErrorTelemetry.getRecentErrors(1);
       expect(recent[0].message).toBe('Test error');
       expect(recent[0].source).toContain('app.js');
     });
 
-    it('window.onerror should return false to allow browser logging', () => {
-      const result = window.onerror('Test', 'file.js', 1, 1, null);
-      expect(result).toBe(false);
+    it('error event listener should capture errors without error object', () => {
+      const evt = new ErrorEvent('error', { message: 'Test', filename: 'file.js', lineno: 1, colno: 1 });
+      window.dispatchEvent(evt);
+      expect(ErrorTelemetry.getErrorCount()).toBe(1);
     });
 
-    it('window.onunhandledrejection should capture promise errors', () => {
-      window.onunhandledrejection({ reason: new Error('Promise failed') });
+    it('unhandledrejection listener should capture promise errors', () => {
+      const evt = new Event('unhandledrejection');
+      evt.reason = new Error('Promise failed');
+      window.dispatchEvent(evt);
       expect(ErrorTelemetry.getErrorCount()).toBe(1);
       const recent = ErrorTelemetry.getRecentErrors(1);
       expect(recent[0].message).toContain('Promise failed');
       expect(recent[0].context).toBe('unhandled-rejection');
     });
 
-    it('window.onunhandledrejection should handle non-Error reasons', () => {
-      window.onunhandledrejection({ reason: 'string rejection' });
+    it('unhandledrejection listener should handle non-Error reasons', () => {
+      const evt = new Event('unhandledrejection');
+      evt.reason = 'string rejection';
+      window.dispatchEvent(evt);
       const recent = ErrorTelemetry.getRecentErrors(1);
       expect(recent[0].message).toContain('string rejection');
     });
