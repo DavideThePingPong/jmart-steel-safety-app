@@ -3048,10 +3048,24 @@
             <div class="frank-worker-count" id="frankWorkerCount">0 workers selected</div>
         </div>
 
-        <!-- Generate Button -->
-        <button class="frank-generate-btn" id="frankGenerateBtn" onclick="frankGenerate()">
-            🦺 Generate SWMS
-        </button>
+        <!-- Generate & Attach -->
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <button class="frank-generate-btn" id="frankGenerateBtn" onclick="frankGenerate()" style="flex:1;">
+                🦺 Generate SWMS
+            </button>
+            <button class="frank-generate-btn" style="background:#2563eb;flex:0 0 auto;padding:10px 14px;font-size:13px;min-width:auto;"
+                    onclick="document.getElementById('frankFileInput').click()">
+                📎 Attach
+            </button>
+            <input type="file" id="frankFileInput" accept=".pdf,.txt,.png,.jpg,.jpeg" style="display:none;" onchange="frankAttachFile(this)">
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;margin-top:6px;min-height:24px;">
+            <span id="frankAttachBadge" style="display:none;background:rgba(37,99,235,0.2);color:#60a5fa;padding:3px 8px;border-radius:10px;font-size:11px;"></span>
+            <button id="frankClearAttach" style="display:none;background:none;border:none;color:#f44336;cursor:pointer;font-size:13px;" onclick="frankClearAttachment()">✕</button>
+        </div>
+        <div id="frankAttachProgress" style="display:none;background:rgba(37,99,235,0.1);border:1px solid rgba(37,99,235,0.2);border-radius:8px;padding:8px 12px;margin-top:6px;">
+            <p id="frankAttachStatus" style="color:#60a5fa;font-size:12px;margin:0;">Extracting requirements...</p>
+        </div>
 
         <!-- Progress Bar -->
         <div class="frank-progress" id="frankProgress">
@@ -3073,11 +3087,28 @@
             <div class="frank-result-badges" id="frankResultBadges"></div>
         </div>
 
-        <!-- Recent SWMS -->
+        <!-- SWMS Archive -->
         <div class="calc-card" style="border:1px solid rgba(16,185,129,0.2);margin-top:15px;">
-            <h3 style="color:#34d399;">📁 Recent SWMS</h3>
-            <div id="frankRecentList" style="margin-top:10px;"></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
+                <h3 style="color:#34d399;margin:0;">📁 SWMS Archive</h3>
+                <input type="text" id="frankArchiveSearchInput" placeholder="Search SWMS..."
+                       oninput="frankFilterArchiveSearch(this.value)"
+                       style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:5px 10px;color:#fff;font-size:12px;width:150px;">
+            </div>
+            <div id="frankArchiveTabs" style="display:flex;gap:4px;margin:8px 0;flex-wrap:wrap;"></div>
+            <div id="frankRecentList" style="margin-top:8px;max-height:400px;overflow-y:auto;"></div>
             <p id="frankEmptyMsg" style="color:#666;font-size:13px;margin-top:8px;">No SWMS generated yet.</p>
+        </div>
+
+        <!-- Regulation Updates -->
+        <div id="frankRegCard" class="calc-card" style="border:1px solid rgba(245,158,11,0.2);margin-top:15px;display:none;">
+            <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;"
+                 onclick="var c=document.getElementById('frankRegContent');c.style.display=c.style.display==='none'?'block':'none'">
+                <h3 style="color:#f59e0b;margin:0;">⚖️ Regulation Updates <span id="frankRegBadge"
+                    style="background:#f59e0b;color:#000;border-radius:10px;padding:2px 8px;font-size:11px;margin-left:4px;"></span></h3>
+                <span style="color:#888;font-size:16px;">▾</span>
+            </div>
+            <div id="frankRegContent" style="display:none;margin-top:10px;"></div>
         </div>
 
         <div class="frank-console" id="frankConsole">🦺 FRANK Ready - "G'day mate, ready to write your SWMS!"</div>
@@ -7515,9 +7546,25 @@
     let frankFirebaseListenerActive = false;
     var _frankRef = null;
 
+    // Memory system — remembers every SWMS for context
+    let frankMemory = [];
+    let frankMemoryFirebaseActive = false;
+    var _frankMemoryRef = null;
+    let frankArchiveFilter = 'all';
+    let frankArchiveSearch = '';
+    let frankAttachedRequirements = null;
+    let frankAttachedFilename = null;
+
+    // Regulation updates
+    let frankRegUpdates = [];
+    var _frankRegRef = null;
+
     function frankStopSync() {
         if (_frankRef) { _frankRef.off('value'); _frankRef = null; }
+        if (_frankMemoryRef) { _frankMemoryRef.off('value'); _frankMemoryRef = null; }
+        if (_frankRegRef) { _frankRegRef.off('value'); _frankRegRef = null; }
         frankFirebaseListenerActive = false;
+        frankMemoryFirebaseActive = false;
     }
 
     function frankSaveHistory() {
@@ -7527,6 +7574,93 @@
             } catch (e) { console.warn('Frank Firebase save failed:', e.message); }
         }
         localStorage.setItem('frank-history', JSON.stringify(frankHistory));
+    }
+
+    // Memory sync
+    function frankSaveMemory() {
+        if (firebaseDb) {
+            try { firebaseDb.ref('jmart-safety/frank/memory').set(frankMemory); }
+            catch (e) { console.warn('Frank memory save failed:', e.message); }
+        }
+        localStorage.setItem('frank-memory', JSON.stringify(frankMemory));
+    }
+
+    function frankStartMemorySync() {
+        if (!firebaseDb || frankMemoryFirebaseActive) return;
+        frankMemoryFirebaseActive = true;
+        _frankMemoryRef = firebaseDb.ref('jmart-safety/frank/memory');
+        _frankMemoryRef.on('value', (snap) => {
+            const data = snap.val();
+            if (data && Array.isArray(data)) {
+                frankMemory = data;
+                localStorage.setItem('frank-memory', JSON.stringify(data));
+            } else if (data === null) {
+                const local = JSON.parse(localStorage.getItem('frank-memory') || '[]');
+                if (local.length > 0) { frankMemory = local; firebaseDb.ref('jmart-safety/frank/memory').set(local); }
+            }
+            frankRenderArchive();
+        });
+    }
+
+    // Regulation updates sync
+    function frankSaveRegUpdates() {
+        if (firebaseDb) {
+            try { firebaseDb.ref('jmart-safety/frank/regulation-updates').set(frankRegUpdates); }
+            catch (e) { console.warn('Frank reg save failed:', e.message); }
+        }
+        localStorage.setItem('frank-reg-updates', JSON.stringify(frankRegUpdates));
+    }
+
+    function frankSyncRegUpdates() {
+        if (!firebaseDb) return;
+        _frankRegRef = firebaseDb.ref('jmart-safety/frank/regulation-updates');
+        _frankRegRef.on('value', (snap) => {
+            const data = snap.val();
+            if (data && Array.isArray(data)) {
+                frankRegUpdates = data;
+                localStorage.setItem('frank-reg-updates', JSON.stringify(data));
+            }
+            frankRenderRegUpdates();
+        });
+    }
+
+    // Classify job type from description (keyword matching, no API call)
+    function frankClassifyJobType(desc) {
+        const d = (desc || '').toLowerCase();
+        if (d.includes('glass') && d.includes('balustrad')) return 'glass_balustrade';
+        if (d.includes('balustrad')) return 'balustrade';
+        if (d.includes('handrail')) return 'handrail';
+        if (d.includes('stair')) return 'staircase';
+        if (d.includes('platform') || d.includes('mezzanine')) return 'platform';
+        if (d.includes('gate')) return 'gate';
+        if (d.includes('operable') || d.includes('wall')) return 'operable_walls';
+        if (d.includes('glaz')) return 'glazing';
+        if (d.includes('structural') || d.includes('beam') || d.includes('column')) return 'structural_steel';
+        if (d.includes('weld') || d.includes('mig') || d.includes('tig')) return 'welding';
+        if (d.includes('plasma') || d.includes('oxy') || d.includes('cut')) return 'cutting';
+        if (d.includes('grind') || d.includes('linish')) return 'grinding';
+        return 'general';
+    }
+
+    // Search memory for similar past SWMS (top 3)
+    function frankSearchMemory(jobType, builder) {
+        if (frankMemory.length === 0) return [];
+        const scored = frankMemory.map(m => {
+            let score = 0;
+            if (m.jobType === jobType) score += 3;
+            if (builder && m.builder && m.builder.toLowerCase() === builder.toLowerCase()) score += 2;
+            return { ...m, score };
+        }).filter(m => m.score > 0);
+        scored.sort((a, b) => b.score - a.score || new Date(b.date) - new Date(a.date));
+        return scored.slice(0, 3);
+    }
+
+    // Get latest regulation updates as text for system prompt
+    function frankGetLatestRegUpdates() {
+        if (!frankRegUpdates || frankRegUpdates.length === 0) return '';
+        return frankRegUpdates.slice(0, 5).map(r =>
+            '- ' + r.title + (r.effective_date ? ' (effective ' + r.effective_date + ')' : '') + ': ' + r.description
+        ).join('\n');
     }
 
     function frankStartSync() {
@@ -7545,7 +7679,7 @@
                     firebaseDb.ref('jmart-safety/frank/history').set(local);
                 }
             }
-            frankRenderHistory();
+            frankRenderArchive();
         });
     }
 
@@ -7559,20 +7693,92 @@
             return;
         }
         if (empty) empty.style.display = 'none';
-        list.innerHTML = frankHistory.slice(0, 10).map((h, i) =>
-            '<div style="background:rgba(16,185,129,0.05);border:1px solid rgba(16,185,129,0.15);border-radius:8px;padding:10px;margin-bottom:6px;cursor:pointer;" onclick="frankShowSaved(' + i + ')">' +
+        // Filter by archive filter and search
+        let filtered = frankHistory.map((h, i) => ({ ...h, _idx: i }));
+        if (frankArchiveFilter !== 'all') {
+            filtered = filtered.filter(h => frankClassifyJobType(h.jobDesc) === frankArchiveFilter);
+        }
+        if (frankArchiveSearch) {
+            const q = frankArchiveSearch.toLowerCase();
+            filtered = filtered.filter(h =>
+                (h.jobDesc || '').toLowerCase().includes(q) ||
+                (h.jobNumber || '').toLowerCase().includes(q) ||
+                (h.location || '').toLowerCase().includes(q)
+            );
+        }
+        if (filtered.length === 0) {
+            list.innerHTML = '<p style="color:#666;font-size:12px;">No matching SWMS found.</p>';
+            return;
+        }
+        list.innerHTML = filtered.slice(0, 20).map(h =>
+            '<div style="background:rgba(16,185,129,0.05);border:1px solid rgba(16,185,129,0.15);border-radius:8px;padding:10px;margin-bottom:6px;cursor:pointer;" onclick="frankShowSaved(' + h._idx + ')">' +
             '<div style="display:flex;justify-content:space-between;align-items:center;">' +
             '<div><strong style="color:#fff;font-size:13px;">' + escapeHtml(h.jobDesc.substring(0, 50)) + (h.jobDesc.length > 50 ? '...' : '') + '</strong>' +
-            '<br><span style="font-size:11px;color:#888;">' + escapeHtml(h.date) + (h.jobNumber ? ' | Job #' + escapeHtml(h.jobNumber) : '') + '</span></div>' +
-            '<button onclick="event.stopPropagation();frankRemoveHistory(' + i + ')" style="color:#f44336;background:none;border:none;cursor:pointer;font-size:14px;">✕</button>' +
+            '<br><span style="font-size:11px;color:#888;">' + escapeHtml(h.date || '') + (h.jobNumber ? ' | Job #' + escapeHtml(h.jobNumber) : '') +
+            ' | <span style="color:#34d399;">' + escapeHtml(frankClassifyJobType(h.jobDesc)) + '</span></span></div>' +
+            '<button onclick="event.stopPropagation();frankRemoveHistory(' + h._idx + ')" style="color:#f44336;background:none;border:none;cursor:pointer;font-size:14px;">✕</button>' +
             '</div></div>'
+        ).join('') + (filtered.length > 20 ? '<p style="color:#888;font-size:11px;text-align:center;">Showing 20 of ' + filtered.length + '</p>' : '');
+    }
+
+    function frankRenderArchive() {
+        frankRenderArchiveTabs();
+        frankRenderHistory();
+    }
+
+    function frankRenderArchiveTabs() {
+        const tabs = document.getElementById('frankArchiveTabs');
+        if (!tabs) return;
+        // Count by job type
+        const counts = {};
+        frankHistory.forEach(h => {
+            const t = frankClassifyJobType(h.jobDesc);
+            counts[t] = (counts[t] || 0) + 1;
+        });
+        const types = Object.keys(counts).sort();
+        let html = '<button onclick="frankSetArchiveFilter(\'all\')" style="padding:3px 8px;border-radius:5px;border:1px solid rgba(16,185,129,0.3);' +
+            'background:' + (frankArchiveFilter === 'all' ? 'rgba(16,185,129,0.3)' : 'transparent') + ';color:#34d399;cursor:pointer;font-size:11px;">' +
+            'All (' + frankHistory.length + ')</button>';
+        types.forEach(t => {
+            html += '<button onclick="frankSetArchiveFilter(\'' + t + '\')" style="padding:3px 8px;border-radius:5px;border:1px solid rgba(16,185,129,0.2);' +
+                'background:' + (frankArchiveFilter === t ? 'rgba(16,185,129,0.3)' : 'transparent') + ';color:#aaa;cursor:pointer;font-size:11px;">' +
+                escapeHtml(t.replace(/_/g, ' ')) + ' (' + counts[t] + ')</button>';
+        });
+        tabs.innerHTML = html;
+    }
+
+    function frankSetArchiveFilter(filter) {
+        frankArchiveFilter = filter;
+        frankRenderArchive();
+    }
+
+    function frankFilterArchiveSearch(val) {
+        frankArchiveSearch = val;
+        frankRenderHistory();
+    }
+
+    function frankRenderRegUpdates() {
+        const card = document.getElementById('frankRegCard');
+        const content = document.getElementById('frankRegContent');
+        const badge = document.getElementById('frankRegBadge');
+        if (!card || !content) return;
+        if (!frankRegUpdates || frankRegUpdates.length === 0) { card.style.display = 'none'; return; }
+        card.style.display = 'block';
+        badge.textContent = frankRegUpdates.length + ' update' + (frankRegUpdates.length !== 1 ? 's' : '');
+        content.innerHTML = frankRegUpdates.map(r =>
+            '<div style="background:rgba(245,158,11,0.05);border:1px solid rgba(245,158,11,0.15);border-radius:8px;padding:10px;margin-bottom:6px;">' +
+            '<strong style="color:#f59e0b;font-size:13px;">' + escapeHtml(r.title || '') + '</strong>' +
+            (r.effective_date ? '<span style="color:#888;font-size:11px;margin-left:6px;">(' + escapeHtml(r.effective_date) + ')</span>' : '') +
+            '<br><span style="font-size:12px;color:#aaa;">' + escapeHtml(r.description || '') + '</span>' +
+            (r.relevance ? '<br><span style="font-size:10px;color:' + (r.relevance === 'high' ? '#f44336' : r.relevance === 'medium' ? '#f59e0b' : '#888') + ';">Relevance: ' + escapeHtml(r.relevance) + '</span>' : '') +
+            '</div>'
         ).join('');
     }
 
     function frankRemoveHistory(index) {
         frankHistory.splice(index, 1);
         frankSaveHistory();
-        frankRenderHistory();
+        frankRenderArchive();
     }
 
     function frankShowSaved(index) {
@@ -7613,6 +7819,167 @@
 
     function frankLog(msg) {
         document.getElementById('frankConsole').textContent = '🦺 ' + msg;
+    }
+
+    // Document upload — extract requirements from email/PDF/image
+    async function frankAttachFile(input) {
+        const file = input.files[0];
+        input.value = '';
+        if (!file) return;
+
+        const ext = file.name.toLowerCase().split('.').pop();
+        const validTypes = ['pdf', 'txt', 'png', 'jpg', 'jpeg'];
+        if (!validTypes.includes(ext)) {
+            alert('Supported formats: PDF, TXT, PNG, JPG');
+            return;
+        }
+        if (file.size > 10 * 1024 * 1024) {
+            alert('File too large (' + (file.size / 1024 / 1024).toFixed(1) + 'MB). Max 10MB.');
+            return;
+        }
+
+        const progress = document.getElementById('frankAttachProgress');
+        const status = document.getElementById('frankAttachStatus');
+        progress.style.display = 'block';
+        status.textContent = '📎 Reading ' + file.name + '...';
+
+        try {
+            let extractedText = '';
+
+            if (ext === 'txt') {
+                extractedText = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result);
+                    reader.onerror = () => reject(new Error('Failed to read file'));
+                    reader.readAsText(file);
+                });
+            } else {
+                if (!getApiKey()) { alert('API key needed for PDF/image extraction.'); progress.style.display = 'none'; return; }
+                status.textContent = '🤖 Extracting requirements...';
+
+                const base64 = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result.split(',')[1]);
+                    reader.onerror = () => reject(new Error('Failed to read file'));
+                    reader.readAsDataURL(file);
+                });
+
+                const contentBlock = ext === 'pdf'
+                    ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } }
+                    : { type: 'image', source: { type: 'base64', media_type: file.type || 'image/jpeg', data: base64 } };
+
+                const result = await callClaudeAPI(
+                    [{ role: 'user', content: [
+                        contentBlock,
+                        { type: 'text', text: 'Extract ALL project requirements, safety requirements, scope of work details, ' +
+                            'special conditions, and any constraints from this document. Include specific items like: ' +
+                            'required PPE, restricted areas, working hours, permit requirements, hazard controls, ' +
+                            'environmental conditions, and any builder/client specific requirements.\n\n' +
+                            'Return a plain text summary organized by category. Be thorough — every detail matters for the SWMS.' }
+                    ]}],
+                    { model: 'claude-3-5-haiku-20241022', maxTokens: 2048, temperature: 0 }
+                );
+
+                if (result && result.content) {
+                    for (const block of result.content) {
+                        if (block.type === 'text') extractedText += block.text;
+                    }
+                }
+            }
+
+            if (!extractedText.trim()) { throw new Error('No requirements found in file'); }
+
+            frankAttachedRequirements = extractedText.trim();
+            frankAttachedFilename = file.name;
+            progress.style.display = 'none';
+
+            document.getElementById('frankAttachBadge').style.display = 'inline';
+            document.getElementById('frankAttachBadge').textContent = '📎 ' + file.name;
+            document.getElementById('frankClearAttach').style.display = 'inline';
+            frankLog('Attached: ' + file.name + ' (' + extractedText.length + ' chars extracted)');
+        } catch (err) {
+            status.textContent = '❌ ' + err.message;
+            setTimeout(() => { progress.style.display = 'none'; }, 3000);
+            frankLog('Attach error: ' + err.message);
+        }
+    }
+
+    function frankClearAttachment() {
+        frankAttachedRequirements = null;
+        frankAttachedFilename = null;
+        document.getElementById('frankAttachBadge').style.display = 'none';
+        document.getElementById('frankClearAttach').style.display = 'none';
+        frankLog('Attachment cleared');
+    }
+
+    // Regulation auto-search (January & June)
+    function frankShouldSearchRegs() {
+        const month = new Date().getMonth(); // 0=Jan, 5=Jun
+        if (month !== 0 && month !== 5) return false;
+        const currentYM = new Date().toISOString().substring(0, 7);
+        if (localStorage.getItem('frankLastRegSearch') === currentYM) return false;
+        if (!getApiKey()) return false;
+        return true;
+    }
+
+    async function frankStartRegSearch() {
+        frankLog('Searching for regulation updates...');
+        const year = new Date().getFullYear();
+        const searches = [
+            'SafeWork NSW WHS regulation changes ' + year + ' steel construction',
+            'Australian Standards AS 4100 AS 1554 updates ' + year,
+            'Safe Work Australia codes of practice updates ' + year + ' construction'
+        ];
+
+        const allChanges = [];
+        for (const query of searches) {
+            try {
+                const result = await callClaudeAPI(
+                    [{ role: 'user', content: 'Search for: "' + query + '"\n\n' +
+                        'Return ONLY valid JSON with regulation changes relevant to steel fabrication and construction:\n' +
+                        '{"changes":[{"title":"...","description":"short description","effective_date":"YYYY-MM or unknown","relevance":"high/medium/low"}]}\n' +
+                        'If no changes found, return {"changes":[]}. Return ONLY JSON.' }],
+                    {
+                        model: 'claude-3-5-haiku-20241022', maxTokens: 1024, temperature: 0,
+                        tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 4 }]
+                    }
+                );
+
+                let text = '';
+                if (result && result.content) {
+                    for (const block of result.content) {
+                        if (block.type === 'text') text += block.text;
+                    }
+                }
+                try {
+                    const jsonMatch = text.match(/\{[\s\S]*\}/);
+                    const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+                    if (parsed && parsed.changes) allChanges.push(...parsed.changes);
+                } catch (e) { /* skip unparseable */ }
+
+                await new Promise(r => setTimeout(r, 2000)); // rate limit pause
+            } catch (e) { console.warn('Reg search failed:', e.message); }
+        }
+
+        // Deduplicate by title
+        const seen = new Set();
+        const unique = allChanges.filter(c => {
+            const key = (c.title || '').toLowerCase();
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+
+        if (unique.length > 0) {
+            frankRegUpdates = unique;
+            frankSaveRegUpdates();
+            frankRenderRegUpdates();
+            frankLog('Found ' + unique.length + ' regulation update(s)');
+        } else {
+            frankLog('No new regulation updates found');
+        }
+
+        localStorage.setItem('frankLastRegSearch', new Date().toISOString().substring(0, 7));
     }
 
     // Setup worker checkbox listeners on DOM ready
@@ -7664,13 +8031,61 @@
         const workerList = workers.length > 0 ? workers : [''];
 
         try {
-            const systemPrompt = 'You are FRANK, Australia\'s best AI Safety Manager for steel fabrication. ' +
+            let systemPrompt = 'You are FRANK, Australia\'s best AI Safety Manager for steel fabrication at J&M Art Steel Fabrication. ' +
                 'You specialize in creating Safe Work Method Statements (SWMS) for structural steel installation. ' +
-                'You ALWAYS reference relevant AS/NZS standards:\n' +
-                '- AS/NZS 1554 (Structural Steel Welding)\n- AS 1657 (Fixed Platforms, Walkways, Stairways)\n' +
-                '- AS/NZS 4576 (Scaffolding)\n- AS/NZS 1891 (Industrial Fall Arrest)\n' +
-                '- AS 2550 (Cranes - Safe Use)\n- AS 4991 (Lifting Equipment)\n\n' +
+                'You ALWAYS reference the most relevant legislation and standards for each job.\n\n' +
+                '## Legislation\n' +
+                '- Work Health and Safety Act 2011 (NSW)\n' +
+                '- Work Health and Safety Regulation 2017 (NSW)\n\n' +
+                '## Australian Standards — Steel & Structural\n' +
+                '- AS 4100 (Steel Structures)\n' +
+                '- AS/NZS 1554 (Structural Steel Welding)\n' +
+                '- AS/NZS 1170 (Structural Design Actions)\n' +
+                '- AS 1657 (Fixed Platforms, Walkways, Stairways)\n' +
+                '- AS 4991 (Lifting Equipment)\n\n' +
+                '## Australian Standards — Working at Heights & Access\n' +
+                '- AS/NZS 1891 (Industrial Fall Arrest Systems)\n' +
+                '- AS/NZS 4576 (Scaffolding)\n\n' +
+                '## Australian Standards — Plant & Equipment\n' +
+                '- AS 2550 (Cranes — Safe Use)\n' +
+                '- AS 1418 (Cranes, Hoists and Winches)\n' +
+                '- AS 4839 (Safe Use of Portable Electrical Equipment)\n\n' +
+                '## Australian Standards — PPE\n' +
+                '- AS/NZS 1337 (Eye Protection)\n' +
+                '- AS/NZS 1715 (Selection of Respiratory Protective Equipment)\n' +
+                '- AS/NZS 1716 (Respiratory Protective Devices)\n' +
+                '- AS/NZS 2161 (Occupational Protective Gloves)\n\n' +
+                '## Australian Standards — Special Hazards\n' +
+                '- AS/NZS 2211 (Laser Safety)\n' +
+                '- AS/NZS 1336 (Occupational Eye Protection)\n\n' +
+                '## Safe Work Australia Codes of Practice\n' +
+                '- Managing the Risk of Falls at Workplaces\n' +
+                '- Confined Spaces\n' +
+                '- Hazardous Manual Tasks\n' +
+                '- Managing Noise and Preventing Hearing Loss\n' +
+                '- Welding Processes\n' +
+                '- Managing Risks of Hazardous Chemicals\n' +
+                '- Construction Work\n\n' +
                 'You write clear, actionable safety procedures that protect workers and comply with Australian WHS legislation.';
+
+            // Inject memory context from similar past SWMS
+            const jobType = frankClassifyJobType(jobDesc);
+            const memoryMatches = frankSearchMemory(jobType, builder);
+            if (memoryMatches.length > 0) {
+                systemPrompt += '\n\n## Your Past Experience (use to improve quality)\n' +
+                    'You have generated similar SWMS before:\n' +
+                    memoryMatches.map(m => '- "' + (m.title || m.jobDesc || '').substring(0, 80) + '" for ' +
+                        (m.builder || 'unknown builder') + ' at ' + (m.location || 'unknown location') +
+                        ' (' + (m.stepCount || '?') + ' steps, standards: ' + (m.standards || []).join(', ') + ')'
+                    ).join('\n') +
+                    '\nBuild on this experience. Improve step detail and hazard identification.';
+            }
+
+            // Inject regulation updates
+            const regText = frankGetLatestRegUpdates();
+            if (regText) {
+                systemPrompt += '\n\n## Recent Regulation Updates (incorporate where relevant)\n' + regText;
+            }
 
             const userPrompt = 'Generate a complete SWMS for the following job. Return ONLY valid JSON.\n\n' +
                 'Job Description: ' + jobDesc + '\n' +
@@ -7698,7 +8113,8 @@
                 '  "emergency_procedures": "Site-specific emergency procedures",\n' +
                 '  "standards": ["list of applicable AS/NZS standards"]\n' +
                 '}\n' +
-                'Generate 6-10 detailed steps. Each step must have specific hazards and controls referencing Australian standards.';
+                'Generate 6-10 detailed steps. Each step must have specific hazards and controls referencing Australian standards.' +
+                (frankAttachedRequirements ? '\n\nADDITIONAL REQUIREMENTS (from attached document — ' + escapeHtml(frankAttachedFilename || 'file') + '):\n' + frankAttachedRequirements : '');
 
             const result = await callClaudeAPI(
                 [{ role: 'user', content: userPrompt }],
@@ -7838,17 +8254,35 @@
             resultEl.classList.remove('error');
             frankLog('SWMS generated: ' + (data.title || jobDesc));
 
-            // Save to history
+            // Save to history (no cap — Frank remembers everything)
             frankHistory.unshift({
                 jobDesc: jobDesc,
                 jobNumber: jobNumber,
                 location: location,
+                builder: builder,
                 date: today,
                 html: html
             });
-            if (frankHistory.length > 20) frankHistory = frankHistory.slice(0, 20);
             frankSaveHistory();
-            frankRenderHistory();
+            frankRenderArchive();
+
+            // Save to memory index for future context
+            frankMemory.unshift({
+                id: 'swms-' + Date.now(),
+                jobType: frankClassifyJobType(jobDesc),
+                jobNumber: jobNumber,
+                builder: builder,
+                location: location,
+                date: today,
+                title: data.title || jobDesc.substring(0, 80),
+                stepCount: (data.steps || []).length,
+                standards: data.standards || [],
+                jobDesc: jobDesc.substring(0, 200)
+            });
+            frankSaveMemory();
+
+            // Clear attachment after successful generation
+            frankClearAttachment();
 
         } catch (error) {
             clearInterval(progressInterval);
@@ -7909,6 +8343,8 @@
         // Start Firebase sync for Victor, Frank & Hanna (real-time across all devices)
         victorStartSync();
         frankStartSync();
+        frankStartMemorySync();
+        frankSyncRegUpdates();
         hannaStartSync();
         // Fallback render from localStorage if Firebase hasn't loaded yet
         if (!victorFirebaseListenerActive) {
@@ -7916,7 +8352,12 @@
             victorProducts = localVictor.length > 0 ? localVictor : VICTOR_SEED_DATA.slice();
             victorRenderProducts();
         }
-        if (!frankFirebaseListenerActive) { frankHistory = JSON.parse(localStorage.getItem('frank-history') || '[]'); frankRenderHistory(); }
+        if (!frankFirebaseListenerActive) { frankHistory = JSON.parse(localStorage.getItem('frank-history') || '[]'); frankRenderArchive(); }
+        if (!frankMemoryFirebaseActive) { frankMemory = JSON.parse(localStorage.getItem('frank-memory') || '[]'); }
+        frankRegUpdates = JSON.parse(localStorage.getItem('frank-reg-updates') || '[]');
+        frankRenderRegUpdates();
+        // Regulation auto-search (January & June)
+        if (frankShouldSearchRegs()) { setTimeout(() => frankStartRegSearch(), 5000); }
 
         // Initialize dashboard and status bar
         dashboardRefresh();
