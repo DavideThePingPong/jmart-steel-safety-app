@@ -2250,11 +2250,11 @@
         </div>
 
         <label>Bolt Type</label>
-        <div class="btn-group" id="hobartTypeButtons">
-            <button class="btn active" onclick="hobartSetType('HB', this)">HB Hex Head</button>
-            <button class="btn" onclick="hobartSetType('HBCSK', this)">HBCSK Countersunk</button>
-            <button class="btn" onclick="hobartSetType('HBFF', this)">HBFF Flush Fit</button>
-            <button class="btn" onclick="hobartSetType('LB', this)">LB2 LindiBolt</button>
+        <div class="btn-group" id="hobartTypeButtons" style="gap:8px;">
+            <button class="btn active" onclick="hobartSetType('HB', this)" style="display:flex;align-items:center;gap:6px;"><svg width="24" height="18" viewBox="0 0 24 18"><rect x="9" y="2" width="6" height="16" rx="1" fill="currentColor" opacity="0.4"/><polygon points="3,5 21,5 23,9 21,13 3,13 1,9" fill="currentColor" opacity="0.7"/></svg>Hex Head</button>
+            <button class="btn" onclick="hobartSetType('HBCSK', this)" style="display:flex;align-items:center;gap:6px;"><svg width="24" height="18" viewBox="0 0 24 18"><rect x="9" y="6" width="6" height="12" rx="1" fill="currentColor" opacity="0.4"/><polygon points="5,1 19,1 15,7 9,7" fill="currentColor" opacity="0.7"/><line x1="0" y1="1" x2="5" y2="1" stroke="currentColor" opacity="0.35" stroke-width="2"/><line x1="19" y1="1" x2="24" y2="1" stroke="currentColor" opacity="0.35" stroke-width="2"/></svg>Countersunk</button>
+            <button class="btn" onclick="hobartSetType('HBFF', this)" style="display:flex;align-items:center;gap:6px;"><svg width="24" height="18" viewBox="0 0 24 18"><rect x="9" y="5" width="6" height="13" rx="1" fill="currentColor" opacity="0.4"/><rect x="5" y="1" width="14" height="5" rx="1" fill="currentColor" opacity="0.7"/><line x1="0" y1="1" x2="5" y2="1" stroke="currentColor" opacity="0.35" stroke-width="2"/><line x1="19" y1="1" x2="24" y2="1" stroke="currentColor" opacity="0.35" stroke-width="2"/></svg>Flush Fit</button>
+            <button class="btn" onclick="hobartSetType('LB', this)" style="display:flex;align-items:center;gap:6px;"><svg width="24" height="18" viewBox="0 0 24 18"><rect x="9" y="0" width="6" height="18" rx="1" fill="currentColor" opacity="0.4"/><polygon points="3,3 21,3 23,7 21,11 3,11 1,7" fill="currentColor" opacity="0.7"/><line x1="9" y1="13" x2="15" y2="13" stroke="currentColor" opacity="0.5" stroke-width="1.5"/><line x1="9" y1="16" x2="15" y2="16" stroke="currentColor" opacity="0.5" stroke-width="1.5"/></svg>LindiBolt</button>
         </div>
 
         <label style="margin-top:15px">Bolt Size</label>
