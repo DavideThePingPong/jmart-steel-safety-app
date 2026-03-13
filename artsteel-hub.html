@@ -3799,16 +3799,21 @@
     // Excel Download Function - generates multi-sheet IBSC Steel Calculator with styling
     async function igorDownloadExcel() {
         document.getElementById('igorConsole').textContent = '⚖️ Generating Excel calculator... Please wait';
-
+        try {
         // Load ExcelJS library dynamically (supports styling)
         if (typeof ExcelJS === 'undefined') {
-            await new Promise((resolve, reject) => {
-                const script = document.createElement('script');
-                script.src = 'https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js';
-                script.onload = resolve;
-                script.onerror = reject;
-                document.head.appendChild(script);
-            });
+            try {
+                await new Promise((resolve, reject) => {
+                    const script = document.createElement('script');
+                    script.src = 'https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js';
+                    script.onload = resolve;
+                    script.onerror = () => reject(new Error('Failed to load ExcelJS library'));
+                    document.head.appendChild(script);
+                });
+            } catch (e) {
+                document.getElementById('igorConsole').textContent = '❌ Could not load Excel library. Check your internet connection.';
+                return;
+            }
         }
 
         const workbook = new ExcelJS.Workbook();
@@ -4333,20 +4338,40 @@
         // Generate and download
         const buffer = await workbook.xlsx.writeBuffer();
         const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
         const fileName = pricingEnabled
             ? `IBSC_Steel_Calculator_${supplierName.replace(/[^a-zA-Z0-9]/g, '_')}.xlsx`
             : 'IBSC_Steel_Calculator.xlsx';
+
+        // Mobile-friendly download: try share API first (works best on phones)
+        if (navigator.share && navigator.canShare && navigator.canShare({ files: [new File([blob], fileName)] })) {
+            try {
+                await navigator.share({ files: [new File([blob], fileName, { type: blob.type })], title: 'IBSC Steel Calculator' });
+                document.getElementById('igorConsole').textContent = '⚖️ Excel shared successfully!';
+                return;
+            } catch (e) {
+                if (e.name === 'AbortError') { document.getElementById('igorConsole').textContent = '⚖️ Share cancelled'; return; }
+                // Fall through to link download
+            }
+        }
+
+        // Fallback: standard link download
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
         a.download = fileName;
+        document.body.appendChild(a);
         a.click();
-        URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
 
         const msg = pricingEnabled
             ? `⚖️ Excel downloaded with ${supplierName} pricing! Columns: Weight, $/m, $/t, Line Total`
             : '⚖️ Excel downloaded! Empty rows with dropdowns, breakdown column in Summary.';
         document.getElementById('igorConsole').textContent = msg;
+        } catch (error) {
+            document.getElementById('igorConsole').textContent = '❌ Excel error: ' + error.message;
+            console.error('igorDownloadExcel error:', error);
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════════════

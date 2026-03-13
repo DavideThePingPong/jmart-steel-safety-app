@@ -1,11 +1,13 @@
 // Artsteel Hub Service Worker
-const CACHE_NAME = 'hub-v2';
+const CACHE_NAME = 'hub-v3';
 const ASSETS = [
     './artsteel-hub.html',
     './hub-manifest.json',
     './icons/icon-192x192.png',
     './icons/icon-512x512.png',
     './icons/apple-touch-icon-180x180.png',
+    // ExcelJS (required for Igor Excel download)
+    'https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js',
     // Firebase SDK (required for sync)
     'https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js',
     'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js',
@@ -48,8 +50,8 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // Cache-first for Firebase CDN and icons
-    if (url.hostname === 'www.gstatic.com' || url.pathname.startsWith('/icons/')) {
+    // Cache-first for CDN libs (Firebase, ExcelJS) and icons
+    if (url.hostname === 'www.gstatic.com' || url.hostname === 'cdn.jsdelivr.net' || url.pathname.startsWith('/icons/')) {
         event.respondWith(
             caches.match(event.request).then((cached) => cached || fetch(event.request))
         );
