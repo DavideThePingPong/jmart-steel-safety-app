@@ -5214,6 +5214,9 @@
         chuckCalculate();
     }
 
+    // Pump output: ml per full pump stroke on standard Hilti HDM dispenser
+    const CHUCK_PUMP_ML = 3.4;
+
     function chuckCalculate() {
         const depth = parseFloat(document.getElementById('chuckDepth').value) || 0;
         const qty = parseInt(document.getElementById('chuckQty').value, 10) || 1;
@@ -5222,21 +5225,40 @@
 
         if (!sizeData) return;
 
-        const holeVol = Math.PI * Math.pow(sizeData.hole/2, 2) * depth / 1000;
-        const totalVol = holeVol * qty * 1.15;
+        // Rod diameter = the M-number (M10=10mm, M16=16mm, etc.)
+        const rodDia = parseInt(chuckSize.replace('M', ''), 10);
+        const holeDia = sizeData.hole;
+
+        // Annular volume = space between hole wall and rod (what the chemical fills)
+        const annularVol = Math.PI / 4 * (Math.pow(holeDia, 2) - Math.pow(rodDia, 2)) * depth / 1000; // ml
+        const totalVol = annularVol * qty * 1.15; // 15% waste factor
+
+        // Pumps per hole
+        const pumpsPerHole = annularVol / CHUCK_PUMP_ML;
+        const pumpsWhole = Math.ceil(pumpsPerHole); // round up to be safe
+        const pumpsFraction = pumpsPerHole.toFixed(1);
 
         // Calculate cartridge options
         const cart330 = Math.ceil(totalVol / 330);
         const cart500 = Math.ceil(totalVol / 500);
         const cart1400 = Math.ceil(totalVol / 1400);
 
+        // Fill indicator color
+        const fillColor = pumpsPerHole < 1 ? '#f59e0b' : '#22c55e';
+
         document.getElementById('chuckResults').innerHTML = `
-            <div class="result-card"><div class="label">Hole Size</div><div class="value">${escapeHtml(sizeData.hole)}<span class="unit">mm</span></div></div>
-            <div class="result-card"><div class="label">Min Embed</div><div class="value">${escapeHtml(sizeData.embed)}<span class="unit">mm</span></div></div>
-            <div class="result-card"><div class="label">Vol/Hole</div><div class="value">${escapeHtml(holeVol.toFixed(1))}<span class="unit">ml</span></div></div>
-            <div class="result-card"><div class="label">Total Vol</div><div class="value">${escapeHtml(totalVol.toFixed(0))}<span class="unit">ml</span></div></div>
-            <div class="result-card"><div class="label">Cartridges</div><div class="value" style="color:#22c55e">${escapeHtml(cart330)}</div></div>
-            <div class="result-card"><div class="label">Product</div><div class="value" style="font-size:0.9rem">${escapeHtml(chemical.name)}</div></div>
+            <div class="result-card" style="grid-column:span 2;background:linear-gradient(135deg,rgba(34,197,94,0.15),rgba(34,197,94,0.05));border:2px solid rgba(34,197,94,0.4);">
+                <div class="label" style="font-size:13px;color:#22c55e;font-weight:700;">💉 PUMPS PER HOLE</div>
+                <div class="value" style="font-size:2.8rem;color:${fillColor}">${escapeHtml(pumpsFraction)}</div>
+                <div style="font-size:11px;color:#888;margin-top:4px;">≈ ${escapeHtml(String(pumpsWhole))} full pump${pumpsWhole !== 1 ? 's' : ''} • ${escapeHtml(annularVol.toFixed(1))}ml per hole</div>
+                <div style="font-size:10px;color:#666;margin-top:2px;">⌀${escapeHtml(String(holeDia))}mm hole − ⌀${escapeHtml(String(rodDia))}mm rod × ${escapeHtml(String(depth))}mm deep</div>
+            </div>
+            <div class="result-card"><div class="label">Hole Size</div><div class="value">${escapeHtml(String(holeDia))}<span class="unit">mm ⌀</span></div></div>
+            <div class="result-card"><div class="label">Rod Size</div><div class="value">${escapeHtml(String(rodDia))}<span class="unit">mm ⌀</span></div></div>
+            <div class="result-card"><div class="label">Min Embed</div><div class="value">${escapeHtml(String(sizeData.embed))}<span class="unit">mm</span></div></div>
+            <div class="result-card"><div class="label">Vol/Hole</div><div class="value">${escapeHtml(annularVol.toFixed(1))}<span class="unit">ml</span></div></div>
+            <div class="result-card"><div class="label">Total Vol</div><div class="value">${escapeHtml(totalVol.toFixed(0))}<span class="unit">ml (${escapeHtml(String(qty))} holes)</span></div></div>
+            <div class="result-card"><div class="label">Cartridges</div><div class="value" style="color:#22c55e">${escapeHtml(String(cart330))}<span class="unit">× 330ml</span></div></div>
         `;
 
         // Show cartridge options
@@ -5250,7 +5272,7 @@
             chuckUpdateCureTimes();
         }
 
-        document.getElementById('chuckConsole').textContent = `🧪 ${chemical.name} ${chuckSize}: ${qty} holes × ${depth}mm = ${cart330} × 330ml cartridge${cart330>1?'s':''}`;
+        document.getElementById('chuckConsole').textContent = `🧪 ${chemical.name} ${chuckSize}: ${pumpsFraction} pumps/hole • ${qty} holes × ${depth}mm = ${cart330} × 330ml`;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
