@@ -1538,6 +1538,8 @@
         .cure-card.standard { border-left: 3px solid #22c55e; }
         .cure-card.coastal { border-left: 3px solid #3b82f6; }
         .cure-card.shade { border-left: 3px solid #a855f7; }
+        .cure-card.active { outline: 2px solid #f59e0b; outline-offset: -2px; background: rgba(245,158,11,0.1); }
+        .cure-card:not(.active) { opacity: 0.6; }
         .cure-icon { font-size: 1.5rem; margin-bottom: 5px; }
         .cure-label { font-size: 11px; color: rgba(255,255,255,0.6); margin-bottom: 5px; }
         .cure-work { font-size: 12px; color: #f59e0b; }
@@ -2579,21 +2581,22 @@
 
         <!-- Cure Times Section -->
         <div class="chuck-cure-section" id="chuckCureSection" style="display:none">
-            <h4 style="color:#f59e0b;margin-bottom:10px">⏱️ Cure Times @ <span id="chuckCureTemp">--</span>°C</h4>
+            <h4 style="color:#f59e0b;margin-bottom:4px">⏱️ Cure Times @ <span id="chuckCureTemp">--</span>°C</h4>
+            <div style="font-size:11px;color:#888;margin-bottom:10px;">Tap a condition to set the timer</div>
             <div class="cure-cards">
-                <div class="cure-card standard">
-                    <div class="cure-icon">🏗️</div>
+                <div class="cure-card standard active" onclick="chuckSelectCondition('standard', this)" style="cursor:pointer;">
+                    <div class="cure-icon">☀️</div>
                     <div class="cure-label">Standard</div>
                     <div class="cure-work" id="cureWorkStd">-</div>
                     <div class="cure-time" id="cureCureStd">-</div>
                 </div>
-                <div class="cure-card coastal">
+                <div class="cure-card coastal" onclick="chuckSelectCondition('coastal', this)" style="cursor:pointer;">
                     <div class="cure-icon">🌊</div>
                     <div class="cure-label">Coastal/Humid</div>
                     <div class="cure-work" id="cureWorkCoast">-</div>
                     <div class="cure-time" id="cureCureCoast">-</div>
                 </div>
-                <div class="cure-card shade">
+                <div class="cure-card shade" onclick="chuckSelectCondition('shade', this)" style="cursor:pointer;">
                     <div class="cure-icon">🌥️</div>
                     <div class="cure-label">Shade/Cold</div>
                     <div class="cure-work" id="cureWorkShade">-</div>
@@ -5526,12 +5529,32 @@
     let chuckTimerInterval = null;
     let chuckTimerEndTime = null;
     let chuckCureMinutes = 60;
+    let chuckCondition = 'standard'; // 'standard', 'coastal', 'shade'
+
+    function chuckSelectCondition(condition, btn) {
+        chuckCondition = condition;
+        document.querySelectorAll('.cure-card').forEach(c => c.classList.remove('active'));
+        btn.classList.add('active');
+        const condNames = { standard: 'Standard', coastal: 'Coastal/Humid', shade: 'Shade/Cold' };
+        document.getElementById('chuckConsole').textContent = `🧪 Condition: ${condNames[condition]} — timer will use this cure time`;
+    }
+
+    function chuckGetCureForCondition() {
+        const temp = chuckCurrentTemp || 20;
+        if (chuckCondition === 'coastal') {
+            const cureData = getCureTimeLocal(chuckType, temp);
+            return Math.round((cureData.cureMin || 60) * 1.5);
+        } else if (chuckCondition === 'shade') {
+            const shadeCure = getCureTimeLocal(chuckType, temp - 5);
+            return shadeCure.cureMin || 60;
+        }
+        const cureData = getCureTimeLocal(chuckType, temp);
+        return cureData.cureMin || 60;
+    }
 
     function chuckStartTimer() {
-        // Get current cure time
-        const temp = chuckCurrentTemp || 20;
-        const cureData = getCureTimeLocal(chuckType, temp);
-        chuckCureMinutes = cureData.cureMin || 60;
+        // Get cure time based on selected condition
+        chuckCureMinutes = chuckGetCureForCondition();
 
         // Calculate end time
         const now = new Date();
@@ -5556,7 +5579,8 @@
         chuckTimerInterval = setInterval(chuckUpdateTimer, 1000);
         chuckUpdateTimer();
 
-        document.getElementById('chuckConsole').textContent = `⏱️ Timer started - Curing ${HILTI_DATA[chuckType].name} at ${temp}°C`;
+        const condNames = { standard: '☀️ Standard', coastal: '🌊 Coastal', shade: '🌥️ Shade' };
+        document.getElementById('chuckConsole').textContent = `⏱️ Timer started - ${HILTI_DATA[chuckType].name} • ${condNames[chuckCondition]} • ${temp}°C • ${formatCureTime(chuckCureMinutes)}`;
     }
 
     function chuckStopTimer() {
