@@ -3131,7 +3131,7 @@
         if (!e.ctrlKey || e.shiftKey || e.altKey || e.metaKey) return;
         // Don't intercept when typing in inputs
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
-        const num = parseInt(e.key);
+        const num = parseInt(e.key, 10);
         if (num >= 0 && num <= 8 && NAV_SECTIONS[num]) {
             e.preventDefault();
             showSection(NAV_SECTIONS[num]);
@@ -3535,7 +3535,7 @@
         const type = typeSelect.value;
         const section = sectionSelect.value;
         const length = parseFloat(lengthInput.value) || 0;
-        const qty = parseInt(qtyInput.value) || 1;
+        const qty = parseInt(qtyInput.value, 10) || 1;
 
         if (!section || !length) {
             preview.style.display = 'none';
@@ -3561,7 +3561,7 @@
         const type = typeSelect.value;
         const section = sectionSelect.value;
         const length = parseFloat(lengthInput.value) || 0;
-        const qty = parseInt(qtyInput.value) || 1;
+        const qty = parseInt(qtyInput.value, 10) || 1;
 
         if (!section || !length) {
             alert('Please select a section and enter a length');
@@ -4983,6 +4983,7 @@
         try {
             const url = `https://api.open-meteo.com/v1/forecast?latitude=${chuckLat}&longitude=${chuckLon}&current=temperature_2m,relative_humidity_2m&timezone=auto`;
             const res = await fetch(url);
+            if (!res.ok) throw new Error('Weather API returned ' + res.status);
             const data = await res.json();
 
             if (data.current) {
@@ -4993,6 +4994,7 @@
                 try {
                     const geoUrl = `https://nominatim.openstreetmap.org/reverse?lat=${chuckLat}&lon=${chuckLon}&format=json`;
                     const geoRes = await fetch(geoUrl);
+                    if (!geoRes.ok) throw new Error('Geocode failed');
                     const geoData = await geoRes.json();
                     const suburb = geoData.address?.suburb || geoData.address?.city || geoData.address?.town || 'Your location';
                     document.getElementById('chuckLocation').textContent = `📍 ${suburb}`;
@@ -5078,7 +5080,7 @@
 
     function chuckCalculate() {
         const depth = parseFloat(document.getElementById('chuckDepth').value) || 0;
-        const qty = parseInt(document.getElementById('chuckQty').value) || 1;
+        const qty = parseInt(document.getElementById('chuckQty').value, 10) || 1;
         const chemical = HILTI_DATA[chuckType];
         const sizeData = chemical.sizes[chuckSize];
 
@@ -5159,8 +5161,8 @@
     }
 
     function brittanyCalculate() {
-        const qty = parseInt(document.getElementById('brittanyQty').value) || 1;
-        const concrete = parseInt(document.getElementById('brittanyConcrete').value);
+        const qty = parseInt(document.getElementById('brittanyQty').value, 10) || 1;
+        const concrete = parseInt(document.getElementById('brittanyConcrete').value, 10);
         const overhead = document.getElementById('brittanyOverhead').checked;
         const fixing = FIXING_DATA[brittanyType];
         const sizeData = fixing.sizes[brittanySize];
@@ -5174,9 +5176,9 @@
         const edgeInput = document.getElementById('brittanyEdge').value;
         const spacingInput = document.getElementById('brittanySpacing').value;
 
-        const embed = embedInput ? parseInt(embedInput) : minEmbed;
-        const edge = edgeInput ? parseInt(edgeInput) : minEdge;
-        const spacing = spacingInput ? parseInt(spacingInput) : minSpacing;
+        const embed = embedInput ? parseInt(embedInput, 10) : minEmbed;
+        const edge = edgeInput ? parseInt(edgeInput, 10) : minEdge;
+        const spacing = spacingInput ? parseInt(spacingInput, 10) : minSpacing;
 
         // Update min displays
         document.getElementById('brittanyEmbedMin').textContent = `min: ${minEmbed}`;
@@ -5264,7 +5266,7 @@
             return;
         }
 
-        const load = parseInt(loadInput);
+        const load = parseInt(loadInput, 10);
         const capacity = loadType === 'tension' ? brittanyTotalTension : brittanyTotalShear;
         const utilisation = load / capacity;
         const percent = Math.min(utilisation * 100, 150);
@@ -5428,8 +5430,8 @@
     // BRITTANY REPORT GENERATOR - Professional Engineering Report
     // ═══════════════════════════════════════════════════════════════════════════
     function brittanyGenerateReport() {
-        const qty = parseInt(document.getElementById('brittanyQty').value) || 1;
-        const concrete = parseInt(document.getElementById('brittanyConcrete').value);
+        const qty = parseInt(document.getElementById('brittanyQty').value, 10) || 1;
+        const concrete = parseInt(document.getElementById('brittanyConcrete').value, 10);
         const substrateSelect = document.getElementById('brittanyConcrete');
         const substrateName = substrateSelect.options[substrateSelect.selectedIndex].text;
         const overhead = document.getElementById('brittanyOverhead').checked;
@@ -5444,9 +5446,9 @@
         if (!sizeData) return;
 
         const [tensionKn, shearKn, minEmbed, minEdge, minSpacing, holeSize] = sizeData;
-        const embed = embedInput ? parseInt(embedInput) : minEmbed;
-        const edge = edgeInput ? parseInt(edgeInput) : minEdge;
-        const spacing = spacingInput ? parseInt(spacingInput) : minSpacing;
+        const embed = embedInput ? parseInt(embedInput, 10) : minEmbed;
+        const edge = edgeInput ? parseInt(edgeInput, 10) : minEdge;
+        const spacing = spacingInput ? parseInt(spacingInput, 10) : minSpacing;
 
         // Calculate all reduction factors for display
         const edgeFactor = edge < minEdge ? Math.max(0.5, edge / minEdge) : 1.0;
@@ -5474,7 +5476,7 @@
         let loadCheckHTML = '';
         let loadCheckCalcs = '';
         if (load) {
-            const loadVal = parseInt(load);
+            const loadVal = parseInt(load, 10);
             const capacity = loadType === 'tension' ? brittanyTotalTension : brittanyTotalShear;
             const util = (loadVal / capacity) * 100;
             const sf = capacity / loadVal;
@@ -5918,6 +5920,12 @@
     let hannaCurrentResult = null;
     let hannaReceipts = [];
     let hannaFirebaseListenerActive = false;
+    var _hannaRef = null;
+
+    function hannaStopSync() {
+        if (_hannaRef) { _hannaRef.off('value'); _hannaRef = null; }
+        hannaFirebaseListenerActive = false;
+    }
 
     function hannaSaveReceipts() {
         if (firebaseDb) {
@@ -5931,7 +5939,8 @@
     function hannaStartSync() {
         if (!firebaseDb || hannaFirebaseListenerActive) return;
         hannaFirebaseListenerActive = true;
-        firebaseDb.ref('jmart-safety/hanna/receipts').on('value', (snap) => {
+        _hannaRef = firebaseDb.ref('jmart-safety/hanna/receipts');
+        _hannaRef.on('value', (snap) => {
             const data = snap.val();
             if (data && Array.isArray(data)) {
                 hannaReceipts = data;
@@ -6466,6 +6475,7 @@
     // ═══════════════════════════════════════════════════════════════════════════
     let victorProducts = [];
     let victorFirebaseListenerActive = false;
+    var _victorRef = null;
     let victorActiveFilter = 'all'; // 'all', 'current', 'expiring', 'expired'
     let victorAutoUpdateRunning = false;
     let victorAutoUpdateQueue = [];
@@ -6519,10 +6529,16 @@
         localStorage.setItem('victor-products', JSON.stringify(victorProducts));
     }
 
+    function victorStopSync() {
+        if (_victorRef) { _victorRef.off('value'); _victorRef = null; }
+        victorFirebaseListenerActive = false;
+    }
+
     function victorStartSync() {
         if (!firebaseDb || victorFirebaseListenerActive) return;
         victorFirebaseListenerActive = true;
-        firebaseDb.ref('jmart-safety/victor/products').on('value', (snap) => {
+        _victorRef = firebaseDb.ref('jmart-safety/victor/products');
+        _victorRef.on('value', (snap) => {
             const data = snap.val();
             if (data && Array.isArray(data) && data.length > 0) {
                 victorProducts = data;
@@ -7209,6 +7225,12 @@
     // ═══════════════════════════════════════════════════════════════════════════
     let frankHistory = [];
     let frankFirebaseListenerActive = false;
+    var _frankRef = null;
+
+    function frankStopSync() {
+        if (_frankRef) { _frankRef.off('value'); _frankRef = null; }
+        frankFirebaseListenerActive = false;
+    }
 
     function frankSaveHistory() {
         if (firebaseDb) {
@@ -7222,7 +7244,8 @@
     function frankStartSync() {
         if (!firebaseDb || frankFirebaseListenerActive) return;
         frankFirebaseListenerActive = true;
-        firebaseDb.ref('jmart-safety/frank/history').on('value', (snap) => {
+        _frankRef = firebaseDb.ref('jmart-safety/frank/history');
+        _frankRef.on('value', (snap) => {
             const data = snap.val();
             if (data && Array.isArray(data)) {
                 frankHistory = data;
@@ -7301,7 +7324,7 @@
     }
 
     function frankLog(msg) {
-        document.getElementById('frankConsole').innerHTML = '🦺 ' + msg;
+        document.getElementById('frankConsole').textContent = '🦺 ' + msg;
     }
 
     // Setup worker checkbox listeners on DOM ready
@@ -7561,6 +7584,7 @@
             return;
         }
         const printWindow = window.open('', '_blank');
+        if (!printWindow) { showToast('Popup blocked — allow popups to print', 'warning'); return; }
         printWindow.document.write('<html><head><title>SWMS - J&M Artsteel</title>' +
             '<style>body{font-family:Arial,sans-serif;background:#fff;color:#000;padding:20px;} ' +
             'table{width:100%;border-collapse:collapse;} th,td{border:1px solid #ccc;padding:8px;text-align:left;font-size:12px;} ' +
@@ -7609,7 +7633,7 @@
         // Initialize dashboard and status bar
         dashboardRefresh();
         // Refresh status bar every 30 seconds
-        setInterval(dashboardUpdateStatus, 30000);
+        window._hubStatusInterval = setInterval(dashboardUpdateStatus, 30000);
 
         // Log access
         console.log('🔩 J&M Artsteel Hub loaded. Admin:', SteelAuth.isAdmin);
