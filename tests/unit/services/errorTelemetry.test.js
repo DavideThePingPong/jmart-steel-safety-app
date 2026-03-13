@@ -106,14 +106,18 @@ describe('ErrorTelemetry', () => {
       expect(ErrorTelemetry.getErrorCount()).toBe(0);
     });
 
-    it('should install window.onerror handler', () => {
+    it('should install global error handler via addEventListener', () => {
+      const spy = jest.spyOn(window, 'addEventListener');
       ErrorTelemetry.init();
-      expect(typeof window.onerror).toBe('function');
+      expect(spy).toHaveBeenCalledWith('error', expect.any(Function));
+      spy.mockRestore();
     });
 
-    it('should install window.onunhandledrejection handler', () => {
+    it('should install unhandledrejection handler via addEventListener', () => {
+      const spy = jest.spyOn(window, 'addEventListener');
       ErrorTelemetry.init();
-      expect(typeof window.onunhandledrejection).toBe('function');
+      expect(spy).toHaveBeenCalledWith('unhandledrejection', expect.any(Function));
+      spy.mockRestore();
     });
   });
 

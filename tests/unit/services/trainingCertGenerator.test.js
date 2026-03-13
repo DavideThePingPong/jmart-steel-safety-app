@@ -13,6 +13,11 @@ let code = fs.readFileSync(path.resolve(ROOT, 'js/trainingCertGenerator.js'), 'u
 
 // Replace `const TrainingCertGenerator` with `global.TrainingCertGenerator`
 code = code.replace(/^const TrainingCertGenerator\s*=/m, 'global.TrainingCertGenerator =');
+
+// Provide globals that trainingCertGenerator.js depends on
+global.ToastNotifier = { error: jest.fn(), warning: jest.fn(), info: jest.fn(), success: jest.fn() };
+global.COMPANY_ABN = '12 345 678 901';
+
 eval(code);
 
 const TrainingCertGenerator = global.TrainingCertGenerator;
