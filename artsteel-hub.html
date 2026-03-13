@@ -3050,11 +3050,11 @@
 
         <!-- Generate & Attach -->
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-            <button class="frank-generate-btn" id="frankGenerateBtn" onclick="frankGenerate()" style="flex:1;">
+            <button class="frank-generate-btn" id="frankGenerateBtn" onclick="frankGenerate()" style="flex:1;width:auto;">
                 🦺 Generate SWMS
             </button>
-            <button class="frank-generate-btn" style="background:#2563eb;flex:0 0 auto;padding:10px 14px;font-size:13px;min-width:auto;"
-                    onclick="document.getElementById('frankFileInput').click()">
+            <button onclick="document.getElementById('frankFileInput').click()"
+                    style="flex:0 0 auto;width:auto;padding:10px 14px;font-size:13px;background:#2563eb;border:none;border-radius:10px;color:#fff;font-weight:600;cursor:pointer;margin-top:10px;">
                 📎 Attach
             </button>
             <input type="file" id="frankFileInput" accept=".pdf,.txt,.png,.jpg,.jpeg" style="display:none;" onchange="frankAttachFile(this)">
