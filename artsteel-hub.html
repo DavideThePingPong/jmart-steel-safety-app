@@ -2648,9 +2648,11 @@
                 <label>Quantity</label>
                 <input type="number" id="brittanyQty" value="4" min="1" oninput="brittanyCalculate()">
             </div>
-            <div class="calc-input">
+        </div>
+        <div class="calc-row">
+            <div class="calc-input" style="flex:1;">
                 <label>Substrate</label>
-                <select id="brittanyConcrete" onchange="brittanyCalculate()">
+                <select id="brittanyConcrete" onchange="brittanyCalculate()" style="width:100%;">
                     <optgroup label="Concrete">
                         <option value="20">Concrete 20 MPa</option>
                         <option value="25">Concrete 25 MPa</option>
