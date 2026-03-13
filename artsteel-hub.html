@@ -2,9 +2,21 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>J&M Artsteel Hub</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔩</text></svg>">
+
+    <!-- PWA -->
+    <link rel="manifest" href="hub-manifest.json">
+    <meta name="theme-color" content="#0f0f23">
+    <meta name="application-name" content="Artsteel Hub">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Artsteel Hub">
+    <meta name="mobile-web-app-capable" content="yes">
+    <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon-180x180.png">
+    <link rel="apple-touch-icon" sizes="152x152" href="icons/apple-touch-icon-152x152.png">
+    <link rel="apple-touch-icon" sizes="120x120" href="icons/apple-touch-icon-120x120.png">
 
     <!-- Firebase SDK for Device Authorization (shared with Safety App) -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
@@ -395,6 +407,100 @@
             position: absolute;
             top: -5px;
             right: -5px;
+        }
+
+        /* ═══ Mobile Bottom Navigation ═══ */
+        .mobile-nav {
+            display: none;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 9998;
+            background: #12122a;
+            border-top: 1px solid rgba(102,126,234,0.3);
+            padding: 6px 4px calc(6px + env(safe-area-inset-bottom, 0px)) 4px;
+            -webkit-backdrop-filter: blur(12px);
+            backdrop-filter: blur(12px);
+        }
+        .mobile-nav-row {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+        }
+        .mobile-nav-row + .mobile-nav-row { margin-top: 2px; }
+        .mobile-nav-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 20px;
+            padding: 6px 0;
+            min-width: 56px;
+            min-height: 44px;
+            cursor: pointer;
+            border-radius: 10px;
+            transition: all 0.2s;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .mobile-nav-btn span {
+            font-size: 9px;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+            margin-top: 1px;
+            color: inherit;
+        }
+        .mobile-nav-btn.active {
+            color: #fff;
+            background: linear-gradient(135deg, rgba(102,126,234,0.35), rgba(118,75,162,0.35));
+        }
+
+        /* Install banner */
+        .hub-install-banner {
+            display: none;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 10000;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+            padding: 14px 16px calc(14px + env(safe-area-inset-bottom, 0px)) 16px;
+            text-align: center;
+            font-size: 14px;
+            font-weight: 600;
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.4);
+        }
+        .hub-install-banner button {
+            background: #fff;
+            color: #667eea;
+            border: none;
+            border-radius: 8px;
+            padding: 8px 20px;
+            font-weight: 700;
+            font-size: 14px;
+            cursor: pointer;
+            margin-left: 12px;
+        }
+        .hub-install-banner .dismiss {
+            background: none;
+            color: rgba(255,255,255,0.7);
+            font-size: 12px;
+            padding: 8px;
+            margin-left: 6px;
+        }
+
+        @media (max-width: 768px) {
+            .nav-tabs { display: none !important; }
+            .mobile-nav { display: block; }
+            body { padding-bottom: calc(120px + env(safe-area-inset-bottom, 0px)); padding-top: env(safe-area-inset-top, 0px); }
+            .header h1 { font-size: 20px; }
+            .header p { font-size: 12px; }
+            .header { padding: 16px 12px 12px 12px; }
+            .agent-section { padding: 16px; margin: 0 8px; }
         }
 
         /* Agent Section */
@@ -2014,6 +2120,30 @@
         </div>
     </div>
 
+    <!-- Mobile Bottom Navigation -->
+    <nav class="mobile-nav" id="mobileNav">
+        <div class="mobile-nav-row">
+            <button class="mobile-nav-btn active" onclick="showSection('dashboard')" data-section="dashboard">📊<span>HUB</span></button>
+            <button class="mobile-nav-btn" onclick="showSection('hobart')" data-section="hobart">🔩<span>HOBART</span></button>
+            <button class="mobile-nav-btn" onclick="showSection('igor')" data-section="igor">⚖️<span>IGOR</span></button>
+            <button class="mobile-nav-btn" onclick="showSection('chuck')" data-section="chuck">🧪<span>CHUCK</span></button>
+        </div>
+        <div class="mobile-nav-row">
+            <button class="mobile-nav-btn" onclick="showSection('brittany')" data-section="brittany">💪<span>BRITTANY</span></button>
+            <button class="mobile-nav-btn" onclick="showSection('hanna')" data-section="hanna">🧾<span>HANNA</span></button>
+            <button class="mobile-nav-btn" onclick="showSection('victor')" data-section="victor">🔍<span>VICTOR</span></button>
+            <button class="mobile-nav-btn" onclick="showSection('frank')" data-section="frank">🦺<span>FRANK</span></button>
+            <button class="mobile-nav-btn" onclick="showSection('settings')" data-section="settings">⚙️<span>MORE</span></button>
+        </div>
+    </nav>
+
+    <!-- PWA Install Banner -->
+    <div class="hub-install-banner" id="hubInstallBanner">
+        📱 Install Artsteel Hub
+        <button onclick="hubInstallApp()">Add to Home</button>
+        <button class="dismiss" onclick="hubDismissInstall()">Not now</button>
+    </div>
+
     <!-- DASHBOARD - Operations Overview -->
     <div id="dashboard" class="agent-section active">
         <div class="agent-header">
@@ -3116,10 +3246,16 @@
         document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
         const section = document.getElementById(id);
         if (section) section.classList.add('active');
-        // Highlight correct nav tab
+        // Highlight correct nav tab (desktop)
         const navIdx = NAV_SECTIONS.indexOf(id);
         const tabs = document.querySelectorAll('.nav-tabs > .nav-tab, .nav-tabs > button.nav-tab');
         if (navIdx >= 0 && tabs[navIdx]) tabs[navIdx].classList.add('active');
+        // Highlight correct mobile nav button
+        document.querySelectorAll('.mobile-nav-btn').forEach(b => {
+            b.classList.toggle('active', b.dataset.section === id);
+        });
+        // Scroll to top on section change
+        window.scrollTo(0, 0);
         // Load settings data when settings tab is opened
         if (id === 'settings') { loadSettingsData(); loadApiKeyStatus(); }
         // Refresh dashboard stats when returning to it
@@ -7635,9 +7771,64 @@
         // Refresh status bar every 30 seconds
         window._hubStatusInterval = setInterval(dashboardUpdateStatus, 30000);
 
+        // Handle deep-link from manifest shortcuts (?section=igor, etc.)
+        const urlParams = new URLSearchParams(window.location.search);
+        const startSection = urlParams.get('section');
+        if (startSection && NAV_SECTIONS.includes(startSection)) {
+            showSection(startSection);
+        }
+
+        // Register hub service worker
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./hub-sw.js', { scope: './' })
+                .then(reg => console.log('Hub SW registered:', reg.scope))
+                .catch(err => console.warn('Hub SW failed:', err));
+        }
+
         // Log access
         console.log('🔩 J&M Artsteel Hub loaded. Admin:', SteelAuth.isAdmin);
     });
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PWA INSTALL PROMPT
+    // ═══════════════════════════════════════════════════════════════════════════
+    let _hubInstallPrompt = null;
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        _hubInstallPrompt = e;
+        // Show banner if user hasn't dismissed it
+        if (!localStorage.getItem('hub-install-dismissed')) {
+            document.getElementById('hubInstallBanner').style.display = 'block';
+            // Push mobile nav up when banner is visible
+            const nav = document.getElementById('mobileNav');
+            if (nav) nav.style.bottom = '60px';
+        }
+    });
+
+    function hubInstallApp() {
+        if (_hubInstallPrompt) {
+            _hubInstallPrompt.prompt();
+            _hubInstallPrompt.userChoice.then(choice => {
+                document.getElementById('hubInstallBanner').style.display = 'none';
+                const nav = document.getElementById('mobileNav');
+                if (nav) nav.style.bottom = '0';
+                _hubInstallPrompt = null;
+            });
+        }
+    }
+
+    function hubDismissInstall() {
+        document.getElementById('hubInstallBanner').style.display = 'none';
+        const nav = document.getElementById('mobileNav');
+        if (nav) nav.style.bottom = '0';
+        localStorage.setItem('hub-install-dismissed', '1');
+    }
+
+    // Detect if running as installed PWA
+    if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
+        document.documentElement.classList.add('pwa-standalone');
+    }
     </script>
 </body>
 </html>
