@@ -1050,7 +1050,7 @@
         }
         .igor-member-item {
             display: flex;
-            justify-content: space-between;
+            flex-wrap: wrap;
             align-items: center;
             padding: 12px 15px;
             background: rgba(59,130,246,0.1);
@@ -1058,8 +1058,23 @@
             border-radius: 8px;
             margin-bottom: 8px;
             font-size: 14px;
+            gap: 4px;
         }
-        .igor-member-item .weight { color: #a855f7; margin-left: auto; margin-right: 15px; }
+        .igor-member-item .member-desc {
+            flex: 1;
+            min-width: 0;
+            word-break: break-word;
+        }
+        .igor-member-item .member-type-badge {
+            background: rgba(168,85,247,0.3);
+            color: #c084fc;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+        .igor-member-item .weight { color: #a855f7; margin-left: auto; margin-right: 10px; white-space: nowrap; }
         .igor-member-item .remove-btn {
             background: rgba(239,68,68,0.3);
             border: none;
@@ -1069,8 +1084,27 @@
             color: #ef4444;
             cursor: pointer;
             font-size: 16px;
+            flex-shrink: 0;
         }
         .igor-member-item .remove-btn:hover { background: rgba(239,68,68,0.5); }
+        @media (max-width: 600px) {
+            .igor-member-item {
+                flex-direction: row;
+                flex-wrap: wrap;
+            }
+            .igor-member-item .member-desc {
+                width: 100%;
+                flex: unset;
+                margin-bottom: 4px;
+            }
+            .igor-member-item .member-type-badge {
+                order: -1;
+            }
+            .igor-member-item .weight {
+                margin-left: 0;
+                flex: 1;
+            }
+        }
         .igor-results {
             background: rgba(34,197,94,0.1);
             border: 1px solid rgba(34,197,94,0.3);
@@ -3794,7 +3828,8 @@
         const list = document.getElementById('igorMembersList');
         list.innerHTML = igorMembers.map((m, i) => `
             <div class="igor-member-item">
-                <span>${escapeHtml(m.qty)}x ${escapeHtml(m.section)} ${escapeHtml(m.type)} @ ${escapeHtml(m.length)}m</span>
+                <span class="member-type-badge">${escapeHtml(m.type)}</span>
+                <span class="member-desc">${escapeHtml(m.qty)}x ${escapeHtml(m.section)} @ ${escapeHtml(m.length)}m</span>
                 <span class="weight">${escapeHtml(m.total.toFixed(1))} kg</span>
                 <button class="remove-btn" onclick="igorRemoveMember(${i})">×</button>
             </div>
@@ -4041,45 +4076,39 @@
             for (let idx = 0; idx < NUM_EMPTY_ROWS; idx++) {
                 const rowNum = idx + 2;
 
-                let rowData;
+                const row = ws.getRow(rowNum);
+                const colCount = pricingEnabled ? 8 : 5;
+
                 if (pricingEnabled) {
-                    // With pricing: A=Size, B=Mass, C=Length, D=Weight, E=$/m, F=$/t, G=Total$, H=Breakdown
-                    rowData = [
-                        null, // A: Size (user input)
-                        { formula: `IF(A${rowNum}="","",VLOOKUP(A${rowNum},${lookupRanges[type]},2,FALSE))` }, // B: Mass
-                        null, // C: Linear Metres (user input)
-                        { formula: `IF(OR(A${rowNum}="",C${rowNum}=""),"",B${rowNum}*C${rowNum})` }, // D: Weight
-                        { formula: `IF(A${rowNum}="","",IFERROR(VLOOKUP(A${rowNum},${priceLookupRanges[type]},2,FALSE),"N/A"))` }, // E: $/metre
-                        { formula: `IF(OR(A${rowNum}="",B${rowNum}=""),"",IF(ISNUMBER(E${rowNum}),E${rowNum}/(B${rowNum}/1000),"N/A"))` }, // F: $/tonne
-                        { formula: `IF(OR(A${rowNum}="",C${rowNum}="",NOT(ISNUMBER(E${rowNum}))),"",E${rowNum}*C${rowNum})` }, // G: Line Total
-                        { formula: `IF(OR(A${rowNum}="",C${rowNum}=""),"",A${rowNum}&" - "&TEXT(C${rowNum},"0.#")&"m")` } // H: Breakdown
-                    ];
+                    // A=Size, B=Mass, C=Length, D=Weight, E=$/m, F=$/t, G=Total$, H=Breakdown
+                    row.getCell(1).value = '';
+                    row.getCell(2).value = { formula: `IF(A${rowNum}="","",VLOOKUP(A${rowNum},${lookupRanges[type]},2,FALSE))` };
+                    row.getCell(3).value = '';
+                    row.getCell(4).value = { formula: `IF(OR(A${rowNum}="",C${rowNum}=""),"",B${rowNum}*C${rowNum})` };
+                    row.getCell(5).value = { formula: `IF(A${rowNum}="","",IFERROR(VLOOKUP(A${rowNum},${priceLookupRanges[type]},2,FALSE),"N/A"))` };
+                    row.getCell(6).value = { formula: `IF(OR(A${rowNum}="",B${rowNum}=""),"",IF(ISNUMBER(E${rowNum}),E${rowNum}/(B${rowNum}/1000),"N/A"))` };
+                    row.getCell(7).value = { formula: `IF(OR(A${rowNum}="",C${rowNum}="",NOT(ISNUMBER(E${rowNum}))),"",E${rowNum}*C${rowNum})` };
+                    row.getCell(8).value = { formula: `IF(OR(A${rowNum}="",C${rowNum}=""),"",A${rowNum}&" - "&TEXT(C${rowNum},"0.#")&"m")` };
                 } else {
-                    // Without pricing: A=Size, B=Mass, C=Length, D=Weight, E=Breakdown
-                    rowData = [
-                        null,
-                        { formula: `IF(A${rowNum}="","",VLOOKUP(A${rowNum},${lookupRanges[type]},2,FALSE))` },
-                        null,
-                        { formula: `IF(OR(A${rowNum}="",C${rowNum}=""),"",B${rowNum}*C${rowNum})` },
-                        { formula: `IF(OR(A${rowNum}="",C${rowNum}=""),"",A${rowNum}&" - "&TEXT(C${rowNum},"0.#")&"m")` }
-                    ];
+                    // A=Size, B=Mass, C=Length, D=Weight, E=Breakdown
+                    row.getCell(1).value = '';
+                    row.getCell(2).value = { formula: `IF(A${rowNum}="","",VLOOKUP(A${rowNum},${lookupRanges[type]},2,FALSE))` };
+                    row.getCell(3).value = '';
+                    row.getCell(4).value = { formula: `IF(OR(A${rowNum}="",C${rowNum}=""),"",B${rowNum}*C${rowNum})` };
+                    row.getCell(5).value = { formula: `IF(OR(A${rowNum}="",C${rowNum}=""),"",A${rowNum}&" - "&TEXT(C${rowNum},"0.#")&"m")` };
                 }
 
-                const row = ws.addRow(rowData);
-                row.eachCell((cell, colNumber) => {
+                for (let c = 1; c <= colCount; c++) {
+                    const cell = row.getCell(c);
                     cell.alignment = { horizontal: 'center', vertical: 'middle' };
                     cell.border = border;
-                    // Column 1 (Size) is input - yellow
-                    if (colNumber === 1) cell.fill = inputFill;
-                    // Column 3 (Linear Metres) is input - yellow
-                    if (colNumber === 3) cell.fill = inputFill;
-                    // Column 4 (Total Weight) is calculated - light blue
-                    if (colNumber === 4) cell.fill = calcFill;
-                    // Price columns - light green
-                    if (pricingEnabled && colNumber >= 5 && colNumber <= 7) {
+                    if (c === 1) cell.fill = inputFill;
+                    if (c === 3) cell.fill = inputFill;
+                    if (c === 4) cell.fill = calcFill;
+                    if (pricingEnabled && c >= 5 && c <= 7) {
                         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'E8F5E9' } };
                     }
-                });
+                }
                 row.getCell(2).numFmt = '0.00';
                 row.getCell(3).numFmt = '0.00';
                 row.getCell(4).numFmt = '#,##0.00';
@@ -4222,11 +4251,11 @@
                 // Avg $/m - Total Cost / Total metres
                 row.getCell(6).value = { formula: `IF(SUM('${info.name}'!C2:C${endRow})=0,"",E${rowNum}/SUM('${info.name}'!C2:C${endRow}))` };
                 // Breakdown - from hidden column H
-                const breakdownFormula = `_xlfn.TEXTJOIN(", ",TRUE,'${info.name}'!${info.breakdownCol}2:${info.breakdownCol}${endRow})`;
+                const breakdownFormula = `TEXTJOIN(", ",TRUE,'${info.name}'!${info.breakdownCol}2:${info.breakdownCol}${endRow})`;
                 row.getCell(7).value = { formula: breakdownFormula };
             } else {
                 // Breakdown - from column E
-                const breakdownFormula = `_xlfn.TEXTJOIN(", ",TRUE,'${info.name}'!${info.breakdownCol}2:${info.breakdownCol}${endRow})`;
+                const breakdownFormula = `TEXTJOIN(", ",TRUE,'${info.name}'!${info.breakdownCol}2:${info.breakdownCol}${endRow})`;
                 row.getCell(5).value = { formula: breakdownFormula };
             }
 
