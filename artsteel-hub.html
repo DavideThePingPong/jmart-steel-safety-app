@@ -3206,6 +3206,8 @@
                 <button id="driveDisconnectBtn" onclick="hubDriveDisconnect()" style="display:none;padding:10px 16px;background:rgba(239,68,68,0.3);border:1px solid rgba(239,68,68,0.5);border-radius:8px;color:#ef4444;cursor:pointer;font-size:12px;">Disconnect</button>
             </div>
             <div id="driveBackupLog" style="margin-top:10px;font-size:12px;color:#aaa;"></div>
+            <!-- Backup Stats -->
+            <div id="driveBackupStats" style="display:none;margin-top:12px;padding:10px;background:rgba(255,255,255,0.05);border-radius:8px;font-size:12px;line-height:1.8;"></div>
             <!-- Firebase Cleanup -->
             <div id="driveCleanupSection" style="display:none;margin-top:15px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.1);">
                 <p style="font-size:12px;color:#aaa;margin-bottom:8px;">Remove Firebase data that's been backed up to Drive (older than 30 days)</p>
@@ -6866,18 +6868,21 @@
             const disconnectBtn = document.getElementById('driveDisconnectBtn');
             const cleanupSection = document.getElementById('driveCleanupSection');
             if (!status) return;
+            const statsEl = document.getElementById('driveBackupStats');
             if (connected) {
                 status.innerHTML = '<span style="color:#22c55e;">● Connected to Google Drive</span>';
                 if (connectBtn) connectBtn.style.display = 'none';
                 if (backupBtn) backupBtn.style.display = '';
                 if (disconnectBtn) disconnectBtn.style.display = '';
                 if (cleanupSection) cleanupSection.style.display = '';
+                setTimeout(() => hubDriveUpdateStatus(), 500);
             } else {
                 status.innerHTML = `<span style="color:#ef4444;">● ${escapeHtml(error || 'Not connected')}</span>`;
                 if (connectBtn) connectBtn.style.display = '';
                 if (backupBtn) backupBtn.style.display = 'none';
                 if (disconnectBtn) disconnectBtn.style.display = 'none';
                 if (cleanupSection) cleanupSection.style.display = 'none';
+                if (statsEl) statsEl.style.display = 'none';
             }
         }
     };
@@ -7136,7 +7141,13 @@
         const folderPath = `11_Finance/Receipts/${ym}`;
         if (HubDrive.isConnected()) {
             HubPdfGen.generateReceipt(receipt).then(result => {
-                if (result) HubDrive.uploadPDF(result.blob, result.filename, folderPath);
+                if (result) return HubDrive.uploadPDF(result.blob, result.filename, folderPath);
+            }).then(uploaded => {
+                if (uploaded && hannaReceipts[index]) {
+                    hannaReceipts[index].driveBackedUp = true;
+                    hannaReceipts[index].driveBackedUpAt = new Date().toISOString();
+                    hannaSaveReceipts();
+                }
             }).catch(e => console.warn('Receipt backup failed:', e));
         } else {
             HubBackupQueue.add({ agent: 'hanna', receiptIndex: index, folderPath });
@@ -7148,7 +7159,11 @@
         if (HubDrive.isConnected()) {
             const products = typeof victorProducts !== 'undefined' ? victorProducts : JSON.parse(localStorage.getItem('victor-products') || '[]');
             HubPdfGen.generateMSDSRegister(products).then(result => {
-                if (result) HubDrive.uploadPDF(result.blob, result.filename, folderPath);
+                if (result) return HubDrive.uploadPDF(result.blob, result.filename, folderPath);
+            }).then(uploaded => {
+                if (uploaded) {
+                    localStorage.setItem('victor-drive-backed-up', new Date().toISOString());
+                }
             }).catch(e => console.warn('MSDS backup failed:', e));
         } else {
             HubBackupQueue.add({ agent: 'victor', folderPath });
@@ -7160,7 +7175,13 @@
         const folderPath = `12_AI_Agents/Frank_SWMS/${ym}`;
         if (HubDrive.isConnected()) {
             HubPdfGen.generateSWMS(historyItem).then(result => {
-                if (result) HubDrive.uploadPDF(result.blob, result.filename, folderPath);
+                if (result) return HubDrive.uploadPDF(result.blob, result.filename, folderPath);
+            }).then(uploaded => {
+                if (uploaded && frankHistory[index]) {
+                    frankHistory[index].driveBackedUp = true;
+                    frankHistory[index].driveBackedUpAt = new Date().toISOString();
+                    frankSaveHistory();
+                }
             }).catch(e => console.warn('SWMS backup failed:', e));
         } else {
             HubBackupQueue.add({ agent: 'frank', historyIndex: index, folderPath });
@@ -7172,7 +7193,9 @@
         const folderPath = `12_AI_Agents/Igor_Steel/${ym}`;
         if (HubDrive.isConnected()) {
             HubPdfGen.generateSteelReport(members, totals).then(result => {
-                if (result) HubDrive.uploadPDF(result.blob, result.filename, folderPath);
+                if (result) return HubDrive.uploadPDF(result.blob, result.filename, folderPath);
+            }).then(uploaded => {
+                if (uploaded) localStorage.setItem('igor-drive-backed-up', new Date().toISOString());
             }).catch(e => console.warn('Steel report backup failed:', e));
         }
     }
@@ -7183,27 +7206,61 @@
         const log = document.getElementById('driveBackupLog');
         if (log) log.textContent = '☁️ Starting full backup...';
         let count = 0;
+        let total = 0;
         try {
-            // Hanna receipts
-            const receipts = JSON.parse(localStorage.getItem('hannaReceipts') || '[]');
-            if (receipts.length > 0) {
-                const r = await HubPdfGen.generateReceipt(receipts[0]);
-                if (r) { await HubDrive.uploadPDF(r.blob, r.filename, `11_Finance/Receipts/${new Date().toISOString().substring(0, 7)}`); count++; }
+            // Hanna — all un-backed-up receipts
+            const unbacked_receipts = hannaReceipts.filter(r => !r.driveBackedUp);
+            total += unbacked_receipts.length;
+            for (let i = 0; i < hannaReceipts.length; i++) {
+                if (hannaReceipts[i].driveBackedUp) continue;
+                if (log) log.textContent = `☁️ Backing up receipt ${count + 1}...`;
+                const ym = (hannaReceipts[i].saved_at || new Date().toISOString()).substring(0, 7);
+                const r = await HubPdfGen.generateReceipt(hannaReceipts[i]);
+                if (r) {
+                    const uploaded = await HubDrive.uploadPDF(r.blob, r.filename, `11_Finance/Receipts/${ym}`);
+                    if (uploaded) {
+                        hannaReceipts[i].driveBackedUp = true;
+                        hannaReceipts[i].driveBackedUpAt = new Date().toISOString();
+                        count++;
+                    }
+                }
             }
-            // Victor register
+            if (unbacked_receipts.length > 0) hannaSaveReceipts();
+
+            // Victor register (single PDF)
             const products = typeof victorProducts !== 'undefined' ? victorProducts : JSON.parse(localStorage.getItem('victor-products') || '[]');
             if (products.length > 0) {
+                total++;
+                if (log) log.textContent = `☁️ Backing up MSDS register...`;
                 const v = await HubPdfGen.generateMSDSRegister(products);
-                if (v) { await HubDrive.uploadPDF(v.blob, v.filename, '12_AI_Agents/Victor_MSDS'); count++; }
+                if (v) {
+                    const uploaded = await HubDrive.uploadPDF(v.blob, v.filename, '12_AI_Agents/Victor_MSDS');
+                    if (uploaded) { localStorage.setItem('victor-drive-backed-up', new Date().toISOString()); count++; }
+                }
             }
-            // Frank — latest SWMS
-            const history = typeof frankHistory !== 'undefined' ? frankHistory : JSON.parse(localStorage.getItem('frank-history') || '[]');
-            if (history.length > 0) {
-                const f = await HubPdfGen.generateSWMS(history[0]);
-                if (f) { await HubDrive.uploadPDF(f.blob, f.filename, `12_AI_Agents/Frank_SWMS/${new Date().toISOString().substring(0, 7)}`); count++; }
+
+            // Frank — all un-backed-up SWMS
+            const unbacked_swms = frankHistory.filter(h => !h.driveBackedUp);
+            total += unbacked_swms.length;
+            for (let i = 0; i < frankHistory.length; i++) {
+                if (frankHistory[i].driveBackedUp) continue;
+                if (log) log.textContent = `☁️ Backing up SWMS ${count + 1}...`;
+                const ym = (frankHistory[i].date ? frankHistory[i].date.split('/').reverse().join('-').substring(0, 7) : new Date().toISOString().substring(0, 7));
+                const f = await HubPdfGen.generateSWMS(frankHistory[i]);
+                if (f) {
+                    const uploaded = await HubDrive.uploadPDF(f.blob, f.filename, `12_AI_Agents/Frank_SWMS/${ym}`);
+                    if (uploaded) {
+                        frankHistory[i].driveBackedUp = true;
+                        frankHistory[i].driveBackedUpAt = new Date().toISOString();
+                        count++;
+                    }
+                }
             }
-            if (log) log.textContent = `☁️ Backed up ${count} item(s) to Google Drive`;
+            if (unbacked_swms.length > 0) frankSaveHistory();
+
+            if (log) log.textContent = `☁️ Backed up ${count} item(s) to Google Drive` + (count < total ? ` (${total - count} failed)` : '');
             localStorage.setItem('hub-last-drive-backup', new Date().toISOString());
+            hubDriveUpdateStatus();
         } catch(e) {
             console.error('Full backup error:', e);
             if (log) log.textContent = '❌ Backup failed: ' + e.message;
@@ -7212,11 +7269,92 @@
 
     // Firebase cleanup — remove records backed up >30 days ago
     function hubDriveCleanupFirebase() {
-        if (!confirm('Remove Firebase data older than 30 days that has been backed up to Drive?')) return;
-        // For now, just clear old Hanna receipts and Victor products from Firebase
         const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
         const log = document.getElementById('driveBackupLog');
-        if (log) log.textContent = '🧹 Cleanup: This feature will remove old backed-up data from Firebase. Coming soon.';
+
+        // Count what can be cleaned
+        const oldReceipts = hannaReceipts.filter(r => r.driveBackedUp && new Date(r.driveBackedUpAt || r.saved_at).getTime() < thirtyDaysAgo);
+        const oldSwms = frankHistory.filter(h => h.driveBackedUp && new Date(h.driveBackedUpAt || h.date).getTime() < thirtyDaysAgo);
+
+        if (oldReceipts.length === 0 && oldSwms.length === 0) {
+            if (log) log.textContent = '✅ Nothing to clean — no backed-up records older than 30 days.';
+            return;
+        }
+
+        const msg = `Remove from Firebase:\n• ${oldReceipts.length} receipt(s)\n• ${oldSwms.length} SWMS\n\nThese have been backed up to Google Drive and are older than 30 days.\nThe last 5 of each type are always kept.`;
+        if (!confirm(msg)) return;
+
+        // Clean Hanna — remove old backed-up receipts but keep last 5
+        if (oldReceipts.length > 0) {
+            const keep = [];
+            let keptCount = 0;
+            for (const r of hannaReceipts) {
+                const isOldBackedUp = r.driveBackedUp && new Date(r.driveBackedUpAt || r.saved_at).getTime() < thirtyDaysAgo;
+                if (!isOldBackedUp || keptCount < 5) {
+                    keep.push(r);
+                    if (isOldBackedUp) keptCount++;
+                }
+            }
+            hannaReceipts = keep;
+            hannaSaveReceipts();
+        }
+
+        // Clean Frank — remove old backed-up SWMS but keep last 5
+        if (oldSwms.length > 0) {
+            const keep = [];
+            let keptCount = 0;
+            for (const h of frankHistory) {
+                const isOldBackedUp = h.driveBackedUp && new Date(h.driveBackedUpAt || h.date).getTime() < thirtyDaysAgo;
+                if (!isOldBackedUp || keptCount < 5) {
+                    keep.push(h);
+                    if (isOldBackedUp) keptCount++;
+                }
+            }
+            frankHistory = keep;
+            frankSaveHistory();
+        }
+
+        const removed = (oldReceipts.length - Math.min(oldReceipts.length, 5)) + (oldSwms.length - Math.min(oldSwms.length, 5));
+        if (log) log.textContent = `🧹 Cleaned ${removed} old record(s) from Firebase. Last 5 of each type kept as safety net.`;
+        localStorage.setItem('hub-last-drive-cleanup', new Date().toISOString());
+    }
+
+    // Update Drive backup stats display
+    function hubDriveUpdateStatus() {
+        const stats = document.getElementById('driveBackupStats');
+        if (!stats) return;
+
+        const backedReceipts = hannaReceipts.filter(r => r.driveBackedUp).length;
+        const pendingReceipts = hannaReceipts.length - backedReceipts;
+        const backedSwms = frankHistory.filter(h => h.driveBackedUp).length;
+        const pendingSwms = frankHistory.length - backedSwms;
+        const victorBacked = localStorage.getItem('victor-drive-backed-up');
+        const lastBackup = localStorage.getItem('hub-last-drive-backup');
+
+        const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+        const cleanableReceipts = hannaReceipts.filter(r => r.driveBackedUp && new Date(r.driveBackedUpAt || r.saved_at).getTime() < thirtyDaysAgo).length;
+        const cleanableSwms = frankHistory.filter(h => h.driveBackedUp && new Date(h.driveBackedUpAt || h.date).getTime() < thirtyDaysAgo).length;
+
+        let html = '';
+        html += `<div>📧 <b>Receipts:</b> ${backedReceipts} backed up` + (pendingReceipts > 0 ? `, <span style="color:#f59e0b;">${pendingReceipts} pending</span>` : '') + '</div>';
+        html += `<div>🦺 <b>SWMS:</b> ${backedSwms} backed up` + (pendingSwms > 0 ? `, <span style="color:#f59e0b;">${pendingSwms} pending</span>` : '') + '</div>';
+        html += `<div>☠️ <b>MSDS Register:</b> ${victorBacked ? 'backed up' : '<span style="color:#f59e0b;">not yet</span>'}</div>`;
+        if (lastBackup) html += `<div style="color:#888;margin-top:4px;">Last backup: ${new Date(lastBackup).toLocaleDateString('en-AU')} ${new Date(lastBackup).toLocaleTimeString('en-AU', {hour:'2-digit',minute:'2-digit'})}</div>`;
+        if (cleanableReceipts + cleanableSwms > 0) {
+            html += `<div style="color:#f59e0b;margin-top:4px;">⚠️ ${cleanableReceipts + cleanableSwms} old record(s) can be cleaned from Firebase</div>`;
+        }
+
+        stats.innerHTML = html;
+        stats.style.display = '';
+    }
+
+    // Check for cleanable data on hub load (called from DOMContentLoaded)
+    function hubDriveCheckOnLoad() {
+        if (!HubDrive.isConnected()) return;
+        // Process any pending queue items
+        HubBackupQueue.processQueue();
+        // Update stats
+        hubDriveUpdateStatus();
     }
 
     async function callClaudeAPI(messages, options = {}) {
@@ -8931,7 +9069,8 @@
         (function initDriveLazy(attempt) {
             if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
                 HubDrive.init();
-                HubBackupQueue.processQueue(); // Process any queued backups
+                // Process queued backups, update stats, check for cleanable data
+                setTimeout(() => hubDriveCheckOnLoad(), 2000);
             } else if (attempt < 20) {
                 setTimeout(() => initDriveLazy(attempt + 1), 1000);
             }
