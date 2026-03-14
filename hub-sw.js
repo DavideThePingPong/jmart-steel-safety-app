@@ -1,5 +1,5 @@
 // Artsteel Hub Service Worker
-const CACHE_NAME = 'hub-v10';
+const CACHE_NAME = 'hub-v11';
 const ASSETS = [
     './artsteel-hub.html',
     './hub-manifest.json',
@@ -8,6 +8,9 @@ const ASSETS = [
     './icons/apple-touch-icon-180x180.png',
     // ExcelJS (required for Igor Excel download)
     'https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js',
+    // jsPDF + autoTable (required for Drive PDF backups)
+    'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.4/jspdf.plugin.autotable.min.js',
     // Firebase SDK (required for sync)
     'https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js',
     'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js',
@@ -51,7 +54,7 @@ self.addEventListener('fetch', (event) => {
     }
 
     // Cache-first for CDN libs (Firebase, ExcelJS) and icons
-    if (url.hostname === 'www.gstatic.com' || url.hostname === 'cdn.jsdelivr.net' || url.pathname.startsWith('/icons/')) {
+    if (url.hostname === 'www.gstatic.com' || url.hostname === 'cdn.jsdelivr.net' || url.hostname === 'cdnjs.cloudflare.com' || url.pathname.startsWith('/icons/')) {
         event.respondWith(
             caches.match(event.request).then((cached) => cached || fetch(event.request))
         );

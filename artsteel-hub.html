@@ -22,6 +22,8 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+    <!-- Google Identity Services for Drive OAuth -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
 
     <script>
     // XSS Protection - HTML Escape (available in first script block)
@@ -3191,6 +3193,26 @@
             <div id="pendingDevicesList" style="margin-top:10px;"></div>
         </div>
 
+        <!-- Google Drive Backup -->
+        <div class="calc-card">
+            <h3>☁️ Google Drive Backup</h3>
+            <p style="font-size:12px;color:#aaa;margin-bottom:10px;">Auto-backup agent data as PDFs to Google Drive</p>
+            <div id="driveStatus" style="margin-bottom:10px;">
+                <span style="color:#ef4444;">● Not connected</span>
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                <button id="driveConnectBtn" onclick="hubDriveConnect()" style="padding:10px 20px;background:linear-gradient(135deg,#4285f4,#34a853);border:none;border-radius:8px;color:#fff;cursor:pointer;font-weight:600;">Connect Google Drive</button>
+                <button id="driveBackupNowBtn" onclick="hubDriveBackupAll()" style="display:none;padding:10px 20px;background:linear-gradient(135deg,#667eea,#764ba2);border:none;border-radius:8px;color:#fff;cursor:pointer;font-weight:600;">Backup Now</button>
+                <button id="driveDisconnectBtn" onclick="hubDriveDisconnect()" style="display:none;padding:10px 16px;background:rgba(239,68,68,0.3);border:1px solid rgba(239,68,68,0.5);border-radius:8px;color:#ef4444;cursor:pointer;font-size:12px;">Disconnect</button>
+            </div>
+            <div id="driveBackupLog" style="margin-top:10px;font-size:12px;color:#aaa;"></div>
+            <!-- Firebase Cleanup -->
+            <div id="driveCleanupSection" style="display:none;margin-top:15px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.1);">
+                <p style="font-size:12px;color:#aaa;margin-bottom:8px;">Remove Firebase data that's been backed up to Drive (older than 30 days)</p>
+                <button onclick="hubDriveCleanupFirebase()" style="padding:8px 16px;background:rgba(239,68,68,0.2);border:1px solid rgba(239,68,68,0.3);border-radius:8px;color:#ef4444;cursor:pointer;font-size:12px;">Clean Up Old Data</button>
+            </div>
+        </div>
+
         <div class="console" id="settingsConsole">⚙️ Settings loaded</div>
     </div>
 
@@ -3486,6 +3508,7 @@
 
     // Update network status in real time
     window.addEventListener('online', dashboardUpdateStatus);
+    window.addEventListener('online', () => HubBackupQueue.processQueue());
     window.addEventListener('offline', dashboardUpdateStatus);
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -3871,6 +3894,9 @@
         document.getElementById('igorResultsSection').style.display = 'block';
 
         document.getElementById('igorConsole').textContent = `⚖️ Total: ${totalWeight.toFixed(1)} kg steel + 10% fittings = ${(totalWeight * 1.1).toFixed(1)} kg`;
+
+        // Auto-backup steel report to Google Drive
+        hubDriveBackupIgor(igorMembers, { steel: totalWeight, total: totalWeight * 1.1 });
     }
 
     // Excel Download Function - generates multi-sheet IBSC Steel Calculator with styling
@@ -6372,6 +6398,9 @@
         hannaClearAll();
 
         document.getElementById('hannaConsole').textContent = `💾 Receipt saved to "${job}"! Total: $${receipt.total?.toFixed(2) || '0.00'}`;
+
+        // Auto-backup to Google Drive
+        hubDriveBackupReceipt(receipt, 0);
     }
 
     function hannaUpdateRecentList() {
@@ -6665,6 +6694,531 @@
         }
     }
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // GOOGLE DRIVE BACKUP MODULE
+    // Auto-backs up agent data (Hanna, Victor, Frank, Igor) as PDFs to Drive
+    // Reuses same OAuth Client ID as Safety App
+    // ═══════════════════════════════════════════════════════════════════════════
+    const HUB_DRIVE_CLIENT_ID = '920798274486-rh1p59hihjkj9k04qmn5e3rbs57g55q8.apps.googleusercontent.com';
+    const HUB_DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+    const HUB_DRIVE_ROOT_FOLDER = 'JMart Steel';
+
+    const HubDrive = {
+        tokenClient: null,
+        accessToken: null,
+        rootFolderId: null,
+        isInitialized: false,
+        folderCache: {}, // { 'path/to/folder': folderId }
+
+        init() {
+            try {
+                if (typeof google === 'undefined' || !google.accounts) return;
+                this.tokenClient = google.accounts.oauth2.initTokenClient({
+                    client_id: HUB_DRIVE_CLIENT_ID,
+                    scope: HUB_DRIVE_SCOPE,
+                    callback: (resp) => {
+                        if (resp.error) { console.error('Drive auth error:', resp.error); return; }
+                        this.accessToken = resp.access_token;
+                        localStorage.setItem('hub-drive-token', JSON.stringify({ token: resp.access_token, savedAt: Date.now() }));
+                        this._updateUI(true);
+                        this.getOrCreateRoot();
+                    },
+                    error_callback: (err) => {
+                        console.error('Drive OAuth error:', err);
+                        this._updateUI(false, err.type === 'popup_failed_to_open' ? 'Allow popups for this site' : 'Sign-in failed');
+                    }
+                });
+                this.isInitialized = true;
+
+                // Restore stored token if still valid (<50 min)
+                try {
+                    const stored = JSON.parse(localStorage.getItem('hub-drive-token') || 'null');
+                    if (stored && stored.token && (Date.now() - stored.savedAt) < 50 * 60 * 1000) {
+                        this.accessToken = stored.token;
+                        this._updateUI(true);
+                        this.getOrCreateRoot();
+                    }
+                } catch(e) { localStorage.removeItem('hub-drive-token'); }
+            } catch(e) { console.warn('Drive init skipped:', e.message); }
+        },
+
+        connect() {
+            if (!this.isInitialized) {
+                // Lazy init if GIS loaded late
+                if (typeof google !== 'undefined' && google.accounts) this.init();
+                if (!this.isInitialized) {
+                    this._updateUI(false, 'Loading Google Drive... try again in a few seconds');
+                    return;
+                }
+            }
+            this.tokenClient.requestAccessToken({ prompt: 'consent' });
+        },
+
+        disconnect() {
+            this.accessToken = null;
+            this.rootFolderId = null;
+            this.folderCache = {};
+            localStorage.removeItem('hub-drive-token');
+            this._updateUI(false);
+        },
+
+        isConnected() { return !!this.accessToken; },
+
+        async apiCall(url, options = {}) {
+            if (!this.accessToken) throw new Error('Not connected to Drive');
+            options.headers = { ...options.headers, 'Authorization': `Bearer ${this.accessToken}` };
+            const ctrl = new AbortController();
+            const tm = setTimeout(() => ctrl.abort(), 30000);
+            let resp;
+            try { resp = await fetch(url, { ...options, signal: ctrl.signal }); } finally { clearTimeout(tm); }
+            if (resp.status === 401) {
+                // Token expired — try silent refresh
+                localStorage.removeItem('hub-drive-token');
+                this.accessToken = null;
+                return new Promise((resolve, reject) => {
+                    const timeout = setTimeout(() => reject(new Error('Token refresh timeout')), 30000);
+                    const origCb = this.tokenClient.callback;
+                    this.tokenClient.callback = async (tokenResp) => {
+                        clearTimeout(timeout);
+                        this.tokenClient.callback = origCb;
+                        if (tokenResp.error) { this._updateUI(false); reject(new Error('Refresh failed')); return; }
+                        this.accessToken = tokenResp.access_token;
+                        localStorage.setItem('hub-drive-token', JSON.stringify({ token: tokenResp.access_token, savedAt: Date.now() }));
+                        this._updateUI(true);
+                        options.headers['Authorization'] = `Bearer ${this.accessToken}`;
+                        try { resolve(await fetch(url, options)); } catch(e) { reject(e); }
+                    };
+                    this.tokenClient.requestAccessToken({ prompt: '' });
+                });
+            }
+            return resp;
+        },
+
+        _esc(s) { return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'"); },
+
+        async getOrCreateRoot() {
+            if (this.rootFolderId) return this.rootFolderId;
+            try {
+                const q = encodeURIComponent(`name='${this._esc(HUB_DRIVE_ROOT_FOLDER)}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+                const resp = await this.apiCall(`https://www.googleapis.com/drive/v3/files?q=${q}`);
+                const data = await resp.json();
+                if (data.files && data.files.length > 0) {
+                    this.rootFolderId = data.files[0].id;
+                } else {
+                    const cr = await this.apiCall('https://www.googleapis.com/drive/v3/files', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name: HUB_DRIVE_ROOT_FOLDER, mimeType: 'application/vnd.google-apps.folder' })
+                    });
+                    this.rootFolderId = (await cr.json()).id;
+                }
+                return this.rootFolderId;
+            } catch(e) { console.error('Drive root folder error:', e); return null; }
+        },
+
+        async ensureFolder(path) {
+            if (this.folderCache[path]) return this.folderCache[path];
+            let parent = await this.getOrCreateRoot();
+            if (!parent) return null;
+            const parts = path.split('/').filter(p => p);
+            let currentPath = '';
+            for (const part of parts) {
+                currentPath += (currentPath ? '/' : '') + part;
+                if (this.folderCache[currentPath]) { parent = this.folderCache[currentPath]; continue; }
+                try {
+                    const q = encodeURIComponent(`name='${this._esc(part)}' and '${parent}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+                    const resp = await this.apiCall(`https://www.googleapis.com/drive/v3/files?q=${q}`);
+                    const data = await resp.json();
+                    if (data.files && data.files.length > 0) {
+                        parent = data.files[0].id;
+                    } else {
+                        const cr = await this.apiCall('https://www.googleapis.com/drive/v3/files', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ name: part, mimeType: 'application/vnd.google-apps.folder', parents: [parent] })
+                        });
+                        parent = (await cr.json()).id;
+                    }
+                    this.folderCache[currentPath] = parent;
+                } catch(e) { console.error('Folder creation error:', part, e); return null; }
+            }
+            return parent;
+        },
+
+        async uploadPDF(blob, filename, folderPath) {
+            try {
+                const folderId = await this.ensureFolder(folderPath);
+                if (!folderId) { console.warn('Could not create folder, using root'); }
+                const metadata = { name: filename, mimeType: 'application/pdf', parents: [folderId || this.rootFolderId] };
+                const form = new FormData();
+                form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+                form.append('file', blob);
+                const resp = await this.apiCall('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', { method: 'POST', body: form });
+                if (!resp.ok) throw new Error('Upload failed: ' + resp.status);
+                const data = await resp.json();
+                console.log('☁️ Uploaded to Drive:', filename, data.id);
+                return data;
+            } catch(e) { console.error('Drive upload error:', e); return null; }
+        },
+
+        _updateUI(connected, error) {
+            const status = document.getElementById('driveStatus');
+            const connectBtn = document.getElementById('driveConnectBtn');
+            const backupBtn = document.getElementById('driveBackupNowBtn');
+            const disconnectBtn = document.getElementById('driveDisconnectBtn');
+            const cleanupSection = document.getElementById('driveCleanupSection');
+            if (!status) return;
+            if (connected) {
+                status.innerHTML = '<span style="color:#22c55e;">● Connected to Google Drive</span>';
+                if (connectBtn) connectBtn.style.display = 'none';
+                if (backupBtn) backupBtn.style.display = '';
+                if (disconnectBtn) disconnectBtn.style.display = '';
+                if (cleanupSection) cleanupSection.style.display = '';
+            } else {
+                status.innerHTML = `<span style="color:#ef4444;">● ${escapeHtml(error || 'Not connected')}</span>`;
+                if (connectBtn) connectBtn.style.display = '';
+                if (backupBtn) backupBtn.style.display = 'none';
+                if (disconnectBtn) disconnectBtn.style.display = 'none';
+                if (cleanupSection) cleanupSection.style.display = 'none';
+            }
+        }
+    };
+
+    // UI functions for Drive settings
+    function hubDriveConnect() { HubDrive.connect(); }
+    function hubDriveDisconnect() { HubDrive.disconnect(); }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // HUB PDF GENERATOR
+    // Generates PDFs for hub agent data using jsPDF + autoTable
+    // ═══════════════════════════════════════════════════════════════════════════
+    const HubPdfGen = {
+        loaded: false,
+
+        async loadLib() {
+            if (this.loaded && window.jspdf) return true;
+            try {
+                if (!window.jspdf) {
+                    await new Promise((resolve, reject) => {
+                        const s = document.createElement('script');
+                        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js';
+                        s.onload = resolve; s.onerror = () => reject(new Error('jsPDF load failed'));
+                        document.head.appendChild(s);
+                    });
+                }
+                if (!window.jspdf.jsPDF.API.autoTable) {
+                    await new Promise((resolve, reject) => {
+                        const s = document.createElement('script');
+                        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.4/jspdf.plugin.autotable.min.js';
+                        s.onload = resolve; s.onerror = () => reject(new Error('autoTable load failed'));
+                        document.head.appendChild(s);
+                    });
+                }
+                this.loaded = true;
+                return true;
+            } catch(e) { console.error('PDF lib load error:', e); return false; }
+        },
+
+        _header(doc, title) {
+            const w = doc.internal.pageSize.getWidth();
+            doc.setFillColor(26, 54, 93);
+            doc.rect(0, 0, w, 28, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(14);
+            doc.setFont(undefined, 'bold');
+            doc.text('J&M Art Steel Fabrication P/L', w / 2, 10, { align: 'center' });
+            doc.setFontSize(9);
+            doc.setFont(undefined, 'normal');
+            doc.text('Unit 2/ 28-30 Lillian Flower Place, Marrickville NSW 2204 | T: 02 8021 6707', w / 2, 17, { align: 'center' });
+            doc.setFontSize(12);
+            doc.setFont(undefined, 'bold');
+            doc.text(title, w / 2, 25, { align: 'center' });
+            doc.setTextColor(0, 0, 0);
+            doc.setFont(undefined, 'normal');
+            return 35;
+        },
+
+        _footer(doc) {
+            const pages = doc.internal.getNumberOfPages();
+            for (let i = 1; i <= pages; i++) {
+                doc.setPage(i);
+                const h = doc.internal.pageSize.getHeight();
+                doc.setFontSize(8);
+                doc.setTextColor(150);
+                doc.text(`Generated by Artsteel Hub — ${new Date().toLocaleDateString('en-AU')}`, 15, h - 8);
+                doc.text(`Page ${i} of ${pages}`, doc.internal.pageSize.getWidth() - 15, h - 8, { align: 'right' });
+            }
+        },
+
+        async generateReceipt(receipt) {
+            if (!await this.loadLib()) return null;
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            let y = this._header(doc, 'RECEIPT');
+            doc.setFontSize(10);
+            const fields = [
+                ['Date', receipt.date || 'N/A'],
+                ['Store', receipt.store_name || receipt.store || 'N/A'],
+                ['Items', receipt.description || receipt.items || 'N/A'],
+                ['Subtotal', receipt.subtotal ? `$${receipt.subtotal}` : 'N/A'],
+                ['GST', receipt.gst ? `$${receipt.gst}` : 'N/A'],
+                ['Total', receipt.total ? `$${receipt.total}` : 'N/A'],
+                ['Job', receipt.job || 'N/A'],
+                ['Category', receipt.category || 'N/A'],
+                ['Notes', receipt.notes || '']
+            ];
+            fields.forEach(([label, value]) => {
+                if (!value || value === 'N/A' && label === 'Notes') return;
+                doc.setFont(undefined, 'bold');
+                doc.text(label + ':', 15, y);
+                doc.setFont(undefined, 'normal');
+                const lines = doc.splitTextToSize(String(value), 140);
+                doc.text(lines, 55, y);
+                y += lines.length * 5 + 3;
+            });
+            this._footer(doc);
+            const dateStr = (receipt.date || new Date().toLocaleDateString('en-AU')).replace(/\//g, '-');
+            const store = (receipt.store_name || receipt.store || 'Unknown').replace(/[^a-zA-Z0-9]/g, '_').substring(0, 20);
+            return { blob: doc.output('blob'), filename: `Receipt_${store}_${dateStr}.pdf` };
+        },
+
+        async generateMSDSRegister(products) {
+            if (!await this.loadLib()) return null;
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF('landscape');
+            let y = this._header(doc, 'MSDS REGISTER');
+            const rows = products.map(p => [
+                p.name || '', p.manufacturer || '', p.hazardClass || p.ghs_class || '',
+                p.signalWord || '', p.storage || '', p.ppe || '', p.sdsDate || ''
+            ]);
+            doc.autoTable({
+                startY: y,
+                head: [['Chemical', 'Manufacturer', 'Hazard Class', 'Signal Word', 'Storage', 'PPE', 'SDS Date']],
+                body: rows,
+                styles: { fontSize: 8, cellPadding: 2 },
+                headStyles: { fillColor: [26, 54, 93] },
+                alternateRowStyles: { fillColor: [240, 240, 240] },
+                margin: { left: 10, right: 10 }
+            });
+            this._footer(doc);
+            return { blob: doc.output('blob'), filename: `MSDS_Register_${new Date().toLocaleDateString('en-AU').replace(/\//g, '-')}.pdf` };
+        },
+
+        async generateSWMS(historyItem) {
+            if (!await this.loadLib()) return null;
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            let y = this._header(doc, 'SAFE WORK METHOD STATEMENT');
+            doc.setFontSize(10);
+            const meta = [
+                ['Job Type', historyItem.jobType || 'N/A'],
+                ['Job Number', historyItem.jobNumber || 'N/A'],
+                ['Builder', historyItem.builder || 'N/A'],
+                ['Location', historyItem.location || 'N/A'],
+                ['Date', historyItem.date || new Date().toLocaleDateString('en-AU')]
+            ];
+            meta.forEach(([label, value]) => {
+                doc.setFont(undefined, 'bold');
+                doc.text(label + ':', 15, y);
+                doc.setFont(undefined, 'normal');
+                doc.text(String(value), 55, y);
+                y += 7;
+            });
+            y += 5;
+            // If HTML content exists, extract text portions
+            if (historyItem.html) {
+                const div = document.createElement('div');
+                div.innerHTML = historyItem.html;
+                const text = div.textContent || div.innerText;
+                const lines = doc.splitTextToSize(text.substring(0, 8000), 180);
+                lines.forEach(line => {
+                    if (y > 275) { doc.addPage(); y = 20; }
+                    doc.text(line, 15, y);
+                    y += 5;
+                });
+            }
+            this._footer(doc);
+            const jobType = (historyItem.jobType || 'SWMS').replace(/[^a-zA-Z0-9]/g, '_');
+            const dateStr = new Date().toLocaleDateString('en-AU').replace(/\//g, '-');
+            return { blob: doc.output('blob'), filename: `SWMS_${jobType}_${dateStr}.pdf` };
+        },
+
+        async generateSteelReport(members, totals) {
+            if (!await this.loadLib()) return null;
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            let y = this._header(doc, 'STEEL WEIGHT CALCULATION');
+            const rows = members.map(m => [m.type, m.section, m.length + 'm', m.qty, m.total.toFixed(1) + ' kg']);
+            doc.autoTable({
+                startY: y,
+                head: [['Type', 'Section', 'Length', 'Qty', 'Weight']],
+                body: rows,
+                styles: { fontSize: 9 },
+                headStyles: { fillColor: [168, 85, 247] },
+                alternateRowStyles: { fillColor: [245, 245, 255] }
+            });
+            y = doc.lastAutoTable.finalY + 10;
+            doc.setFontSize(12);
+            doc.setFont(undefined, 'bold');
+            doc.text(`Steel Weight: ${totals.steel.toFixed(1)} kg`, 15, y);
+            y += 8;
+            doc.text(`+ 10% Fittings: ${totals.total.toFixed(1)} kg`, 15, y);
+            this._footer(doc);
+            return { blob: doc.output('blob'), filename: `Steel_Calc_${new Date().toLocaleDateString('en-AU').replace(/\//g, '-')}.pdf` };
+        }
+    };
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // DRIVE BACKUP QUEUE (localStorage-based, for offline resilience)
+    // ═══════════════════════════════════════════════════════════════════════════
+    const HubBackupQueue = {
+        STORAGE_KEY: 'hub-drive-backup-queue',
+
+        getQueue() {
+            try { return JSON.parse(localStorage.getItem(this.STORAGE_KEY) || '[]'); }
+            catch(e) { return []; }
+        },
+
+        add(item) {
+            // item: { agent, filename, folderPath, dataKey, timestamp }
+            // We store a reference, not the blob (too large for localStorage)
+            const queue = this.getQueue();
+            queue.push({ ...item, status: 'pending', createdAt: Date.now() });
+            // Keep max 50 items
+            if (queue.length > 50) queue.splice(0, queue.length - 50);
+            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(queue));
+        },
+
+        async processQueue() {
+            if (!HubDrive.isConnected() || !navigator.onLine) return;
+            const queue = this.getQueue();
+            const pending = queue.filter(q => q.status === 'pending');
+            if (pending.length === 0) return;
+
+            console.log(`☁️ Processing ${pending.length} queued backups...`);
+            for (const item of pending) {
+                try {
+                    let result = null;
+                    if (item.agent === 'hanna' && item.receiptIndex !== undefined) {
+                        const receipts = JSON.parse(localStorage.getItem('hannaReceipts') || '[]');
+                        if (receipts[item.receiptIndex]) {
+                            result = await HubPdfGen.generateReceipt(receipts[item.receiptIndex]);
+                        }
+                    } else if (item.agent === 'victor') {
+                        const products = JSON.parse(localStorage.getItem('victor-products') || '[]');
+                        if (products.length > 0) result = await HubPdfGen.generateMSDSRegister(products);
+                    } else if (item.agent === 'frank' && item.historyIndex !== undefined) {
+                        const history = JSON.parse(localStorage.getItem('frank-history') || '[]');
+                        if (history[item.historyIndex]) result = await HubPdfGen.generateSWMS(history[item.historyIndex]);
+                    }
+                    if (result) {
+                        await HubDrive.uploadPDF(result.blob, result.filename, item.folderPath);
+                        item.status = 'done';
+                    } else {
+                        item.status = 'failed';
+                    }
+                } catch(e) {
+                    console.error('Queue item failed:', e);
+                    item.retryCount = (item.retryCount || 0) + 1;
+                    if (item.retryCount >= 3) item.status = 'failed';
+                }
+            }
+            // Save updated queue (remove completed)
+            const remaining = queue.filter(q => q.status === 'pending');
+            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(remaining));
+        }
+    };
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // DRIVE BACKUP TRIGGER FUNCTIONS
+    // Called after each agent save — fire-and-forget, non-blocking
+    // ═══════════════════════════════════════════════════════════════════════════
+    function hubDriveBackupReceipt(receipt, index) {
+        const ym = new Date().toISOString().substring(0, 7);
+        const folderPath = `11_Finance/Receipts/${ym}`;
+        if (HubDrive.isConnected()) {
+            HubPdfGen.generateReceipt(receipt).then(result => {
+                if (result) HubDrive.uploadPDF(result.blob, result.filename, folderPath);
+            }).catch(e => console.warn('Receipt backup failed:', e));
+        } else {
+            HubBackupQueue.add({ agent: 'hanna', receiptIndex: index, folderPath });
+        }
+    }
+
+    function hubDriveBackupVictor() {
+        const folderPath = '12_AI_Agents/Victor_MSDS';
+        if (HubDrive.isConnected()) {
+            const products = typeof victorProducts !== 'undefined' ? victorProducts : JSON.parse(localStorage.getItem('victor-products') || '[]');
+            HubPdfGen.generateMSDSRegister(products).then(result => {
+                if (result) HubDrive.uploadPDF(result.blob, result.filename, folderPath);
+            }).catch(e => console.warn('MSDS backup failed:', e));
+        } else {
+            HubBackupQueue.add({ agent: 'victor', folderPath });
+        }
+    }
+
+    function hubDriveBackupSWMS(historyItem, index) {
+        const ym = new Date().toISOString().substring(0, 7);
+        const folderPath = `12_AI_Agents/Frank_SWMS/${ym}`;
+        if (HubDrive.isConnected()) {
+            HubPdfGen.generateSWMS(historyItem).then(result => {
+                if (result) HubDrive.uploadPDF(result.blob, result.filename, folderPath);
+            }).catch(e => console.warn('SWMS backup failed:', e));
+        } else {
+            HubBackupQueue.add({ agent: 'frank', historyIndex: index, folderPath });
+        }
+    }
+
+    function hubDriveBackupIgor(members, totals) {
+        const ym = new Date().toISOString().substring(0, 7);
+        const folderPath = `12_AI_Agents/Igor_Steel/${ym}`;
+        if (HubDrive.isConnected()) {
+            HubPdfGen.generateSteelReport(members, totals).then(result => {
+                if (result) HubDrive.uploadPDF(result.blob, result.filename, folderPath);
+            }).catch(e => console.warn('Steel report backup failed:', e));
+        }
+    }
+
+    // Backup all agents manually
+    async function hubDriveBackupAll() {
+        if (!HubDrive.isConnected()) return;
+        const log = document.getElementById('driveBackupLog');
+        if (log) log.textContent = '☁️ Starting full backup...';
+        let count = 0;
+        try {
+            // Hanna receipts
+            const receipts = JSON.parse(localStorage.getItem('hannaReceipts') || '[]');
+            if (receipts.length > 0) {
+                const r = await HubPdfGen.generateReceipt(receipts[0]);
+                if (r) { await HubDrive.uploadPDF(r.blob, r.filename, `11_Finance/Receipts/${new Date().toISOString().substring(0, 7)}`); count++; }
+            }
+            // Victor register
+            const products = typeof victorProducts !== 'undefined' ? victorProducts : JSON.parse(localStorage.getItem('victor-products') || '[]');
+            if (products.length > 0) {
+                const v = await HubPdfGen.generateMSDSRegister(products);
+                if (v) { await HubDrive.uploadPDF(v.blob, v.filename, '12_AI_Agents/Victor_MSDS'); count++; }
+            }
+            // Frank — latest SWMS
+            const history = typeof frankHistory !== 'undefined' ? frankHistory : JSON.parse(localStorage.getItem('frank-history') || '[]');
+            if (history.length > 0) {
+                const f = await HubPdfGen.generateSWMS(history[0]);
+                if (f) { await HubDrive.uploadPDF(f.blob, f.filename, `12_AI_Agents/Frank_SWMS/${new Date().toISOString().substring(0, 7)}`); count++; }
+            }
+            if (log) log.textContent = `☁️ Backed up ${count} item(s) to Google Drive`;
+            localStorage.setItem('hub-last-drive-backup', new Date().toISOString());
+        } catch(e) {
+            console.error('Full backup error:', e);
+            if (log) log.textContent = '❌ Backup failed: ' + e.message;
+        }
+    }
+
+    // Firebase cleanup — remove records backed up >30 days ago
+    function hubDriveCleanupFirebase() {
+        if (!confirm('Remove Firebase data older than 30 days that has been backed up to Drive?')) return;
+        // For now, just clear old Hanna receipts and Victor products from Firebase
+        const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+        const log = document.getElementById('driveBackupLog');
+        if (log) log.textContent = '🧹 Cleanup: This feature will remove old backed-up data from Firebase. Coming soon.';
+    }
+
     async function callClaudeAPI(messages, options = {}) {
         const apiKey = getApiKey();
         if (!apiKey) {
@@ -6743,6 +7297,8 @@
             } catch (e) { console.warn('Victor Firebase save failed:', e.message); }
         }
         localStorage.setItem('victor-products', JSON.stringify(victorProducts));
+        // Auto-backup MSDS register to Google Drive
+        hubDriveBackupVictor();
     }
 
     function victorStopSync() {
@@ -7603,6 +8159,8 @@
             } catch (e) { console.warn('Frank Firebase save failed:', e.message); }
         }
         localStorage.setItem('frank-history', JSON.stringify(frankHistory));
+        // Auto-backup latest SWMS to Google Drive
+        if (frankHistory.length > 0) hubDriveBackupSWMS(frankHistory[0], 0);
     }
 
     // Memory sync
@@ -8368,6 +8926,16 @@
         brittanyCalculate();
         hannaInit(); // Initialize HANNA receipt scanner
         loadApiKeyStatus(); // Show API key status in settings
+
+        // Initialize Google Drive backup (lazy — retries if GIS not loaded yet)
+        (function initDriveLazy(attempt) {
+            if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
+                HubDrive.init();
+                HubBackupQueue.processQueue(); // Process any queued backups
+            } else if (attempt < 20) {
+                setTimeout(() => initDriveLazy(attempt + 1), 1000);
+            }
+        })(1);
 
         // Start Firebase sync for Victor, Frank & Hanna (real-time across all devices)
         victorStartSync();
