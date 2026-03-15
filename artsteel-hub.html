@@ -3117,7 +3117,8 @@
             <div class="frank-result-header">
                 <h4>🦺 SWMS Generated</h4>
                 <div class="frank-result-actions">
-                    <button class="frank-result-btn" onclick="frankPrint()">🖨️ Print / PDF</button>
+                    <button class="frank-result-btn" onclick="frankDownloadPDF()">📥 Download PDF</button>
+                    <button class="frank-result-btn" onclick="frankPrint()">🖨️ Print</button>
                 </div>
             </div>
             <div class="frank-result-content" id="frankResultContent"></div>
@@ -7939,7 +7940,7 @@
                 '<div style="text-align:right;flex-shrink:0;margin-left:8px;">' +
                 '<span style="font-size:11px;font-weight:600;color:' + statusColor + ';background:rgba(255,255,255,0.1);padding:2px 8px;border-radius:4px;">' + statusLabel + '</span>' +
                 (p.msds_url ?
-                    '<br><a href="' + escapeHtml(p.msds_url) + '" target="_blank" rel="noopener" style="display:inline-block;font-size:11px;padding:3px 8px;border-radius:5px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;cursor:pointer;margin-top:4px;text-decoration:none;">📄 View SDS</a>' :
+                    '<br><button onclick="event.stopPropagation();victorDownloadSDS(' + i + ')" style="font-size:11px;padding:3px 8px;border-radius:5px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;cursor:pointer;margin-top:4px;">📥 Download SDS</button>' :
                     '<br><button disabled style="font-size:11px;padding:3px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.1);background:transparent;color:#555;cursor:not-allowed;margin-top:4px;">📄 No SDS</button>') +
                 (needsUpdate ? '<br><button onclick="victorUpdate(' + i + ',this)" style="font-size:10px;padding:2px 6px;border-radius:4px;border:1px solid ' + statusColor + ';background:transparent;color:' + statusColor + ';cursor:pointer;margin-top:3px;">🔍 Find Update</button>' : '') +
                 '<br><button onclick="victorRemove(' + i + ')" style="font-size:10px;color:#666;background:none;border:none;cursor:pointer;margin-top:3px;">✕ Remove</button>' +
@@ -7955,6 +7956,33 @@
         victorSaveProducts();
         victorRenderProducts();
         victorLog('🗑️ Removed: ' + p.name);
+    }
+
+    async function victorDownloadSDS(index) {
+        const p = victorProducts[index];
+        if (!p || !p.msds_url) { showToast('No SDS URL available', 'warning'); return; }
+        const url = p.msds_url;
+        const safeName = (p.name || 'SDS').replace(/[^a-zA-Z0-9_\- ]/g, '').replace(/\s+/g, '_');
+        const filename = safeName + '_SDS.pdf';
+        showToast('⬇️ Downloading ' + p.name + '...', 'info');
+        try {
+            const resp = await fetch(url);
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            const blob = await resp.blob();
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(a.href);
+            showToast('✅ Downloaded: ' + filename, 'success');
+        } catch (e) {
+            // Fallback: open in new tab if fetch fails (CORS)
+            console.warn('Direct download failed, opening in new tab:', e.message);
+            window.open(url, '_blank');
+            showToast('📄 Opened SDS in new tab (direct download blocked by source)', 'info');
+        }
     }
 
     function victorLog(msg) {
@@ -8740,6 +8768,7 @@
             '<div><strong style="color:#fff;font-size:13px;">' + escapeHtml(h.jobDesc.substring(0, 50)) + (h.jobDesc.length > 50 ? '...' : '') + '</strong>' +
             '<br><span style="font-size:11px;color:#888;">' + escapeHtml(h.date || '') + (h.jobNumber ? ' | Job #' + escapeHtml(h.jobNumber) : '') +
             ' | <span style="color:#34d399;">' + escapeHtml(frankClassifyJobType(h.jobDesc)) + '</span></span></div>' +
+            '<button onclick="event.stopPropagation();frankDownloadSWMS(' + h._idx + ')" style="color:#667eea;background:none;border:none;cursor:pointer;font-size:13px;margin-right:6px;" title="Download PDF">📥</button>' +
             '<button onclick="event.stopPropagation();frankRemoveHistory(' + h._idx + ')" style="color:#f44336;background:none;border:none;cursor:pointer;font-size:14px;">✕</button>' +
             '</div></div>'
         ).join('') + (filtered.length > 20 ? '<p style="color:#888;font-size:11px;text-align:center;">Showing 20 of ' + filtered.length + '</p>' : '');
@@ -9320,6 +9349,54 @@
             btn.textContent = '🦺 Generate SWMS';
             document.getElementById('frankProgress').classList.remove('active');
             document.getElementById('frankProgressFill').style.width = '0%';
+        }
+    }
+
+    async function frankDownloadPDF() {
+        // Download currently displayed SWMS as PDF
+        const content = document.getElementById('frankSwmsContent') || document.getElementById('frankResultContent');
+        if (!content || !content.innerHTML.trim()) { showToast('No SWMS to download', 'warning'); return; }
+        // Find the matching history item for metadata
+        const currentHtml = content.innerHTML;
+        const historyMatch = frankHistory.findIndex(h => h.html === currentHtml);
+        const h = historyMatch >= 0 ? frankHistory[historyMatch] : null;
+        const fakeItem = h || { html: currentHtml, jobType: 'SWMS', jobNumber: '', jobDesc: 'SWMS', date: new Date().toLocaleDateString('en-AU') };
+        showToast('⬇️ Generating PDF...', 'info');
+        try {
+            const result = await HubPdfGen.generateSWMS(fakeItem);
+            if (!result) throw new Error('PDF generation failed');
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(result.blob);
+            a.download = result.filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(a.href);
+            showToast('✅ Downloaded: ' + result.filename, 'success');
+        } catch (e) {
+            console.error('SWMS PDF download failed:', e);
+            showToast('PDF generation failed — use Print instead', 'warning');
+        }
+    }
+
+    async function frankDownloadSWMS(index) {
+        const h = frankHistory[index];
+        if (!h) return;
+        showToast('⬇️ Generating PDF...', 'info');
+        try {
+            const result = await HubPdfGen.generateSWMS(h);
+            if (!result) throw new Error('PDF generation failed');
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(result.blob);
+            a.download = result.filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(a.href);
+            showToast('✅ Downloaded: ' + result.filename, 'success');
+        } catch (e) {
+            console.error('SWMS PDF download failed:', e);
+            showToast('PDF generation failed', 'warning');
         }
     }
 
