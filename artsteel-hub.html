@@ -2953,7 +2953,8 @@
                 <h3 style="margin:0;">📋 MSDS Register</h3>
                 <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
                     <button onclick="document.getElementById('victorFileInput').click()" style="padding:4px 10px;border-radius:6px;border:none;background:linear-gradient(135deg,#4CAF50,#45a049);color:#fff;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap;">📤 Upload SDS</button>
-                    <input type="file" id="victorFileInput" accept=".pdf,application/pdf" style="display:none;" onchange="victorUploadSDS(this)">
+                    <input type="file" id="victorFileInput" accept=".pdf,application/pdf" multiple style="display:none;" onchange="victorUploadSDS(this)">
+                    <button id="victorRefreshAllBtn" onclick="victorRefreshAll()" style="padding:4px 10px;border-radius:6px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap;">🔄 Refresh All</button>
                     <button onclick="victorSetFilter('all')" id="victorFilterAll" style="padding:4px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.2);background:rgba(102,126,234,0.3);color:#fff;cursor:pointer;font-size:11px;font-weight:600;">All</button>
                     <button onclick="victorSetFilter('current')" id="victorFilterCurrent" style="padding:4px 10px;border-radius:6px;border:1px solid rgba(76,175,80,0.3);background:transparent;color:#4CAF50;cursor:pointer;font-size:11px;font-weight:600;">Current</button>
                     <button onclick="victorSetFilter('expiring')" id="victorFilterExpiring" style="padding:4px 10px;border-radius:6px;border:1px solid rgba(242,153,74,0.3);background:transparent;color:#f2994a;cursor:pointer;font-size:11px;font-weight:600;">Expiring</button>
@@ -4462,17 +4463,59 @@
         });
     }
 
-    // Save pricing to localStorage
+    // Save pricing to localStorage + Firebase
     function igorSavePricing() {
         try {
-            localStorage.setItem('igor-pricing-data', JSON.stringify({
+            const data = {
                 prices: IgorPricing.prices,
                 suppliers: IgorPricing.suppliers,
-                customSuppliers: IgorPricing.customSuppliers
-            }));
+                customSuppliers: IgorPricing.customSuppliers,
+                updatedAt: new Date().toISOString()
+            };
+            localStorage.setItem('igor-pricing-data', JSON.stringify(data));
+            // Sync to Firebase for cross-device access
+            if (firebaseDb) {
+                try { firebaseDb.ref('jmart-safety/igor/pricing').set(data); }
+                catch(e) { console.warn('Igor Firebase save failed:', e.message); }
+            }
         } catch (e) {
             console.warn('Failed to save pricing data:', e);
         }
+    }
+
+    // Igor Firebase sync — sync pricing data across devices
+    let _igorRef = null;
+    let igorFirebaseListenerActive = false;
+    function igorStartSync() {
+        if (!firebaseDb || igorFirebaseListenerActive) return;
+        igorFirebaseListenerActive = true;
+        _igorRef = firebaseDb.ref('jmart-safety/igor/pricing');
+        _igorRef.on('value', (snap) => {
+            const data = snap.val();
+            if (data && data.prices) {
+                // Only update if Firebase data is newer than local
+                const local = JSON.parse(localStorage.getItem('igor-pricing-data') || '{}');
+                const localTime = local.updatedAt ? new Date(local.updatedAt).getTime() : 0;
+                const remoteTime = data.updatedAt ? new Date(data.updatedAt).getTime() : 0;
+                if (remoteTime >= localTime) {
+                    if (data.prices) IgorPricing.prices = data.prices;
+                    if (data.suppliers) IgorPricing.suppliers = data.suppliers;
+                    if (data.customSuppliers) IgorPricing.customSuppliers = data.customSuppliers;
+                    localStorage.setItem('igor-pricing-data', JSON.stringify(data));
+                }
+            } else {
+                // No data in Firebase — push local if we have any
+                const local = localStorage.getItem('igor-pricing-data');
+                if (local) {
+                    try { firebaseDb.ref('jmart-safety/igor/pricing').set(JSON.parse(local)); }
+                    catch(e) { /* ignore */ }
+                }
+            }
+        });
+    }
+    function igorStopSync() {
+        if (_igorRef) { _igorRef.off('value'); _igorRef = null; }
+        igorFirebaseListenerActive = false;
     }
 
     // Toggle pricing enabled
@@ -6990,18 +7033,52 @@
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF('landscape');
             let y = this._header(doc, 'MSDS REGISTER');
-            const rows = products.map(p => [
-                p.name || '', p.manufacturer || '', p.hazardClass || p.ghs_class || '',
-                p.signalWord || '', p.storage || '', p.ppe || '', p.sdsDate || ''
-            ]);
+            // Calculate compliance for each product
+            const calcCompliance = (d) => {
+                if (!d || d === 'unknown') return 'UNKNOWN';
+                const issued = new Date(d);
+                if (isNaN(issued.getTime())) return 'UNKNOWN';
+                const exp = new Date(issued); exp.setFullYear(exp.getFullYear() + 5);
+                const warn = new Date(exp); warn.setFullYear(warn.getFullYear() - 1);
+                const now = new Date();
+                if (now >= exp) return 'EXPIRED';
+                if (now >= warn) return 'EXPIRING';
+                return 'CURRENT';
+            };
+            const rows = products.map(p => {
+                const status = calcCompliance(p.msds_date);
+                return [
+                    p.name || '',
+                    p.manufacturer || '',
+                    p.hazard_class || p.hazardClass || p.ghs_class || '',
+                    p.signal_word || p.signalWord || '',
+                    p.msds_date || p.sdsDate || '',
+                    status,
+                    p.summary || ''
+                ];
+            });
             doc.autoTable({
                 startY: y,
-                head: [['Chemical', 'Manufacturer', 'Hazard Class', 'Signal Word', 'Storage', 'PPE', 'SDS Date']],
+                head: [['Chemical', 'Manufacturer', 'Hazard Class', 'Signal Word', 'SDS Date', 'Status', 'Description']],
                 body: rows,
-                styles: { fontSize: 8, cellPadding: 2 },
+                styles: { fontSize: 7, cellPadding: 2 },
                 headStyles: { fillColor: [26, 54, 93] },
                 alternateRowStyles: { fillColor: [240, 240, 240] },
-                margin: { left: 10, right: 10 }
+                margin: { left: 10, right: 10 },
+                columnStyles: {
+                    0: { cellWidth: 40 },
+                    1: { cellWidth: 30 },
+                    5: { cellWidth: 20, halign: 'center' },
+                    6: { cellWidth: 50 }
+                },
+                didParseCell: function(data) {
+                    if (data.section === 'body' && data.column.index === 5) {
+                        const v = data.cell.raw;
+                        if (v === 'EXPIRED') data.cell.styles.textColor = [220, 50, 50];
+                        else if (v === 'EXPIRING') data.cell.styles.textColor = [220, 140, 50];
+                        else if (v === 'CURRENT') data.cell.styles.textColor = [50, 160, 50];
+                    }
+                }
             });
             this._footer(doc);
             return { blob: doc.output('blob'), filename: `MSDS_Register_${new Date().toLocaleDateString('en-AU').replace(/\//g, '-')}.pdf` };
@@ -7102,17 +7179,32 @@
             for (const item of pending) {
                 try {
                     let result = null;
-                    if (item.agent === 'hanna' && item.receiptIndex !== undefined) {
+                    if (item.agent === 'hanna') {
                         const receipts = JSON.parse(localStorage.getItem('hannaReceipts') || '[]');
-                        if (receipts[item.receiptIndex]) {
-                            result = await HubPdfGen.generateReceipt(receipts[item.receiptIndex]);
+                        // Find by ID first (reliable), fall back to index (legacy)
+                        let receipt = null;
+                        if (item.receiptId) {
+                            receipt = receipts.find(r => r.id === item.receiptId);
+                        } else if (item.receiptIndex !== undefined && receipts[item.receiptIndex]) {
+                            receipt = receipts[item.receiptIndex];
                         }
+                        if (receipt) result = await HubPdfGen.generateReceipt(receipt);
                     } else if (item.agent === 'victor') {
                         const products = JSON.parse(localStorage.getItem('victor-products') || '[]');
-                        if (products.length > 0) result = await HubPdfGen.generateMSDSRegister(products);
-                    } else if (item.agent === 'frank' && item.historyIndex !== undefined) {
+                        if (products.length > 0) {
+                            result = await HubPdfGen.generateMSDSRegister(products);
+                            if (result) result.filename = 'MSDS_Register_Current.pdf';
+                        }
+                    } else if (item.agent === 'frank') {
                         const history = JSON.parse(localStorage.getItem('frank-history') || '[]');
-                        if (history[item.historyIndex]) result = await HubPdfGen.generateSWMS(history[item.historyIndex]);
+                        // Find by ID first (reliable), fall back to index (legacy)
+                        let swms = null;
+                        if (item.swmsId) {
+                            swms = history.find(h => h.id === item.swmsId);
+                        } else if (item.historyIndex !== undefined && history[item.historyIndex]) {
+                            swms = history[item.historyIndex];
+                        }
+                        if (swms) result = await HubPdfGen.generateSWMS(swms);
                     }
                     if (result) {
                         await HubDrive.uploadPDF(result.blob, result.filename, item.folderPath);
@@ -7150,7 +7242,8 @@
                 }
             }).catch(e => console.warn('Receipt backup failed:', e));
         } else {
-            HubBackupQueue.add({ agent: 'hanna', receiptIndex: index, folderPath });
+            // Queue with ID for reliable lookup (index can shift)
+            HubBackupQueue.add({ agent: 'hanna', receiptId: receipt.id, receiptIndex: index, folderPath });
         }
     }
 
@@ -7159,7 +7252,10 @@
         if (HubDrive.isConnected()) {
             const products = typeof victorProducts !== 'undefined' ? victorProducts : JSON.parse(localStorage.getItem('victor-products') || '[]');
             HubPdfGen.generateMSDSRegister(products).then(result => {
-                if (result) return HubDrive.uploadPDF(result.blob, result.filename, folderPath);
+                if (!result) return;
+                // Use a fixed filename so it overwrites the previous register instead of creating duplicates
+                result.filename = 'MSDS_Register_Current.pdf';
+                return HubDrive.uploadPDF(result.blob, result.filename, folderPath);
             }).then(uploaded => {
                 if (uploaded) {
                     localStorage.setItem('victor-drive-backed-up', new Date().toISOString());
@@ -7184,7 +7280,8 @@
                 }
             }).catch(e => console.warn('SWMS backup failed:', e));
         } else {
-            HubBackupQueue.add({ agent: 'frank', historyIndex: index, folderPath });
+            // Queue with ID for reliable lookup (index can shift)
+            HubBackupQueue.add({ agent: 'frank', swmsId: historyItem.id, historyIndex: index, folderPath });
         }
     }
 
@@ -7523,7 +7620,20 @@
         'sika': { url: 'https://www.sika.com.au', sds: 'https://aus.sika.com', note: 'Search aus.sika.com for SDS documents' },
         'fosroc': { url: 'https://www.fosroc.com.au', sds: '', note: 'Search fosroc.com.au for SDS' },
         'simpson strong-tie': { url: 'https://www.strongtie.com.au', sds: '', note: 'Search strongtie.com.au for SDS' },
-        'chemours': { url: 'https://www.chemours.com', sds: '', note: 'Search chemours.com for SDS' }
+        'chemours': { url: 'https://www.chemours.com', sds: '', note: 'Search chemours.com for SDS' },
+        'crc': { url: 'https://www.crcindustries.com.au', sds: 'https://www.crcindustries.com.au/technical-info/sds', note: 'SDS at crcindustries.com.au/technical-info/sds' },
+        '3m': { url: 'https://www.3m.com.au', sds: '', note: 'Search 3m.com.au for SDS' },
+        'loctite': { url: 'https://www.loctite.com.au', sds: '', note: 'Search loctite.com.au or henkel.com for SDS' },
+        'henkel': { url: 'https://www.henkel.com.au', sds: '', note: 'Search henkel.com.au for SDS' },
+        'devcon': { url: 'https://www.devcon.com', sds: '', note: 'Search devcon.com for SDS' },
+        'jotun': { url: 'https://www.jotun.com/au-en', sds: '', note: 'Search jotun.com for SDS' },
+        'international paint': { url: 'https://www.international-pc.com', sds: '', note: 'Search international-pc.com for SDS' },
+        'lincoln electric': { url: 'https://www.lincolnelectric.com', sds: '', note: 'Search lincolnelectric.com for SDS' },
+        'esab': { url: 'https://www.esab.com.au', sds: '', note: 'Search esab.com.au for SDS' },
+        'bostik': { url: 'https://www.bostik.com/au', sds: '', note: 'Search bostik.com/au for SDS' },
+        'selleys': { url: 'https://www.selleys.com.au', sds: '', note: 'Search selleys.com.au for SDS' },
+        'wurth': { url: 'https://www.wurth.com.au', sds: '', note: 'Search wurth.com.au for SDS' },
+        'powers': { url: 'https://www.powers.com', sds: '', note: 'Search powers.com for SDS' }
     };
 
     // Look up manufacturer SDS portal info
@@ -7808,13 +7918,20 @@
                     autoStatus = '<br><span style="font-size:10px;color:#888;">Last checked: ' + escapeHtml(lastChecked) + '</span>';
                 }
             }
+            // Hazard badge
+            const hazardBadge = p.signal_word && p.signal_word !== 'None' && p.signal_word !== 'unknown'
+                ? '<span style="font-size:10px;font-weight:600;color:' + (p.signal_word === 'Danger' ? '#f44336' : '#f2994a') + ';background:' + (p.signal_word === 'Danger' ? 'rgba(244,67,54,0.15)' : 'rgba(242,153,74,0.15)') + ';padding:1px 6px;border-radius:3px;margin-left:6px;">⚠ ' + escapeHtml(p.signal_word) + '</span>' : '';
+            const hazardClass = p.hazard_class && p.hazard_class !== 'unknown'
+                ? '<br><span style="font-size:10px;color:#888;">Hazard: ' + escapeHtml(p.hazard_class) + '</span>' : '';
+
             return '<div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:12px;margin-bottom:8px;border-left:3px solid ' + statusColor + ';' + (expiresSoon ? 'box-shadow:inset 0 0 0 1px ' + statusColor + '33;' : '') + '">' +
                 '<div style="display:flex;justify-content:space-between;align-items:start;">' +
                 '<div style="flex:1;min-width:0;">' +
-                '<strong style="color:#fff;">' + escapeHtml(p.name) + '</strong>' +
+                '<strong style="color:#fff;">' + escapeHtml(p.name) + '</strong>' + hazardBadge +
                 (p.manufacturer ? '<br><span style="font-size:12px;color:#aaa;">' + escapeHtml(p.manufacturer) + '</span>' : '') +
                 (p.summary ? '<br><span style="font-size:11px;color:#888;">' + escapeHtml(p.summary) + '</span>' : '') +
-                (p.msds_date ? '<br><span style="font-size:12px;color:#aaa;">MSDS Date: ' + escapeHtml(p.msds_date) + '</span>' : '') +
+                hazardClass +
+                (p.msds_date && p.msds_date !== 'unknown' ? '<br><span style="font-size:12px;color:#aaa;">SDS Date: ' + escapeHtml(p.msds_date) + '</span>' : '<br><span style="font-size:12px;color:#888;">SDS Date: unknown</span>') +
                 (expiryInfo ? '<br><span style="font-size:11px;font-weight:' + (expiresSoon ? '600' : '400') + ';color:' + (expiresSoon || needsUpdate ? statusColor : '#888') + ';">' + expiryInfo + '</span>' : '') +
                 (portal && expiresSoon ? '<br><span style="font-size:10px;color:#667eea;">Source: ' + escapeHtml(portal.url) + '</span>' : '') +
                 autoStatus +
@@ -7822,17 +7939,22 @@
                 '<div style="text-align:right;flex-shrink:0;margin-left:8px;">' +
                 '<span style="font-size:11px;font-weight:600;color:' + statusColor + ';background:rgba(255,255,255,0.1);padding:2px 8px;border-radius:4px;">' + statusLabel + '</span>' +
                 (p.msds_url ?
-                    '<br><button onclick="window.open(\'' + escapeHtml(p.msds_url).replace(/'/g, "\\'") + '\',\'_blank\')" style="font-size:11px;padding:3px 8px;border-radius:5px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;cursor:pointer;margin-top:4px;">📄 View SDS</button>' :
+                    '<br><a href="' + escapeHtml(p.msds_url) + '" target="_blank" rel="noopener" style="display:inline-block;font-size:11px;padding:3px 8px;border-radius:5px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;cursor:pointer;margin-top:4px;text-decoration:none;">📄 View SDS</a>' :
                     '<br><button disabled style="font-size:11px;padding:3px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.1);background:transparent;color:#555;cursor:not-allowed;margin-top:4px;">📄 No SDS</button>') +
-                '<br><button onclick="victorRemove(' + i + ')" style="font-size:11px;color:#f44336;background:none;border:none;cursor:pointer;margin-top:4px;">Remove</button>' +
+                (needsUpdate ? '<br><button onclick="victorUpdate(' + i + ',this)" style="font-size:10px;padding:2px 6px;border-radius:4px;border:1px solid ' + statusColor + ';background:transparent;color:' + statusColor + ';cursor:pointer;margin-top:3px;">🔍 Find Update</button>' : '') +
+                '<br><button onclick="victorRemove(' + i + ')" style="font-size:10px;color:#666;background:none;border:none;cursor:pointer;margin-top:3px;">✕ Remove</button>' +
                 '</div></div></div>';
         }).join('');
     }
 
     function victorRemove(index) {
+        const p = victorProducts[index];
+        if (!p) return;
+        if (!confirm('Remove "' + p.name + '" from the MSDS register?')) return;
         victorProducts.splice(index, 1);
         victorSaveProducts();
         victorRenderProducts();
+        victorLog('🗑️ Removed: ' + p.name);
     }
 
     function victorLog(msg) {
@@ -7885,7 +8007,7 @@
 
             const result = await callClaudeAPI(
                 [{ role: 'user', content: searchPrompt }],
-                { model: 'claude-3-5-haiku-20241022', maxTokens: 1024, tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 4 }] }
+                { model: 'claude-3-5-haiku-20241022', maxTokens: 1024, tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 8 }] }
             );
 
             let text = '';
@@ -7902,6 +8024,19 @@
             } catch (e) { data = null; }
 
             if (data && data.msds_url && data.msds_url !== 'NOT_FOUND') {
+                // Validate URL looks legit (must be http/https, ideally .pdf)
+                const url = data.msds_url;
+                const isValidUrl = url.startsWith('http://') || url.startsWith('https://');
+                if (!isValidUrl) {
+                    victorProducts[index].lastUpdateResult = 'no-update';
+                    victorProducts[index].lastUpdateMonth = victorGetMonth();
+                    victorProducts[index].lastUpdated = new Date().toISOString().split('T')[0];
+                    victorSaveProducts();
+                    victorLog('⚠️ Invalid URL returned for ' + product.name + ' — will retry next month');
+                    if (btn) { btn.innerHTML = origText; btn.disabled = false; }
+                    return;
+                }
+
                 // Check if the new MSDS is actually newer
                 const oldDate = product.msds_date || '0000-00-00';
                 const newDate = data.msds_date || 'unknown';
@@ -7942,6 +8077,58 @@
             if (btn) { btn.innerHTML = '❌ Error'; setTimeout(() => { btn.innerHTML = origText; btn.disabled = false; }, 2000); }
             victorLog('❌ Update error: ' + err.message);
         }
+    }
+
+    // Manual "Refresh All" — forces re-check of ALL expiring/expired products regardless of cooldown
+    async function victorRefreshAll() {
+        if (victorAutoUpdateRunning) {
+            victorLog('⏳ Auto-update already running...');
+            return;
+        }
+        if (!getApiKey()) {
+            alert('No API key configured. Go to Settings and add your Anthropic API key first.');
+            return;
+        }
+        const btn = document.getElementById('victorRefreshAllBtn');
+        if (btn) { btn.disabled = true; btn.textContent = '⏳ Refreshing...'; }
+
+        // Build queue: ALL products that are expiring or expired (ignore cooldown)
+        victorAutoUpdateQueue = [];
+        victorProducts.forEach((p, i) => {
+            if (victorExpiresSoon(p.msds_date, 12)) {
+                victorAutoUpdateQueue.push(i);
+            }
+        });
+
+        if (victorAutoUpdateQueue.length === 0) {
+            victorLog('✅ All MSDS are current — nothing to refresh');
+            if (btn) { btn.disabled = false; btn.textContent = '🔄 Refresh All'; }
+            return;
+        }
+
+        victorAutoUpdateRunning = true;
+        victorLog('🔄 Refreshing ' + victorAutoUpdateQueue.length + ' MSDS...');
+        // Process the queue, then re-enable button
+        const origFinish = victorProcessAutoQueue;
+        const processWithCleanup = async () => {
+            if (victorAutoUpdateQueue.length === 0) {
+                victorAutoUpdateRunning = false;
+                victorLog('✅ Refresh complete — all products checked');
+                victorUpdateDashboard();
+                if (btn) { btn.disabled = false; btn.textContent = '🔄 Refresh All'; }
+                return;
+            }
+            const index = victorAutoUpdateQueue.shift();
+            const product = victorProducts[index];
+            if (!product) { await processWithCleanup(); return; }
+            const remaining = victorAutoUpdateQueue.length;
+            const compliance = victorCalcCompliance(product.msds_date);
+            const icon = compliance === 'expired' ? '🔴' : '🟠';
+            victorLog(icon + ' Checking ' + product.name + '... (' + remaining + ' remaining)');
+            await victorUpdate(index, null);
+            setTimeout(() => processWithCleanup(), 2500);
+        };
+        processWithCleanup();
     }
 
     // ═══ VICTOR AUTO-UPDATE ENGINE ═══
@@ -8044,7 +8231,7 @@
                 {
                     model: 'claude-3-5-haiku-20241022',
                     maxTokens: 1024,
-                    tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 4 }]
+                    tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 8 }]
                 }
             );
 
@@ -8066,21 +8253,28 @@
             }
 
             if (data) {
-                const found = data.msds_url && data.msds_url !== 'NOT_FOUND';
+                const found = data.msds_url && data.msds_url !== 'NOT_FOUND' &&
+                    (data.msds_url.startsWith('http://') || data.msds_url.startsWith('https://'));
                 const now = new Date().toISOString().split('T')[0];
-                // Use shared compliance calculator (5-year lifespan, 1-year warning window)
                 let compliance = victorCalcCompliance(data.msds_date);
+
+                // Check if already tracked
+                const existingName = (productName || '').toLowerCase().trim();
+                const alreadyTracked = victorProducts.some(p => (p.name || '').toLowerCase().trim() === existingName);
+                const saveLabel = alreadyTracked ? '🔄 Update in Register' : '💾 Save to Register';
 
                 content.innerHTML =
                     '<div style="padding:10px;">' +
-                    '<div style="font-size:14px;color:#fff;margin-bottom:8px;"><strong>' + escapeHtml(productName) + '</strong></div>' +
+                    '<div style="font-size:14px;color:#fff;margin-bottom:8px;"><strong>' + escapeHtml(productName) + '</strong>' +
+                    (alreadyTracked ? ' <span style="font-size:10px;background:rgba(102,126,234,0.3);color:#667eea;padding:2px 6px;border-radius:4px;">ALREADY TRACKED</span>' : '') +
+                    '</div>' +
                     (data.manufacturer ? '<p style="font-size:13px;color:#aaa;">Manufacturer: ' + escapeHtml(data.manufacturer) + '</p>' : '') +
                     (data.summary ? '<p style="font-size:13px;color:#ccc;margin-top:8px;">' + escapeHtml(data.summary) + '</p>' : '') +
-                    (data.msds_date && data.msds_date !== 'unknown' ? '<p style="font-size:13px;color:#aaa;margin-top:4px;">MSDS Date: ' + escapeHtml(data.msds_date) + ' (' + compliance + ')</p>' : '') +
+                    (data.msds_date && data.msds_date !== 'unknown' ? '<p style="font-size:13px;color:#aaa;margin-top:4px;">MSDS Date: ' + escapeHtml(data.msds_date) + ' <span style="color:' + (compliance === 'current' ? '#4CAF50' : compliance === 'expiring' ? '#f2994a' : '#f44336') + ';font-weight:600;">(' + compliance.toUpperCase() + ')</span></p>' : '') +
                     (data.hazard_class && data.hazard_class !== 'unknown' ? '<p style="font-size:13px;color:#aaa;">Hazard: ' + escapeHtml(data.hazard_class) + '</p>' : '') +
-                    (data.signal_word && data.signal_word !== 'None' && data.signal_word !== 'unknown' ? '<p style="font-size:13px;color:#f2994a;font-weight:600;">Signal Word: ' + escapeHtml(data.signal_word) + '</p>' : '') +
-                    (found ? '<a href="' + escapeHtml(data.msds_url) + '" target="_blank" style="display:inline-block;margin-top:10px;padding:8px 16px;background:linear-gradient(135deg,#667eea,#764ba2);border-radius:8px;color:#fff;text-decoration:none;font-size:13px;">📄 Open MSDS PDF</a>' : '<p style="color:#f44336;margin-top:8px;">MSDS not found online. Try a different product name or add manually.</p>') +
-                    '<br><button onclick="victorSaveResult()" style="margin-top:10px;padding:8px 16px;background:linear-gradient(135deg,#4CAF50,#45a049);border:none;border-radius:8px;color:#fff;cursor:pointer;font-size:13px;">💾 Save to Tracked Products</button>' +
+                    (data.signal_word && data.signal_word !== 'None' && data.signal_word !== 'unknown' ? '<p style="font-size:13px;color:#f2994a;font-weight:600;">⚠ Signal Word: ' + escapeHtml(data.signal_word) + '</p>' : '') +
+                    (found ? '<a href="' + escapeHtml(data.msds_url) + '" target="_blank" style="display:inline-block;margin-top:10px;padding:8px 16px;background:linear-gradient(135deg,#667eea,#764ba2);border-radius:8px;color:#fff;text-decoration:none;font-size:13px;">📄 Open MSDS PDF</a>' : '<p style="color:#f44336;margin-top:8px;">MSDS not found online. Try a different name or upload manually.</p>') +
+                    '<br><button onclick="victorSaveResult()" style="margin-top:10px;padding:8px 16px;background:linear-gradient(135deg,#4CAF50,#45a049);border:none;border-radius:8px;color:#fff;cursor:pointer;font-size:13px;">' + saveLabel + '</button>' +
                     '</div>';
 
                 // Store temp result for saving
@@ -8110,25 +8304,64 @@
 
     function victorSaveResult() {
         if (!window._victorLastResult) return;
-        victorProducts.unshift(window._victorLastResult);
-        victorSaveProducts();
-        victorRenderProducts();
-        document.getElementById('victorConsole').textContent = '💾 Product saved: ' + window._victorLastResult.name;
+        // Check for duplicate by name (case-insensitive)
+        const newName = (window._victorLastResult.name || '').toLowerCase().trim();
+        const existingIdx = victorProducts.findIndex(p => (p.name || '').toLowerCase().trim() === newName);
+        if (existingIdx >= 0) {
+            // Update existing product instead of adding duplicate
+            const existing = victorProducts[existingIdx];
+            const r = window._victorLastResult;
+            if (r.msds_url) existing.msds_url = r.msds_url;
+            if (r.msds_date && r.msds_date !== 'unknown') existing.msds_date = r.msds_date;
+            if (r.manufacturer) existing.manufacturer = r.manufacturer;
+            if (r.hazard_class) existing.hazard_class = r.hazard_class;
+            if (r.signal_word) existing.signal_word = r.signal_word;
+            if (r.summary) existing.summary = r.summary;
+            existing.compliance = victorCalcCompliance(existing.msds_date);
+            existing.searched = r.searched;
+            victorSaveProducts();
+            victorRenderProducts();
+            document.getElementById('victorConsole').textContent = '💾 Updated existing: ' + existing.name;
+        } else {
+            victorProducts.unshift(window._victorLastResult);
+            victorSaveProducts();
+            victorRenderProducts();
+            document.getElementById('victorConsole').textContent = '💾 Product saved: ' + window._victorLastResult.name;
+        }
         window._victorLastResult = null;
     }
 
-    // Upload SDS PDF — reads PDF, sends to Claude Haiku for extraction
+    // Upload SDS PDF(s) — reads PDF, sends to Claude Haiku for extraction
+    // Supports multiple file selection
     async function victorUploadSDS(input) {
-        const file = input.files[0];
+        const files = Array.from(input.files);
         input.value = '';
-        if (!file) return;
+        if (!files.length) return;
 
+        // If multiple files, process them sequentially
+        if (files.length > 1) {
+            victorLog('📄 Processing ' + files.length + ' SDS files...');
+            let saved = 0;
+            for (let fi = 0; fi < files.length; fi++) {
+                victorLog('📄 Processing file ' + (fi + 1) + '/' + files.length + ': ' + files[fi].name);
+                await victorProcessSingleUpload(files[fi], fi === files.length - 1);
+                saved++;
+            }
+            victorLog('✅ Processed ' + saved + ' SDS files');
+            return;
+        }
+
+        // Single file
+        await victorProcessSingleUpload(files[0], true);
+    }
+
+    async function victorProcessSingleUpload(file, showReview) {
         if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
-            alert('Please select a PDF file.');
+            victorLog('⚠️ Skipped ' + file.name + ' — not a PDF');
             return;
         }
         if (file.size > 10 * 1024 * 1024) {
-            alert('PDF too large (' + (file.size / 1024 / 1024).toFixed(1) + 'MB). Maximum is 10MB.');
+            victorLog('⚠️ Skipped ' + file.name + ' — too large (' + (file.size / 1024 / 1024).toFixed(1) + 'MB)');
             return;
         }
         if (!getApiKey()) {
@@ -8196,9 +8429,19 @@
                 data = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
             } catch (e) { data = null; }
 
-            victorShowUploadReview(data || {}, file.name);
-            if (!data || !data.name) {
-                victorLog('⚠️ Could not auto-extract all fields — please fill in manually');
+            if (showReview) {
+                victorShowUploadReview(data || {}, file.name);
+                if (!data || !data.name) {
+                    victorLog('⚠️ Could not auto-extract all fields — please fill in manually');
+                }
+            } else {
+                // Multi-file mode: auto-save without review
+                if (data && data.name) {
+                    victorAutoSaveUpload(data);
+                    victorLog('💾 Auto-saved: ' + data.name);
+                } else {
+                    victorLog('⚠️ Could not extract data from ' + file.name + ' — skipped');
+                }
             }
         } catch (err) {
             contentEl.innerHTML = '<div style="padding:16px;">' +
@@ -8207,6 +8450,44 @@
                 'style="margin-top:10px;padding:6px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.2);background:transparent;color:#aaa;cursor:pointer;">Dismiss</button></div>';
             victorLog('❌ Upload error: ' + err.message);
         }
+    }
+
+    // Auto-save uploaded SDS without review (for multi-file mode)
+    function victorAutoSaveUpload(data) {
+        if (!data || !data.name) return false;
+        const name = data.name.trim();
+        if (!name) return false;
+        const dateVal = data.msds_date && data.msds_date !== 'unknown' ? data.msds_date : '';
+        const product = {
+            name: name,
+            manufacturer: data.manufacturer || '',
+            msds_url: '',
+            msds_date: dateVal || 'unknown',
+            compliance: victorCalcCompliance(dateVal || 'unknown'),
+            hazard_class: data.hazard_class || '',
+            signal_word: data.signal_word || '',
+            summary: data.summary || '',
+            searched: new Date().toISOString().split('T')[0],
+            source: 'upload'
+        };
+        // Check for duplicate
+        const existingIdx = victorProducts.findIndex(p => (p.name || '').toLowerCase().trim() === name.toLowerCase().trim());
+        if (existingIdx >= 0) {
+            // Update existing
+            const existing = victorProducts[existingIdx];
+            if (product.msds_date && product.msds_date !== 'unknown') existing.msds_date = product.msds_date;
+            if (product.manufacturer) existing.manufacturer = product.manufacturer;
+            if (product.hazard_class) existing.hazard_class = product.hazard_class;
+            if (product.signal_word) existing.signal_word = product.signal_word;
+            if (product.summary) existing.summary = product.summary;
+            existing.compliance = victorCalcCompliance(existing.msds_date);
+            existing.source = 'upload';
+        } else {
+            victorProducts.unshift(product);
+        }
+        victorSaveProducts();
+        victorRenderProducts();
+        return true;
     }
 
     function victorShowUploadReview(data, filename) {
@@ -8255,11 +8536,29 @@
             source: 'upload'
         };
 
-        victorProducts.unshift(product);
-        victorSaveProducts();
-        victorRenderProducts();
-        document.getElementById('victorUploadProgress').style.display = 'none';
-        victorLog('💾 Saved: ' + name + ' (uploaded SDS)');
+        // Check for duplicate by name
+        const existingIdx = victorProducts.findIndex(p => (p.name || '').toLowerCase().trim() === name.toLowerCase().trim());
+        if (existingIdx >= 0) {
+            // Update existing instead of duplicating
+            const existing = victorProducts[existingIdx];
+            if (product.msds_date && product.msds_date !== 'unknown') existing.msds_date = product.msds_date;
+            if (product.manufacturer) existing.manufacturer = product.manufacturer;
+            if (product.hazard_class) existing.hazard_class = product.hazard_class;
+            if (product.signal_word) existing.signal_word = product.signal_word;
+            if (product.summary) existing.summary = product.summary;
+            existing.compliance = victorCalcCompliance(existing.msds_date);
+            existing.source = 'upload';
+            victorSaveProducts();
+            victorRenderProducts();
+            document.getElementById('victorUploadProgress').style.display = 'none';
+            victorLog('🔄 Updated existing: ' + name);
+        } else {
+            victorProducts.unshift(product);
+            victorSaveProducts();
+            victorRenderProducts();
+            document.getElementById('victorUploadProgress').style.display = 'none';
+            victorLog('💾 Saved: ' + name + ' (uploaded SDS)');
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -9076,12 +9375,13 @@
             }
         })(1);
 
-        // Start Firebase sync for Victor, Frank & Hanna (real-time across all devices)
+        // Start Firebase sync for all agents (real-time across all devices)
         victorStartSync();
         frankStartSync();
         frankStartMemorySync();
         frankSyncRegUpdates();
         hannaStartSync();
+        igorStartSync();
         // Fallback render from localStorage if Firebase hasn't loaded yet
         if (!victorFirebaseListenerActive) {
             const localVictor = JSON.parse(localStorage.getItem('victor-products') || '[]');
