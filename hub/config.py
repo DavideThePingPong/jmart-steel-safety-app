@@ -16,6 +16,7 @@ DB_PATH = DATA_DIR / "hub.db"
 # --- API ---
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+MAX_TOKENS = int(os.getenv("MAX_TOKENS", "4096"))
 
 # --- Australian Standards Reference Catalogue ---
 # These are the key standards every data centre facilities manager in AU must know.

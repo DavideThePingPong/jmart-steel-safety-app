@@ -9,7 +9,7 @@ from typing import Optional
 
 from anthropic import Anthropic, APIError, APIConnectionError
 
-from hub.config import ANTHROPIC_API_KEY, ANTHROPIC_MODEL, LEARNINGS_DIR
+from hub.config import ANTHROPIC_API_KEY, ANTHROPIC_MODEL, LEARNINGS_DIR, MAX_TOKENS
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +129,7 @@ class BaseAgent:
         try:
             response = self.client.messages.create(
                 model=self.model,
-                max_tokens=4096,
+                max_tokens=MAX_TOKENS,
                 system=self._build_system_prompt(),
                 messages=self.conversation_history,
             )
@@ -142,6 +142,10 @@ class BaseAgent:
         except APIError as e:
             self.conversation_history.pop()
             return f"API error occurred: {e.message}"
+
+        if not response.content:
+            self.conversation_history.pop()
+            return "Received an empty response. Please try rephrasing your question."
 
         assistant_message = response.content[0].text
         self.conversation_history.append({"role": "assistant", "content": assistant_message})
