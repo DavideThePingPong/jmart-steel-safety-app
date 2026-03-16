@@ -146,63 +146,63 @@ AGENTS = {
                        "cost-saving strategies, and next-generation infrastructure.",
     },
     # Hard Services
-    "volt": {"name": "Volt", "role": "Electrical & Power Systems Specialist", "category": "hard_services",
-             "description": "Expert in UPS, generators, PDUs, switchgear, power distribution, "
-                            "and AS/NZS 3000 compliance."},
-    "frost": {"name": "Frost", "role": "HVAC & Cooling Systems Specialist", "category": "hard_services",
-              "description": "Expert in CRAC/CRAH units, chillers, cooling towers, hot/cold aisle "
-                             "containment, and AS 1668 compliance."},
-    "blaze": {"name": "Blaze", "role": "Fire Protection & Life Safety Specialist", "category": "hard_services",
-              "description": "Expert in FM-200/Novec, VESDA, sprinklers, fire suppression, "
-                             "and AS 1851 compliance."},
-    "sentinel": {"name": "Sentinel", "role": "Security Systems & Access Control Specialist", "category": "hard_services",
-                 "description": "Expert in biometrics, CCTV, mantraps, bollards, perimeter security, "
-                                "and AS/NZS 2201/4806 compliance."},
-    "cortex": {"name": "Cortex", "role": "BMS & DCIM Specialist", "category": "hard_services",
-               "description": "Expert in building management systems, DCIM platforms, SCADA, "
-                              "environmental monitoring, and integration."},
-    "atlas": {"name": "Atlas", "role": "Structural, Civil & Raised Floors Specialist", "category": "hard_services",
-              "description": "Expert in building fabric, raised access floors, loading calculations, "
-                             "seismic bracing, and NCC/BCA compliance."},
-    "hydra": {"name": "Hydra", "role": "Plumbing, Hydraulics & Gas Specialist", "category": "hard_services",
-              "description": "Expert in water supply, drainage, gas systems, condensate management, "
-                             "and AS/NZS 3500 compliance."},
+    "dazza": {"name": "Dazza", "role": "Electrical & Power Systems Specialist (The Sparky)", "category": "hard_services",
+              "description": "The Sparky. Expert in UPS, generators, PDUs, switchgear, power distribution, "
+                             "and AS/NZS 3000 compliance."},
+    "chilli": {"name": "Chilli", "role": "HVAC & Cooling Systems Specialist (Keeps It Cool)", "category": "hard_services",
+               "description": "Keeps It Cool (ironic, right?). Expert in CRAC/CRAH units, chillers, cooling towers, "
+                              "hot/cold aisle containment, and AS 1668 compliance."},
+    "smokey": {"name": "Smokey", "role": "Fire Protection & Life Safety Specialist (Fire Warden)", "category": "hard_services",
+               "description": "The Fire Warden. Expert in FM-200/Novec, VESDA, sprinklers, fire suppression, "
+                              "and AS 1851 compliance."},
+    "bigkev": {"name": "Big Kev", "role": "Security Systems & Access Control Specialist (Head of Security)", "category": "hard_services",
+               "description": "Head of Security. Expert in biometrics, CCTV, mantraps, bollards, perimeter security, "
+                              "and AS/NZS 2201/4806 compliance."},
+    "technoterry": {"name": "Techno Terry", "role": "BMS & DCIM Specialist (The BMS Nerd)", "category": "hard_services",
+                    "description": "The BMS Nerd. Expert in building management systems, DCIM platforms, SCADA, "
+                                   "environmental monitoring, and OT cybersecurity."},
+    "slabsteve": {"name": "Slab Steve", "role": "Structural, Civil & Raised Floors Specialist (The Structural Bloke)", "category": "hard_services",
+                  "description": "The Structural Bloke. Expert in building fabric, raised access floors, loading calculations, "
+                                 "seismic bracing, and NCC/BCA compliance."},
+    "dunnydoug": {"name": "Dunny Doug", "role": "Plumbing, Hydraulics & Gas Specialist (The Plumber)", "category": "hard_services",
+                  "description": "The Plumber. Expert in water supply, drainage, gas systems, condensate management, "
+                                 "and AS/NZS 3500 compliance."},
+    "nightowlnev": {"name": "Nightowl Nev", "role": "Operations Centre & Change Management Specialist (24/7 Ops Legend)", "category": "hard_services",
+                    "description": "The 24/7 Ops Legend. Expert in operations centre, change management, CMMS, "
+                                   "incident management, shift operations, and maintenance scheduling."},
     # Soft Services
-    "sparkle": {"name": "Sparkle", "role": "Specialised Data Centre Cleaning Specialist", "category": "soft_services",
-                "description": "Expert in ISO 14644 cleanroom protocols, sub-floor cleaning, "
+    "dustydi": {"name": "Dusty Di", "role": "Specialised Data Centre Cleaning Specialist (Cleaner Extraordinaire)", "category": "soft_services",
+                "description": "Cleaner Extraordinaire. Expert in ISO 14644 cleanroom protocols, sub-floor cleaning, "
                                "particle count management, and contamination control."},
-    "verde": {"name": "Verde", "role": "Pest Control & Environmental Specialist", "category": "soft_services",
-              "description": "Expert in integrated pest management for critical environments, "
+    "bugsy": {"name": "Bugsy", "role": "Pest Control & Environmental Specialist (The Pest Whisperer)", "category": "soft_services",
+              "description": "The Pest Whisperer. Expert in integrated pest management for critical environments, "
                              "environmental monitoring, and biosecurity."},
-    "terra": {"name": "Terra", "role": "Landscaping & Grounds Maintenance Specialist", "category": "soft_services",
-              "description": "Expert in grounds maintenance, stormwater management, external lighting, "
-                             "and perimeter vegetation control."},
-    "echo": {"name": "Echo", "role": "Waste Management & Recycling Specialist", "category": "soft_services",
-             "description": "Expert in e-waste disposal, data destruction, hazardous waste, "
-                            "recycling programs, and environmental compliance."},
-    "grace": {"name": "Grace", "role": "Reception & Front of House Specialist", "category": "soft_services",
-              "description": "Expert in visitor management, induction programs, front of house operations, "
-                             "and customer experience."},
-    "shield": {"name": "Shield", "role": "WHS/OHS Compliance & Safety Specialist", "category": "soft_services",
-               "description": "Expert in workplace health and safety, risk assessments, incident management, "
-                              "SWMS, and AS/NZS ISO 45001 compliance."},
+    "mowermick": {"name": "Mower Mick", "role": "Landscaping & Grounds Maintenance Specialist (Grounds Guru)", "category": "soft_services",
+                  "description": "The Grounds Guru. Expert in grounds maintenance, stormwater management, external lighting, "
+                                 "and perimeter vegetation control."},
+    "skipsteve": {"name": "Skip Steve", "role": "Waste Management & Recycling Specialist (Waste Warrior)", "category": "soft_services",
+                  "description": "The Waste Warrior. Expert in e-waste disposal, data destruction, hazardous waste, "
+                                 "recycling programs, and environmental compliance."},
+    "sunnysue": {"name": "Sunny Sue", "role": "Reception & Front of House Specialist (Front of House Queen)", "category": "soft_services",
+                 "description": "Front of House Queen. Expert in visitor management, induction programs, "
+                                "front of house operations, and customer experience."},
+    "hardhathaz": {"name": "Hard Hat Haz", "role": "WHS/OHS Compliance & Safety Specialist (Safety First, Always)", "category": "soft_services",
+                   "description": "Safety First, Always. Expert in workplace health and safety, risk assessments, "
+                                  "incident management, SWMS, and AS/NZS ISO 45001 compliance."},
     # Support
-    "ledger": {"name": "Ledger", "role": "Contracts, Budgets & Procurement Specialist", "category": "support",
-               "description": "Expert in FM contracts, OPEX/CAPEX budgeting, vendor management, "
-                              "SLA tracking, and procurement."},
-    "pulse": {"name": "Pulse", "role": "Energy Management & Sustainability Specialist", "category": "support",
-              "description": "Expert in PUE optimisation, NABERS ratings, renewable energy, "
-                             "carbon reporting, and AS/NZS ISO 50001."},
-    "compass": {"name": "Compass", "role": "Space Planning & Capacity Management Specialist", "category": "support",
-                "description": "Expert in rack space planning, power/cooling capacity, cable management, "
-                               "and growth forecasting."},
-    "audit": {"name": "Audit", "role": "Compliance & Regulatory Affairs Specialist", "category": "support",
-              "description": "Expert in ESM compliance, regulatory reporting (NGER, CBD, NABERS), "
-                             "audit management, certifications, and state-specific regulations."},
-    "forge": {"name": "Forge", "role": "Capital Projects & Engineering Manager", "category": "support",
-              "description": "Expert in data centre fit-outs, equipment upgrades, commissioning, "
-                             "project management, and design review."},
-    "nexus": {"name": "Nexus", "role": "Operations Centre & Change Management Specialist", "category": "hard_services",
-              "description": "Expert in 24/7 operations, change management, CMMS, incident management, "
-                             "shift operations, and maintenance scheduling."},
+    "pennypete": {"name": "Penny Pete", "role": "Contracts, Budgets & Procurement Specialist (The Bean Counter)", "category": "support",
+                  "description": "The Bean Counter. Expert in FM contracts, OPEX/CAPEX budgeting, vendor management, "
+                                 "SLA tracking, and procurement."},
+    "wattsy": {"name": "Wattsy", "role": "Energy Management & Sustainability Specialist (Energy Guru)", "category": "support",
+               "description": "The Energy Guru. Expert in PUE optimisation, NABERS ratings, renewable energy, "
+                              "carbon reporting, and AS/NZS ISO 50001."},
+    "tetristrev": {"name": "Tetris Trev", "role": "Space Planning & Capacity Management Specialist (Space Planning Wizard)", "category": "support",
+                   "description": "The Space Planning Wizard. Expert in rack space planning, power/cooling capacity, "
+                                  "cable management, and growth forecasting."},
+    "clipboardkaren": {"name": "Clipboard Karen", "role": "Compliance & Regulatory Affairs Specialist (Compliance Queen)", "category": "support",
+                       "description": "The Compliance Queen. Expert in ESM compliance, regulatory reporting (NGER, CBD, NABERS), "
+                                      "audit management, certifications, and state-specific regulations."},
+    "tradietony": {"name": "Tradie Tony", "role": "Capital Projects & Engineering Manager (Project Legend)", "category": "support",
+                   "description": "The Project Legend. Expert in data centre fit-outs, equipment upgrades, commissioning, "
+                                  "project management, and design review."},
 }

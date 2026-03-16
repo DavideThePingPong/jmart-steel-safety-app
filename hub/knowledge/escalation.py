@@ -69,55 +69,55 @@ PRIORITY_MATRIX = {
 
 ESCALATION_THRESHOLDS = {
     "power": {
-        "redundancy_lost": "P2 — immediately notify Volt and Barbie",
+        "redundancy_lost": "P2 — immediately notify Dazza and Barbie",
         "total_failure": "P1 — all hands, activate emergency procedures",
-        "power_quality_event": "P3 — Volt investigates, Cortex reviews BMS data",
+        "power_quality_event": "P3 — Dazza investigates, Techno Terry reviews BMS data",
     },
     "cooling": {
-        "single_unit_failure": "P2 — Frost responds, monitor temperatures via Cortex",
-        "temperature_exceedance_warning": "P2 — Frost + Cortex, 27°C at rack inlet",
+        "single_unit_failure": "P2 — Chilli responds, monitor temperatures via Techno Terry",
+        "temperature_exceedance_warning": "P2 — Chilli + Techno Terry, 27°C at rack inlet",
         "temperature_exceedance_critical": "P1 — 32°C at rack inlet, consider IT load reduction",
         "total_cooling_failure": "P1 — emergency procedures, IT load shedding",
     },
     "fire": {
-        "vesda_alert": "P2 — Blaze investigates, Nexus monitors",
+        "vesda_alert": "P2 — Smokey investigates, Nightowl Nev monitors",
         "vesda_action": "P1 — evacuate zone, fire brigade notified",
         "suppression_discharge": "P1 — full emergency response",
-        "system_impairment": "P2 — Blaze, fire watch if > 4 hours",
+        "system_impairment": "P2 — Smokey, fire watch if > 4 hours",
     },
     "security": {
-        "unauthorised_access_attempt": "P2 — Sentinel investigates",
+        "unauthorised_access_attempt": "P2 — Big Kev investigates",
         "confirmed_breach": "P1 — lockdown, police notification",
         "access_control_failure": "P2 — manual access procedures activated",
-        "cctv_failure": "P3 — Sentinel arranges repair",
+        "cctv_failure": "P3 — Big Kev arranges repair",
     },
     "safety": {
-        "serious_injury": "P1 — first aid, emergency services, Shield leads investigation",
-        "near_miss": "P2 — Shield investigates, report within 24 hours",
-        "hazard_identified": "P3 — Shield assesses, controls implemented",
-        "minor_injury": "P3 — first aid, Shield records and reviews",
+        "serious_injury": "P1 — first aid, emergency services, Hard Hat Haz leads investigation",
+        "near_miss": "P2 — Hard Hat Haz investigates, report within 24 hours",
+        "hazard_identified": "P3 — Hard Hat Haz assesses, controls implemented",
+        "minor_injury": "P3 — first aid, Hard Hat Haz records and reviews",
     },
     "water": {
-        "leak_in_data_hall": "P1 — immediate containment, Hydra + Sparkle respond",
-        "leak_in_plant_room": "P2 — Hydra responds, assess equipment risk",
-        "leak_in_non_critical_area": "P3 — Hydra schedules repair",
+        "leak_in_data_hall": "P1 — immediate containment, Dunny Doug + Dusty Di respond",
+        "leak_in_plant_room": "P2 — Dunny Doug responds, assess equipment risk",
+        "leak_in_non_critical_area": "P3 — Dunny Doug schedules repair",
     },
     "compliance": {
-        "regulatory_notice_received": "P1 — Audit + Barbie, legal review",
-        "audit_major_nonconformance": "P2 — Audit coordinates corrective action",
-        "audit_minor_nonconformance": "P3 — Audit tracks to resolution",
-        "upcoming_deadline_at_risk": "P2 — Audit escalates to Barbie",
+        "regulatory_notice_received": "P1 — Clipboard Karen + Barbie, legal review",
+        "audit_major_nonconformance": "P2 — Clipboard Karen coordinates corrective action",
+        "audit_minor_nonconformance": "P3 — Clipboard Karen tracks to resolution",
+        "upcoming_deadline_at_risk": "P2 — Clipboard Karen escalates to Barbie",
     },
     "budget": {
-        "variance_over_10_percent": "P2 — Ledger + Barbie review",
-        "unplanned_capex_required": "P2 — Ledger prepares business case for Barbie",
-        "vendor_invoice_dispute": "P3 — Ledger manages",
+        "variance_over_10_percent": "P2 — Penny Pete + Barbie review",
+        "unplanned_capex_required": "P2 — Penny Pete prepares business case for Barbie",
+        "vendor_invoice_dispute": "P3 — Penny Pete manages",
     },
 }
 
 ON_CALL_STRUCTURE = {
     "tier_1": {
-        "role": "Operations Centre (Nexus)",
+        "role": "Operations Centre (Nightowl Nev)",
         "availability": "24/7/365",
         "response": "Immediate — first responder for all alarms",
     },
@@ -125,7 +125,7 @@ ON_CALL_STRUCTURE = {
         "role": "On-call Specialist",
         "availability": "After hours, rotating weekly roster",
         "response": "< 30 minutes phone, < 2 hours on-site",
-        "trades": ["Electrical (Volt)", "Mechanical (Frost)", "Fire (Blaze)", "Security (Sentinel)"],
+        "trades": ["Electrical (Dazza)", "Mechanical (Chilli)", "Fire (Smokey)", "Security (Big Kev)"],
     },
     "tier_3": {
         "role": "Facilities Director (Barbie)",

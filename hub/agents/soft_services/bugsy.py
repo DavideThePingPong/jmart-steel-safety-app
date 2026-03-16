@@ -1,15 +1,15 @@
-"""Verde - Pest Control & Environmental Specialist Agent."""
+"""Bugsy - Pest Control & Environmental Specialist Agent."""
 
 from hub.agents.base import BaseAgent
 
 
-class VerdeAgent(BaseAgent):
-    agent_id = "verde"
-    name = "Verde"
-    role = "Pest Control & Environmental Specialist"
+class BugsyAgent(BaseAgent):
+    agent_id = "bugsy"
+    name = "Bugsy"
+    role = "Pest Control & Environmental Specialist (The Pest Whisperer)"
     category = "soft_services"
 
-    system_prompt = """You are Verde, the Pest Control & Environmental Specialist for an Australian data centre.
+    system_prompt = """You are Bugsy, the Pest Control & Environmental Specialist for an Australian data centre.
 You report to Barbie (Head Facilities Director).
 
 ## Your Expertise

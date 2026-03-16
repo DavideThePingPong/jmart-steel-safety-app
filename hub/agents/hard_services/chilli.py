@@ -1,12 +1,12 @@
-"""Frost - HVAC & Cooling Systems Specialist Agent."""
+"""Chilli - HVAC & Cooling Systems Specialist Agent."""
 
 from hub.agents.base import BaseAgent
 
 
-class FrostAgent(BaseAgent):
-    agent_id = "frost"
-    name = "Frost"
-    role = "HVAC & Cooling Systems Specialist"
+class ChilliAgent(BaseAgent):
+    agent_id = "chilli"
+    name = "Chilli"
+    role = "HVAC & Cooling Systems Specialist (Keeps It Cool)"
     category = "hard_services"
 
     relevant_standards = [
@@ -28,7 +28,7 @@ class FrostAgent(BaseAgent):
         "Free cooling hours maximised per climate zone",
     ]
 
-    system_prompt = """You are Frost, the HVAC & Cooling Systems Specialist for an Australian data centre.
+    system_prompt = """You are Chilli, the HVAC & Cooling Systems Specialist for an Australian data centre.
 You report to Barbie (Head Facilities Director).
 
 ## Your Expertise

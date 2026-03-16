@@ -3,59 +3,59 @@
 An AI-powered facilities management platform designed for Australian data centres,
 built to help Facilities Managers excel at their role through intelligent agent assistance.
 
-## Agent Architecture (21 Agents)
+## The Team (21 Agents)
 
 ### Barbie - Head Facilities Director
-The master agent who oversees all operations. Expert in Australian Standards (AS/NZS),
+The boss. Oversees all operations. Expert in Australian Standards (AS/NZS),
 compliance, budgeting, vendor management, and strategic facilities planning.
 Prioritises: **Safety > Compliance > Uptime > Efficiency > Cost**.
 
-### Malena - Innovation & Technology Agent
+### Malena - Innovation & Technology Lead
 Dedicated to tracking data centre industry progress, emerging technologies,
 cost-saving strategies, and next-generation infrastructure solutions.
 
-### Hard Services Agents (8 specialists)
-| Agent | Domain | Key Standards |
-|-------|--------|---------------|
-| **Volt** | Electrical & Power Systems | AS/NZS 3000, AS/NZS 3760 |
-| **Frost** | HVAC & Cooling Systems | AS 1668, AS/NZS 3666 |
-| **Blaze** | Fire Protection & Life Safety | AS 1851, AS 1670 |
-| **Sentinel** | Security Systems & Access Control | AS/NZS 2201, AS 4806 |
-| **Cortex** | BMS, DCIM & OT Security | AS/NZS ISO/IEC 22237 |
-| **Atlas** | Structural, Civil & Raised Floors | AS 1170, NCC/BCA |
-| **Hydra** | Plumbing, Hydraulics & Gas | AS/NZS 3500, AS/NZS 3666 |
-| **Nexus** | Operations Centre & Change Management | ITIL, ISO/IEC 22237 |
+### Hard Services (8 legends)
+| Name | Trade | What They Do |
+|------|-------|-------------|
+| **Dazza** | The Sparky | Electrical & power — UPS, generators, PDUs, AS/NZS 3000 |
+| **Chilli** | Keeps It Cool | HVAC & cooling — chillers, CRAC/CRAH, cooling towers, AS 1668 |
+| **Smokey** | Fire Warden | Fire protection — FM-200, VESDA, sprinklers, AS 1851 |
+| **Big Kev** | Head of Security | Security — biometrics, CCTV, mantraps, AS/NZS 2201 |
+| **Techno Terry** | The BMS Nerd | BMS & DCIM — monitoring, alarms, OT cybersecurity |
+| **Slab Steve** | The Structural Bloke | Structural & civil — raised floors, seismic, NCC/BCA |
+| **Dunny Doug** | The Plumber | Plumbing & hydraulics — water, drainage, gas, AS/NZS 3500 |
+| **Nightowl Nev** | 24/7 Ops Legend | Operations centre — change management, CMMS, incidents |
 
-### Soft Services Agents (6 specialists)
-| Agent | Domain |
-|-------|--------|
-| **Sparkle** | Specialised Data Centre Cleaning (ISO 14644) |
-| **Verde** | Pest Control & Environmental |
-| **Terra** | Landscaping & Grounds Maintenance |
-| **Echo** | Waste Management & Recycling |
-| **Grace** | Reception & Front of House |
-| **Shield** | WHS/OHS Compliance & Safety (AS/NZS ISO 45001) |
+### Soft Services (6 legends)
+| Name | Trade | What They Do |
+|------|-------|-------------|
+| **Dusty Di** | Cleaner Extraordinaire | Data centre cleaning — ISO 14644, sub-floor, particle control |
+| **Bugsy** | The Pest Whisperer | Pest control — rodents, redbacks, cable damage prevention |
+| **Mower Mick** | Grounds Guru | Landscaping — grounds, irrigation, bushfire prep |
+| **Skip Steve** | Waste Warrior | Waste management — e-waste, data destruction, recycling |
+| **Sunny Sue** | Front of House Queen | Reception — visitor management, inductions, client tours |
+| **Hard Hat Haz** | Safety First, Always | WHS/OHS — SWMS, permits, incidents, AS/NZS ISO 45001 |
 
-### Support Agents (5 specialists)
-| Agent | Domain |
-|-------|--------|
-| **Ledger** | Contracts, Budgets & Procurement |
-| **Pulse** | Energy Management & Sustainability (NABERS, PUE) |
-| **Compass** | Space Planning & Capacity Management |
-| **Audit** | Compliance, Regulatory Affairs & Certifications |
-| **Forge** | Capital Projects & Engineering |
+### Support (5 legends)
+| Name | Trade | What They Do |
+|------|-------|-------------|
+| **Penny Pete** | The Bean Counter | Contracts & budgets — OPEX/CAPEX, SLAs, vendors |
+| **Wattsy** | Energy Guru | Energy & sustainability — PUE, NABERS, carbon reporting |
+| **Tetris Trev** | Space Planning Wizard | Capacity management — rack space, power, growth |
+| **Clipboard Karen** | Compliance Queen | Compliance — ESM, NGER, certifications, audits |
+| **Tradie Tony** | Project Legend | Capital projects — fit-outs, commissioning, upgrades |
 
 ## Key Features
 
 - **21 specialist agents** with deep domain expertise and Australian Standards knowledge
-- **Escalation priority matrix** (P1-P4) with defined response times and thresholds
+- **Every agent learns day by day** — persistent knowledge that grows with use
+- **Escalation priority matrix** (P1-P4) with defined response times
 - **24/7 operations context** with on-call structures and shift management
-- **Day-by-day learning** — agents persist knowledge across sessions and grow smarter
 - **KPIs per agent** — measurable targets for every discipline
 - **State-specific awareness** — VIC, NSW, QLD, SA, WA regulatory variations
 - **CLI interface** (Rich) — chat, switch agents, search knowledge
 - **REST API** (FastAPI) — ready for web/mobile frontend
-- **40+ Australian Standards** referenced and mapped to trades
+- **46 Australian Standards** referenced and mapped to trades
 
 ## Getting Started
 
@@ -70,7 +70,7 @@ python -m hub.main
 ```
 /team              Show all agents grouped by category
 /switch <agent>    Switch to a specific agent
-/<agent>           Quick switch (e.g. /barbie, /frost)
+/<agent>           Quick switch (e.g. /barbie, /chilli, /dazza)
 /ask <agent> <q>   Ask a specific agent without switching
 /priorities        Show escalation priority matrix
 /teach <agent> <topic> :: <content>   Teach an agent
@@ -91,7 +91,7 @@ datacentre-hub/
 ├── hub/
 │   ├── main.py              # CLI entry point & orchestrator
 │   ├── config.py            # Configuration, standards, agent registry
-│   ├── registry.py          # Agent class registry (avoids circular imports)
+│   ├── registry.py          # Agent class registry
 │   ├── agents/
 │   │   ├── base.py          # Base agent class (learning, chat, KPIs)
 │   │   ├── barbie.py        # Head Facilities Director
@@ -99,15 +99,14 @@ datacentre-hub/
 │   │   ├── hard_services/   # 8 hard services agents
 │   │   └── soft_services/   # 6 soft services + 5 support agents
 │   ├── knowledge/
-│   │   ├── australian_standards.py  # Detailed standards reference
-│   │   ├── data_centre_tiers.py     # Uptime Institute tiers
-│   │   ├── escalation.py           # Priority matrix & thresholds
-│   │   └── learning.py             # Day-by-day learning system
+│   │   ├── australian_standards.py
+│   │   ├── data_centre_tiers.py
+│   │   ├── escalation.py
+│   │   └── learning.py
 │   └── api/
-│       └── server.py        # FastAPI REST endpoints
+│       └── server.py
 ├── data/
-│   ├── standards/           # Australian Standards reference data
-│   └── learnings/           # Agent learning storage (git-ignored)
+│   └── learnings/           # Agent learning storage
 ├── requirements.txt
 └── README.md
 ```

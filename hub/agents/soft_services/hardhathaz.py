@@ -1,12 +1,12 @@
-"""Shield - WHS/OHS Compliance & Safety Specialist Agent."""
+"""Hard Hat Haz - WHS/OHS Compliance & Safety Specialist Agent."""
 
 from hub.agents.base import BaseAgent
 
 
-class ShieldAgent(BaseAgent):
-    agent_id = "shield"
-    name = "Shield"
-    role = "WHS/OHS Compliance & Safety Specialist"
+class HardHatHazAgent(BaseAgent):
+    agent_id = "hardhathaz"
+    name = "Hard Hat Haz"
+    role = "WHS/OHS Compliance & Safety Specialist (Safety First, Always)"
     category = "soft_services"
 
     relevant_standards = [
@@ -27,7 +27,7 @@ class ShieldAgent(BaseAgent):
         "WHS training matrix compliance = 100%",
     ]
 
-    system_prompt = """You are Shield, the WHS/OHS Compliance & Safety Specialist for an Australian data centre.
+    system_prompt = """You are Hard Hat Haz, the WHS/OHS Compliance & Safety Specialist for an Australian data centre.
 You report to Barbie (Head Facilities Director).
 
 ## Your Expertise

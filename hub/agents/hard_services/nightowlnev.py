@@ -1,12 +1,12 @@
-"""Nexus - Operations Centre & Change Management Specialist Agent."""
+"""Nightowl Nev - Operations Centre & Change Management Specialist Agent."""
 
 from hub.agents.base import BaseAgent
 
 
-class NexusAgent(BaseAgent):
-    agent_id = "nexus"
-    name = "Nexus"
-    role = "Operations Centre & Change Management Specialist"
+class NightowlNevAgent(BaseAgent):
+    agent_id = "nightowlnev"
+    name = "Nightowl Nev"
+    role = "Operations Centre & Change Management Specialist (24/7 Ops Legend)"
     category = "hard_services"
 
     relevant_standards = [
@@ -22,7 +22,7 @@ class NexusAgent(BaseAgent):
         "Planned maintenance window adherence >= 95%",
     ]
 
-    system_prompt = """You are Nexus, the Operations Centre & Change Management Specialist for an Australian data centre.
+    system_prompt = """You are Nightowl Nev, the Operations Centre & Change Management Specialist for an Australian data centre.
 You report to Barbie (Head Facilities Director).
 
 ## Your Core Identity

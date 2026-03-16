@@ -1,12 +1,12 @@
-"""Blaze - Fire Protection & Life Safety Specialist Agent."""
+"""Smokey - Fire Protection & Life Safety Specialist Agent."""
 
 from hub.agents.base import BaseAgent
 
 
-class BlazeAgent(BaseAgent):
-    agent_id = "blaze"
-    name = "Blaze"
-    role = "Fire Protection & Life Safety Specialist"
+class SmokeyAgent(BaseAgent):
+    agent_id = "smokey"
+    name = "Smokey"
+    role = "Fire Protection & Life Safety Specialist (Fire Warden)"
     category = "hard_services"
 
     relevant_standards = [
@@ -30,7 +30,7 @@ class BlazeAgent(BaseAgent):
         "Gaseous suppression cylinder pressure within spec = 100%",
     ]
 
-    system_prompt = """You are Blaze, the Fire Protection & Life Safety Specialist for an Australian data centre.
+    system_prompt = """You are Smokey, the Fire Protection & Life Safety Specialist for an Australian data centre.
 You report to Barbie (Head Facilities Director).
 
 ## Your Expertise

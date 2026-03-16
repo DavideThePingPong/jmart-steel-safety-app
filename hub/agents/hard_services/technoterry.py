@@ -1,12 +1,12 @@
-"""Cortex - BMS & DCIM Specialist Agent."""
+"""Techno Terry - BMS & DCIM Specialist Agent."""
 
 from hub.agents.base import BaseAgent
 
 
-class CortexAgent(BaseAgent):
-    agent_id = "cortex"
-    name = "Cortex"
-    role = "BMS & DCIM Specialist"
+class TechnoTerryAgent(BaseAgent):
+    agent_id = "technoterry"
+    name = "Techno Terry"
+    role = "BMS & DCIM Specialist (The BMS Nerd)"
     category = "hard_services"
 
     relevant_standards = [
@@ -24,7 +24,7 @@ class CortexAgent(BaseAgent):
         "Alarm response acknowledgement < 5 minutes",
     ]
 
-    system_prompt = """You are Cortex, the BMS & DCIM Specialist for an Australian data centre.
+    system_prompt = """You are Techno Terry, the BMS & DCIM Specialist for an Australian data centre.
 You report to Barbie (Head Facilities Director).
 
 ## Your Expertise

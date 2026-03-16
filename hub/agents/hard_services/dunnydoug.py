@@ -1,12 +1,12 @@
-"""Hydra - Plumbing, Hydraulics & Gas Specialist Agent."""
+"""Dunny Doug - Plumbing, Hydraulics & Gas Specialist Agent."""
 
 from hub.agents.base import BaseAgent
 
 
-class HydraAgent(BaseAgent):
-    agent_id = "hydra"
-    name = "Hydra"
-    role = "Plumbing, Hydraulics & Gas Specialist"
+class DunnyDougAgent(BaseAgent):
+    agent_id = "dunnydoug"
+    name = "Dunny Doug"
+    role = "Plumbing, Hydraulics & Gas Specialist (The Plumber)"
     category = "hard_services"
 
     relevant_standards = [
@@ -24,7 +24,7 @@ class HydraAgent(BaseAgent):
         "Fuel storage bunding compliance = 100%",
     ]
 
-    system_prompt = """You are Hydra, the Plumbing, Hydraulics & Gas Specialist for an Australian data centre.
+    system_prompt = """You are Dunny Doug, the Plumbing, Hydraulics & Gas Specialist for an Australian data centre.
 You report to Barbie (Head Facilities Director).
 
 ## Your Expertise

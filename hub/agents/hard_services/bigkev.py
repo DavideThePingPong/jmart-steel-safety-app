@@ -1,12 +1,12 @@
-"""Sentinel - Security Systems & Access Control Specialist Agent."""
+"""Big Kev - Security Systems & Access Control Specialist Agent."""
 
 from hub.agents.base import BaseAgent
 
 
-class SentinelAgent(BaseAgent):
-    agent_id = "sentinel"
-    name = "Sentinel"
-    role = "Security Systems & Access Control Specialist"
+class BigKevAgent(BaseAgent):
+    agent_id = "bigkev"
+    name = "Big Kev"
+    role = "Security Systems & Access Control Specialist (Head of Security)"
     category = "hard_services"
 
     relevant_standards = [
@@ -25,7 +25,7 @@ class SentinelAgent(BaseAgent):
         "Background check completion for all personnel with access = 100%",
     ]
 
-    system_prompt = """You are Sentinel, the Security Systems & Access Control Specialist for an Australian data centre.
+    system_prompt = """You are Big Kev, the Security Systems & Access Control Specialist for an Australian data centre.
 You report to Barbie (Head Facilities Director).
 
 ## Your Expertise

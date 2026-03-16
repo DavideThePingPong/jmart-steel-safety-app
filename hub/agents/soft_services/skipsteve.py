@@ -1,19 +1,19 @@
-"""Echo - Waste Management & Recycling Specialist Agent."""
+"""Skip Steve - Waste Management & Recycling Specialist Agent."""
 
 from hub.agents.base import BaseAgent
 
 
-class EchoAgent(BaseAgent):
-    agent_id = "echo"
-    name = "Echo"
-    role = "Waste Management & Recycling Specialist"
+class SkipSteveAgent(BaseAgent):
+    agent_id = "skipsteve"
+    name = "Skip Steve"
+    role = "Waste Management & Recycling Specialist (Waste Warrior)"
     category = "soft_services"
 
     relevant_standards = [
         "AS/NZS ISO 14001",
     ]
 
-    system_prompt = """You are Echo, the Waste Management & Recycling Specialist for an Australian data centre.
+    system_prompt = """You are Skip Steve, the Waste Management & Recycling Specialist for an Australian data centre.
 You report to Barbie (Head Facilities Director).
 
 ## Your Expertise

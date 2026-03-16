@@ -7,49 +7,49 @@ from __future__ import annotations
 
 from hub.agents.barbie import BarbieAgent
 from hub.agents.malena import MalenaAgent
-from hub.agents.hard_services.volt import VoltAgent
-from hub.agents.hard_services.frost import FrostAgent
-from hub.agents.hard_services.blaze import BlazeAgent
-from hub.agents.hard_services.sentinel import SentinelAgent
-from hub.agents.hard_services.cortex import CortexAgent
-from hub.agents.hard_services.atlas import AtlasAgent
-from hub.agents.hard_services.hydra import HydraAgent
-from hub.agents.hard_services.nexus import NexusAgent
-from hub.agents.soft_services.sparkle import SparkleAgent
-from hub.agents.soft_services.verde import VerdeAgent
-from hub.agents.soft_services.terra import TerraAgent
-from hub.agents.soft_services.echo import EchoAgent
-from hub.agents.soft_services.grace import GraceAgent
-from hub.agents.soft_services.shield import ShieldAgent
-from hub.agents.soft_services.ledger import LedgerAgent
-from hub.agents.soft_services.pulse import PulseAgent
-from hub.agents.soft_services.compass import CompassAgent
-from hub.agents.soft_services.audit import AuditAgent
-from hub.agents.soft_services.forge import ForgeAgent
+from hub.agents.hard_services.dazza import DazzaAgent
+from hub.agents.hard_services.chilli import ChilliAgent
+from hub.agents.hard_services.smokey import SmokeyAgent
+from hub.agents.hard_services.bigkev import BigKevAgent
+from hub.agents.hard_services.technoterry import TechnoTerryAgent
+from hub.agents.hard_services.slabsteve import SlabSteveAgent
+from hub.agents.hard_services.dunnydoug import DunnyDougAgent
+from hub.agents.hard_services.nightowlnev import NightowlNevAgent
+from hub.agents.soft_services.dustydi import DustyDiAgent
+from hub.agents.soft_services.bugsy import BugsyAgent
+from hub.agents.soft_services.mowermick import MowerMickAgent
+from hub.agents.soft_services.skipsteve import SkipSteveAgent
+from hub.agents.soft_services.sunnysue import SunnySueAgent
+from hub.agents.soft_services.hardhathaz import HardHatHazAgent
+from hub.agents.soft_services.pennypete import PennyPeteAgent
+from hub.agents.soft_services.wattsy import WattsyAgent
+from hub.agents.soft_services.tetristrev import TetrisTrevAgent
+from hub.agents.soft_services.clipboardkaren import ClipboardKarenAgent
+from hub.agents.soft_services.tradietony import TradieTonyAgent
 
 AGENT_CLASSES: dict[str, type] = {
     "barbie": BarbieAgent,
     "malena": MalenaAgent,
     # Hard Services
-    "volt": VoltAgent,
-    "frost": FrostAgent,
-    "blaze": BlazeAgent,
-    "sentinel": SentinelAgent,
-    "cortex": CortexAgent,
-    "atlas": AtlasAgent,
-    "hydra": HydraAgent,
-    "nexus": NexusAgent,
+    "dazza": DazzaAgent,
+    "chilli": ChilliAgent,
+    "smokey": SmokeyAgent,
+    "bigkev": BigKevAgent,
+    "technoterry": TechnoTerryAgent,
+    "slabsteve": SlabSteveAgent,
+    "dunnydoug": DunnyDougAgent,
+    "nightowlnev": NightowlNevAgent,
     # Soft Services
-    "sparkle": SparkleAgent,
-    "verde": VerdeAgent,
-    "terra": TerraAgent,
-    "echo": EchoAgent,
-    "grace": GraceAgent,
-    "shield": ShieldAgent,
+    "dustydi": DustyDiAgent,
+    "bugsy": BugsyAgent,
+    "mowermick": MowerMickAgent,
+    "skipsteve": SkipSteveAgent,
+    "sunnysue": SunnySueAgent,
+    "hardhathaz": HardHatHazAgent,
     # Support
-    "ledger": LedgerAgent,
-    "pulse": PulseAgent,
-    "compass": CompassAgent,
-    "audit": AuditAgent,
-    "forge": ForgeAgent,
+    "pennypete": PennyPeteAgent,
+    "wattsy": WattsyAgent,
+    "tetristrev": TetrisTrevAgent,
+    "clipboardkaren": ClipboardKarenAgent,
+    "tradietony": TradieTonyAgent,
 }

@@ -1,12 +1,12 @@
-"""Atlas - Structural, Civil & Raised Floors Specialist Agent."""
+"""Slab Steve - Structural, Civil & Raised Floors Specialist Agent."""
 
 from hub.agents.base import BaseAgent
 
 
-class AtlasAgent(BaseAgent):
-    agent_id = "atlas"
-    name = "Atlas"
-    role = "Structural, Civil & Raised Floors Specialist"
+class SlabSteveAgent(BaseAgent):
+    agent_id = "slabsteve"
+    name = "Slab Steve"
+    role = "Structural, Civil & Raised Floors Specialist (The Structural Bloke)"
     category = "hard_services"
 
     relevant_standards = [
@@ -25,7 +25,7 @@ class AtlasAgent(BaseAgent):
         "Seismic bracing compliance verification = 100%",
     ]
 
-    system_prompt = """You are Atlas, the Structural, Civil & Raised Floors Specialist for an Australian data centre.
+    system_prompt = """You are Slab Steve, the Structural, Civil & Raised Floors Specialist for an Australian data centre.
 You report to Barbie (Head Facilities Director).
 
 ## Your Expertise

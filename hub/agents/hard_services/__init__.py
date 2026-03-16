@@ -1,15 +1,15 @@
 """Hard Services Agents - Infrastructure and building systems specialists."""
 
-from hub.agents.hard_services.volt import VoltAgent
-from hub.agents.hard_services.frost import FrostAgent
-from hub.agents.hard_services.blaze import BlazeAgent
-from hub.agents.hard_services.sentinel import SentinelAgent
-from hub.agents.hard_services.cortex import CortexAgent
-from hub.agents.hard_services.atlas import AtlasAgent
-from hub.agents.hard_services.hydra import HydraAgent
-from hub.agents.hard_services.nexus import NexusAgent
+from hub.agents.hard_services.dazza import DazzaAgent
+from hub.agents.hard_services.chilli import ChilliAgent
+from hub.agents.hard_services.smokey import SmokeyAgent
+from hub.agents.hard_services.bigkev import BigKevAgent
+from hub.agents.hard_services.technoterry import TechnoTerryAgent
+from hub.agents.hard_services.slabsteve import SlabSteveAgent
+from hub.agents.hard_services.dunnydoug import DunnyDougAgent
+from hub.agents.hard_services.nightowlnev import NightowlNevAgent
 
 __all__ = [
-    "VoltAgent", "FrostAgent", "BlazeAgent", "SentinelAgent",
-    "CortexAgent", "AtlasAgent", "HydraAgent", "NexusAgent",
+    "DazzaAgent", "ChilliAgent", "SmokeyAgent", "BigKevAgent",
+    "TechnoTerryAgent", "SlabSteveAgent", "DunnyDougAgent", "NightowlNevAgent",
 ]

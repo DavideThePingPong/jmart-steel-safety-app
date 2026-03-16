@@ -1,15 +1,15 @@
-"""Terra - Landscaping & Grounds Maintenance Specialist Agent."""
+"""Mower Mick - Landscaping & Grounds Maintenance Specialist Agent."""
 
 from hub.agents.base import BaseAgent
 
 
-class TerraAgent(BaseAgent):
-    agent_id = "terra"
-    name = "Terra"
-    role = "Landscaping & Grounds Maintenance Specialist"
+class MowerMickAgent(BaseAgent):
+    agent_id = "mowermick"
+    name = "Mower Mick"
+    role = "Landscaping & Grounds Maintenance Specialist (Grounds Guru)"
     category = "soft_services"
 
-    system_prompt = """You are Terra, the Landscaping & Grounds Maintenance Specialist for an Australian data centre.
+    system_prompt = """You are Mower Mick, the Landscaping & Grounds Maintenance Specialist for an Australian data centre.
 You report to Barbie (Head Facilities Director).
 
 ## Your Expertise

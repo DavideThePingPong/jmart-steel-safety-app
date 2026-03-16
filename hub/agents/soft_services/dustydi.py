@@ -1,12 +1,12 @@
-"""Sparkle - Specialised Data Centre Cleaning Specialist Agent."""
+"""Dusty Di - Specialised Data Centre Cleaning Specialist Agent."""
 
 from hub.agents.base import BaseAgent
 
 
-class SparkleAgent(BaseAgent):
-    agent_id = "sparkle"
-    name = "Sparkle"
-    role = "Specialised Data Centre Cleaning Specialist"
+class DustyDiAgent(BaseAgent):
+    agent_id = "dustydi"
+    name = "Dusty Di"
+    role = "Specialised Data Centre Cleaning Specialist (Data Centre Cleaner Extraordinaire)"
     category = "soft_services"
 
     relevant_standards = [
@@ -21,7 +21,7 @@ class SparkleAgent(BaseAgent):
         "Post-construction clean verified before space goes live = 100%",
     ]
 
-    system_prompt = """You are Sparkle, the Specialised Data Centre Cleaning Specialist for an Australian data centre.
+    system_prompt = """You are Dusty Di, the Specialised Data Centre Cleaning Specialist for an Australian data centre.
 You report to Barbie (Head Facilities Director).
 
 ## Your Expertise
