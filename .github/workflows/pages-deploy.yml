@@ -12,7 +12,10 @@ permissions:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -28,10 +31,21 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Prepare deployment directory
+        run: |
+          mkdir -p _site/js _site/icons
+          cp *.html _site/
+          cp manifest.json hub-manifest.json _site/
+          cp sw.js _site/
+          cp .nojekyll _site/
+          cp -r js/*.js _site/js/
+          cp -r icons/* _site/icons/
+
       - name: Upload GitHub Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: './public'
+          path: './_site'
 
       - name: Deploy to GitHub Pages
+        id: deploy
         uses: actions/deploy-pages@v4
