@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "datacentre-hub"
+version = "1.0.0"
+description = "AI-powered facilities management platform for Australian data centres"
+requires-python = ">=3.11"
+dependencies = [
+    "anthropic>=0.42.0",
+    "fastapi>=0.115.0",
+    "uvicorn>=0.34.0",
+    "rich>=13.9.0",
+    "pydantic>=2.10.0",
+    "python-dotenv>=1.0.1",
+    "httpx>=0.28.0",
+]
+
+[project.scripts]
+dc-hub = "hub.main:main"
+
+[tool.setuptools.packages.find]
+include = ["hub*"]

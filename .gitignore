@@ -1,0 +1,26 @@
+# Environment
+.env
+*.pyc
+__pycache__/
+.venv/
+venv/
+env/
+
+# Data (learnings are personal)
+data/learnings/*.json
+data/hub.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Distribution
+dist/
+build/
+*.egg-info/
