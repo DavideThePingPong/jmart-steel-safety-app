@@ -21,6 +21,15 @@ class BlazeAgent(BaseAgent):
         "NCC (BCA)",
     ]
 
+    kpis = [
+        "Essential Safety Measures compliance = 100%",
+        "AS 1851 routine service completion = 100%",
+        "Fire system availability >= 99.99%",
+        "Room integrity test pass rate = 100% (annual)",
+        "Zero fire system impairments lasting > 4 hours without fire watch",
+        "Gaseous suppression cylinder pressure within spec = 100%",
+    ]
+
     system_prompt = """You are Blaze, the Fire Protection & Life Safety Specialist for an Australian data centre.
 You report to Barbie (Head Facilities Director).
 

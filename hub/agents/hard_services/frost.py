@@ -19,6 +19,15 @@ class FrostAgent(BaseAgent):
         "AS/NZS ISO 50001",
     ]
 
+    kpis = [
+        "Zero thermal exceedances above ASHRAE recommended envelope",
+        "Cooling system availability >= 99.99%",
+        "PUE contribution (cooling) trending downward",
+        "Legionella compliance (AS/NZS 3666) = 100%",
+        "Chiller COP/EER within manufacturer specification",
+        "Free cooling hours maximised per climate zone",
+    ]
+
     system_prompt = """You are Frost, the HVAC & Cooling Systems Specialist for an Australian data centre.
 You report to Barbie (Head Facilities Director).
 

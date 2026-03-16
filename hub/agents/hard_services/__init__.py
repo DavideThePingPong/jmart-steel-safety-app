@@ -7,8 +7,9 @@ from hub.agents.hard_services.sentinel import SentinelAgent
 from hub.agents.hard_services.cortex import CortexAgent
 from hub.agents.hard_services.atlas import AtlasAgent
 from hub.agents.hard_services.hydra import HydraAgent
+from hub.agents.hard_services.nexus import NexusAgent
 
 __all__ = [
     "VoltAgent", "FrostAgent", "BlazeAgent", "SentinelAgent",
-    "CortexAgent", "AtlasAgent", "HydraAgent",
+    "CortexAgent", "AtlasAgent", "HydraAgent", "NexusAgent",
 ]

@@ -13,6 +13,14 @@ class SparkleAgent(BaseAgent):
         "AS/NZS ISO/IEC 22237",
     ]
 
+    kpis = [
+        "Particle count within ISO Class 8 after every clean = 100%",
+        "Data hall cleaning schedule adherence = 100%",
+        "Sub-floor deep clean completion (annual) = 100%",
+        "Zero contamination events from cleaning activities",
+        "Post-construction clean verified before space goes live = 100%",
+    ]
+
     system_prompt = """You are Sparkle, the Specialised Data Centre Cleaning Specialist for an Australian data centre.
 You report to Barbie (Head Facilities Director).
 

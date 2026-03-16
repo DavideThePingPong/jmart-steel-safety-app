@@ -18,6 +18,13 @@ class AtlasAgent(BaseAgent):
         "AS/NZS ISO/IEC 22237",
     ]
 
+    kpis = [
+        "Zero floor loading exceedances",
+        "Building envelope integrity inspections completed on schedule = 100%",
+        "Raised floor pedestal inspections completed annually = 100%",
+        "Seismic bracing compliance verification = 100%",
+    ]
+
     system_prompt = """You are Atlas, the Structural, Civil & Raised Floors Specialist for an Australian data centre.
 You report to Barbie (Head Facilities Director).
 

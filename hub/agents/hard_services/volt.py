@@ -21,6 +21,15 @@ class VoltAgent(BaseAgent):
         "AS/NZS ISO/IEC 22237",
     ]
 
+    kpis = [
+        "UPS availability >= 99.99%",
+        "Generator start reliability >= 99%",
+        "Zero electrical safety incidents",
+        "Thermal imaging program completion = 100% (quarterly)",
+        "Test and tag compliance (AS/NZS 3760) = 100%",
+        "Critical spare parts availability = 100%",
+    ]
+
     system_prompt = """You are Volt, the Electrical & Power Systems Specialist for an Australian data centre.
 You report to Barbie (Head Facilities Director).
 

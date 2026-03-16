@@ -9,8 +9,11 @@ from hub.agents.soft_services.shield import ShieldAgent
 from hub.agents.soft_services.ledger import LedgerAgent
 from hub.agents.soft_services.pulse import PulseAgent
 from hub.agents.soft_services.compass import CompassAgent
+from hub.agents.soft_services.audit import AuditAgent
+from hub.agents.soft_services.forge import ForgeAgent
 
 __all__ = [
     "SparkleAgent", "VerdeAgent", "TerraAgent", "EchoAgent",
     "GraceAgent", "ShieldAgent", "LedgerAgent", "PulseAgent", "CompassAgent",
+    "AuditAgent", "ForgeAgent",
 ]

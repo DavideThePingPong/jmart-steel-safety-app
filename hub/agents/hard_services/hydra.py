@@ -16,6 +16,14 @@ class HydraAgent(BaseAgent):
         "AS/NZS ISO/IEC 22237",
     ]
 
+    kpis = [
+        "Zero water ingress events in critical areas",
+        "Backflow prevention testing compliance (annual) = 100%",
+        "Legionella risk management compliance (AS/NZS 3666) = 100%",
+        "Leak detection system availability >= 99.9%",
+        "Fuel storage bunding compliance = 100%",
+    ]
+
     system_prompt = """You are Hydra, the Plumbing, Hydraulics & Gas Specialist for an Australian data centre.
 You report to Barbie (Head Facilities Director).
 

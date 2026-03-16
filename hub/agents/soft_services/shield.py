@@ -17,6 +17,16 @@ class ShieldAgent(BaseAgent):
         "AS/NZS 4360",
     ]
 
+    kpis = [
+        "Total Recordable Injury Frequency Rate (TRIFR) = 0",
+        "Lost Time Injury Frequency Rate (LTIFR) = 0",
+        "SWMS review completion for all high-risk work = 100%",
+        "Emergency drill completion >= 2 per year",
+        "Workplace inspection completion (monthly) = 100%",
+        "Incident investigation closed within 14 days >= 95%",
+        "WHS training matrix compliance = 100%",
+    ]
+
     system_prompt = """You are Shield, the WHS/OHS Compliance & Safety Specialist for an Australian data centre.
 You report to Barbie (Head Facilities Director).
 

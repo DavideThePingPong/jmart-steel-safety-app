@@ -80,9 +80,17 @@ AUSTRALIAN_STANDARDS = {
     "AS/NZS 3500": "Plumbing and drainage (Parts 0-5)",
     "AS 4032": "Water supply – valves for the control of heated water supply",
 
-    # Essential Services
-    "AS 1851": "Routine service of fire protection systems and equipment",
+    # Essential Services (Note: AS 1851 already listed under Fire Protection)
     "Building Regulations (VIC/NSW/QLD)": "State-specific essential safety measures regulations",
+
+    # Security & Privacy
+    "Australian Privacy Act 1988": "Privacy principles for personal information (incl. CCTV footage)",
+
+    # OT Security
+    "IEC 62443": "Industrial automation and control systems security",
+
+    # Cabling
+    "AS/CA S009": "Installation requirements for customer cabling (Australian standard)",
 }
 
 # --- Uptime Institute Tiers ---
@@ -187,4 +195,13 @@ AGENTS = {
     "compass": {"name": "Compass", "role": "Space Planning & Capacity Management Specialist", "category": "support",
                 "description": "Expert in rack space planning, power/cooling capacity, cable management, "
                                "and growth forecasting."},
+    "audit": {"name": "Audit", "role": "Compliance & Regulatory Affairs Specialist", "category": "support",
+              "description": "Expert in ESM compliance, regulatory reporting (NGER, CBD, NABERS), "
+                             "audit management, certifications, and state-specific regulations."},
+    "forge": {"name": "Forge", "role": "Capital Projects & Engineering Manager", "category": "support",
+              "description": "Expert in data centre fit-outs, equipment upgrades, commissioning, "
+                             "project management, and design review."},
+    "nexus": {"name": "Nexus", "role": "Operations Centre & Change Management Specialist", "category": "hard_services",
+              "description": "Expert in 24/7 operations, change management, CMMS, incident management, "
+                             "shift operations, and maintenance scheduling."},
 }
