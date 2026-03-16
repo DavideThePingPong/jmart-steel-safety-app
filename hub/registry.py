@@ -26,6 +26,7 @@ from hub.agents.soft_services.wattsy import WattsyAgent
 from hub.agents.soft_services.tetristrev import TetrisTrevAgent
 from hub.agents.soft_services.clipboardkaren import ClipboardKarenAgent
 from hub.agents.soft_services.tradietony import TradieTonyAgent
+from hub.agents.support.sofiacoach import SofiaCoachAgent
 
 AGENT_CLASSES: dict[str, type] = {
     "barbie": BarbieAgent,
@@ -52,4 +53,5 @@ AGENT_CLASSES: dict[str, type] = {
     "tetristrev": TetrisTrevAgent,
     "clipboardkaren": ClipboardKarenAgent,
     "tradietony": TradieTonyAgent,
+    "sofiacoach": SofiaCoachAgent,
 }

@@ -205,4 +205,7 @@ AGENTS = {
     "tradietony": {"name": "Tradie Tony", "role": "Capital Projects & Engineering Manager (Project Legend)", "category": "support",
                    "description": "The Project Legend. Expert in data centre fit-outs, equipment upgrades, commissioning, "
                                   "project management, and design review."},
+    "sofiacoach": {"name": "Sofia's Coach", "role": "Data Centre Career Coach (Sofia's Career Wingwoman)", "category": "support",
+                   "description": "Sofia's Career Wingwoman. Expert in Sydney data centre job market, resume strategy, "
+                                  "interview prep, career progression, certifications, and salary negotiation."},
 }
