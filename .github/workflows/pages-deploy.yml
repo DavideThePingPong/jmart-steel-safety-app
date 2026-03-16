@@ -31,15 +31,36 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Verify build output
+        run: |
+          echo "Checking critical files exist..."
+          missing=0
+          for f in index.html js/app.js sw.js hub-sw.js manifest.json hub-manifest.json icons/icon-192x192.png; do
+            if [ ! -f "$f" ]; then
+              echo "::error::Missing required file: $f"
+              missing=1
+            else
+              echo "  ✓ $f"
+            fi
+          done
+          if [ "$missing" -eq 1 ]; then
+            echo "::error::Build verification failed — required files are missing"
+            exit 1
+          fi
+          echo "All critical files present."
+
       - name: Prepare deployment directory
         run: |
           mkdir -p _site/js _site/icons
-          cp *.html _site/
+          cp index.html offline.html reset.html _site/
+          cp artsteel-hub.html steel-app.html jmart-safety-app.html _site/
           cp manifest.json hub-manifest.json _site/
-          cp sw.js _site/
+          cp sw.js hub-sw.js _site/
           cp .nojekyll _site/
-          cp -r js/*.js _site/js/
-          cp -r icons/* _site/icons/
+          cp js/*.js _site/js/
+          cp icons/* _site/icons/
+          echo "Deployment directory contents:"
+          find _site -type f | sort
 
       - name: Upload GitHub Pages artifact
         uses: actions/upload-pages-artifact@v3
