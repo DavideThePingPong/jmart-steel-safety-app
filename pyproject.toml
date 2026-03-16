@@ -9,6 +9,7 @@ description = "AI-powered facilities management platform for Australian data cen
 requires-python = ">=3.11"
 dependencies = [
     "anthropic>=0.42.0",
+    "openai>=1.0.0",
     "fastapi>=0.115.0",
     "uvicorn>=0.34.0",
     "rich>=13.9.0",
@@ -19,6 +20,7 @@ dependencies = [
 
 [project.scripts]
 dc-hub = "hub.main:main"
+steel-hub = "steel.main:main"
 
 [tool.setuptools.packages.find]
-include = ["hub*"]
+include = ["hub*", "steel*"]

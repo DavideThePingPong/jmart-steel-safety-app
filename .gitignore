@@ -8,7 +8,9 @@ env/
 
 # Data (learnings are personal)
 data/learnings/*.json
+data/steel_learnings/*.json
 data/hub.db
+data/steel_hub.db
 
 # IDE
 .idea/
