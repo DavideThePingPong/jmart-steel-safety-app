@@ -166,24 +166,6 @@
                     return { approved: true, admin: this.isAdmin };
                 }
 
-                // ═══════════════════════════════════════════════════════════
-                // ALWAYS-APPROVED DEVICES (per CLAUDE.md device auth rules)
-                // Davide's Android → always admin
-                // Davide's Mac → always authorized
-                // S.s Samsung → always authorized
-                // ═══════════════════════════════════════════════════════════
-                const ua = navigator.userAgent;
-                const isAndroid = /Android/i.test(ua) && /Mobile/i.test(ua);
-                const isMac = /Mac/i.test(ua) && !/iPhone|iPad/i.test(ua);
-                const isSamsung = /Samsung|SM-/i.test(ua);
-
-                if (isAndroid || isMac || isSamsung) {
-                    const shouldBeAdmin = isAndroid && !isSamsung;
-                    console.log('ALWAYS-APPROVED device:', isAndroid ? (isSamsung ? 'Samsung' : 'Android') : 'Mac', '- auto-approving, admin:', shouldBeAdmin);
-                    await this.registerAsApproved(shouldBeAdmin);
-                    return { approved: true, admin: shouldBeAdmin, alwaysApproved: true };
-                }
-
                 // Check if first device (auto-approve as admin)
                 const allResult = await hubFirebaseRead('jmart-safety/devices/approved');
                 if (!allResult.exists || !allResult.val || Object.keys(allResult.val).length === 0) {
