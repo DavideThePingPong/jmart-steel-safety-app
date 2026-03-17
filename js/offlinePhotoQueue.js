@@ -9,6 +9,8 @@ const OfflinePhotoQueue = {
   isProcessing: false,
   listeners: [],
 
+  _onlineListenerAdded: false,
+
   // Initialize - load queue from localStorage
   init: function() {
     try {
@@ -26,11 +28,14 @@ const OfflinePhotoQueue = {
       this.queue = [];
     }
 
-    // Listen for online events
-    window.addEventListener('online', () => {
-      console.log('Back online - processing photo queue');
-      setTimeout(() => this.processQueue(), 2000); // Wait for Drive reconnection
-    });
+    // Listen for online events (only add once to prevent duplicate listeners on re-init)
+    if (!this._onlineListenerAdded) {
+      this._onlineListenerAdded = true;
+      window.addEventListener('online', () => {
+        console.log('Back online - processing photo queue');
+        setTimeout(() => this.processQueue(), 2000); // Wait for Drive reconnection
+      });
+    }
   },
 
   // Save queue to localStorage (with size cap)

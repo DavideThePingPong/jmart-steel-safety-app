@@ -9,7 +9,7 @@
 
 ## EXECUTIVE SUMMARY
 
-The JMart Steel Safety App is a production-grade PWA with strong fundamentals: pre-compiled JSX (no runtime Babel), pinned CDN versions, circuit-breaker patterns, REST API fallbacks, and aggressive storage management. However, this audit uncovered **7 bugs** (2 critical, 3 medium, 2 low) and **9 advisory findings** that should be addressed.
+The JMart Steel Safety App is a production-grade PWA with strong fundamentals: pre-compiled JSX (no runtime Babel), pinned CDN versions, circuit-breaker patterns, REST API fallbacks, and aggressive storage management. However, this audit uncovered **10 bugs** (2 critical, 4 medium, 4 low) and **9 advisory findings** that should be addressed.
 
 **All bugs identified below have been fixed in this commit.**
 
@@ -67,6 +67,30 @@ The JMart Steel Safety App is a production-grade PWA with strong fundamentals: p
 **Severity**: LOW (mitigated by BUG-2 fix)
 **Impact**: Error logs are written outside the `jmart-safety/` prefix to paths like `jmart-safety/errors/...`. This is now protected by the rules fix in BUG-2.
 **No additional code change needed** — the Firebase rules fix covers this.
+
+### BUG-8: AuditLogManager Missing Firebase Auth Gate
+**File**: `js/auditLogManager.js:43`
+**Severity**: MEDIUM
+**Impact**: `AuditLogManager.log()` writes directly to Firebase without waiting for `firebaseAuthReady`. If called before anonymous auth completes, the write fails with PERMISSION_DENIED. Audit entries are lost (only local copy remains).
+**Fix**: Added `await firebaseAuthReady` with 5s timeout before Firebase write.
+
+### BUG-9: TrainingCertGenerator Missing ToastNotifier Guard
+**File**: `js/trainingCertGenerator.js:319`
+**Severity**: LOW
+**Impact**: Error catch block calls `ToastNotifier.error()` without checking if `ToastNotifier` exists. If the toast script hasn't loaded yet, this throws an unhandled reference error, hiding the original certificate generation error.
+**Fix**: Added `typeof ToastNotifier !== 'undefined'` guard.
+
+### BUG-10: OfflinePhotoQueue Accumulates Duplicate Event Listeners
+**File**: `js/offlinePhotoQueue.js:30`
+**Severity**: LOW
+**Impact**: `init()` adds a new `window.addEventListener('online', ...)` every time it's called. If `init()` is called multiple times, each online event triggers multiple `processQueue()` calls simultaneously, potentially uploading duplicate photos.
+**Fix**: Added `_onlineListenerAdded` guard to prevent duplicate listener registration.
+
+### BUG-11: FormValidator sanitizeForm Vulnerable to Circular References
+**File**: `js/formValidator.js:42`
+**Severity**: LOW
+**Impact**: `sanitizeForm()` recursively traverses form objects but has no circular reference detection. Corrupt data from Firebase with circular references would cause infinite recursion and crash the app.
+**Fix**: Added `Set`-based seen tracking to break circular references.
 
 ---
 
