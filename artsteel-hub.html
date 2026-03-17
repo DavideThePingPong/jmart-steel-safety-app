@@ -2216,6 +2216,14 @@
             </div>
         </div>
 
+        <!-- Install App Card -->
+        <div id="installCard" style="display:none;margin-bottom:20px;background:linear-gradient(135deg,rgba(102,126,234,0.2),rgba(118,75,162,0.2));border:1px solid rgba(102,126,234,0.4);border-radius:12px;padding:18px;text-align:center;">
+            <div style="font-size:28px;margin-bottom:8px;">📲</div>
+            <div style="color:#fff;font-weight:700;font-size:16px;margin-bottom:4px;">Install Artsteel Hub</div>
+            <div id="installCardDesc" style="color:#aaa;font-size:12px;margin-bottom:14px;">Add to your home screen for quick access &amp; offline use</div>
+            <button id="installCardBtn" onclick="handleInstallCard()" style="background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border:none;border-radius:8px;padding:10px 28px;font-weight:700;font-size:14px;cursor:pointer;">Install App</button>
+        </div>
+
         <!-- Agent Quick-Launch Grid -->
         <h3 style="color:#60a5fa;font-size:14px;margin-bottom:10px;">Agents</h3>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:20px;">
@@ -9532,8 +9540,41 @@
     }
 
     // Detect if running as installed PWA
-    if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
+    const _isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+    if (_isStandalone) {
         document.documentElement.classList.add('pwa-standalone');
+    }
+
+    // Show install card on dashboard if not already installed
+    (function setupInstallCard() {
+        if (_isStandalone) return; // Already installed, don't show
+        const card = document.getElementById('installCard');
+        const desc = document.getElementById('installCardDesc');
+        const btn = document.getElementById('installCardBtn');
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        if (isIOS) {
+            desc.textContent = 'Tap the Share button ⎋ then "Add to Home Screen"';
+            btn.textContent = 'How to Install';
+        }
+        card.style.display = 'block';
+    })();
+
+    function handleInstallCard() {
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        if (isIOS) {
+            alert('To install Artsteel Hub:\n\n1. Tap the Share button (⎋) at the bottom of Safari\n2. Scroll down and tap "Add to Home Screen"\n3. Tap "Add"');
+            return;
+        }
+        if (_hubInstallPrompt) {
+            _hubInstallPrompt.prompt();
+            _hubInstallPrompt.userChoice.then(() => {
+                document.getElementById('installCard').style.display = 'none';
+                _hubInstallPrompt = null;
+            });
+        } else {
+            // Fallback: guide the user via browser menu
+            alert('To install Artsteel Hub:\n\n1. Tap the browser menu (⋮) at the top right\n2. Tap "Add to Home Screen" or "Install App"\n3. Confirm the installation');
+        }
     }
     </script>
 </body>
