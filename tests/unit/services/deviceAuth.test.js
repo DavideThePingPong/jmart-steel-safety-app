@@ -440,14 +440,16 @@ describe('DeviceAuth', () => {
       global.firebaseDb = mockDb;
       DeviceAuth.isAdmin = true;
 
-      // Mock once('value') for the pending device
-      mockDb._mockRef.once.mockResolvedValue(
-        makeSnapshot({ id: 'DEV-TARGET', type: 'Android Phone', authUid: null })
-      );
+      // Mock firebaseRead() for the pending device lookup (code now uses REST fallback)
+      global.firebaseRead = jest.fn().mockResolvedValue({
+        exists: true,
+        val: { id: 'DEV-TARGET', type: 'Android Phone', authUid: null },
+        source: 'sdk'
+      });
 
       const result = await DeviceAuth.approveDevice('DEV-TARGET', false);
       expect(result).toBe(true);
-      expect(mockDb.ref).toHaveBeenCalledWith('jmart-safety/devices/pending/DEV-TARGET');
+      expect(global.firebaseRead).toHaveBeenCalledWith('jmart-safety/devices/pending/DEV-TARGET');
       expect(mockDb.ref).toHaveBeenCalledWith('jmart-safety/devices/approved/DEV-TARGET');
     });
 
@@ -471,9 +473,12 @@ describe('DeviceAuth', () => {
       DeviceAuth.isAdmin = true;
       DeviceAuth.deviceId = 'DEV-ADMIN';
 
-      mockDb._mockRef.once.mockResolvedValue(
-        makeSnapshot({ id: 'DEV-BAD', type: 'Unknown Device' })
-      );
+      // Mock firebaseRead() for the pending device lookup (code now uses REST fallback)
+      global.firebaseRead = jest.fn().mockResolvedValue({
+        exists: true,
+        val: { id: 'DEV-BAD', type: 'Unknown Device' },
+        source: 'sdk'
+      });
 
       const result = await DeviceAuth.denyDevice('DEV-BAD');
       expect(result).toBe(true);
@@ -499,9 +504,12 @@ describe('DeviceAuth', () => {
       DeviceAuth.isAdmin = true;
       DeviceAuth.deviceId = 'DEV-ME';
 
-      mockDb._mockRef.once.mockResolvedValue(
-        makeSnapshot({ id: 'DEV-OTHER', isAdmin: false })
-      );
+      // Mock firebaseRead() for the approved device lookup (code now uses REST fallback)
+      global.firebaseRead = jest.fn().mockResolvedValue({
+        exists: true,
+        val: { id: 'DEV-OTHER', isAdmin: false },
+        source: 'sdk'
+      });
 
       const result = await DeviceAuth.revokeDevice('DEV-OTHER');
       expect(result).toBe(true);
@@ -672,16 +680,17 @@ describe('DeviceAuth', () => {
       global.firebaseDb = mockDb;
       DeviceAuth.isAdmin = true;
 
-      // once('value') returns existing device
-      mockDb._mockRef.once.mockResolvedValue(makeSnapshot({ id: 'DEV-REN', name: 'Old Name' }));
-
-      const childRef = { set: jest.fn().mockResolvedValue() };
-      mockDb._mockRef.child.mockReturnValue(childRef);
+      // Mock firebaseRead() for the approved device lookup (code now uses REST fallback)
+      global.firebaseRead = jest.fn().mockResolvedValue({
+        exists: true,
+        val: { id: 'DEV-REN', name: 'Old Name' },
+        source: 'sdk'
+      });
 
       const result = await DeviceAuth.renameDevice('DEV-REN', 'New Name');
       expect(result).toBe(true);
-      expect(mockDb._mockRef.child).toHaveBeenCalledWith('name');
-      expect(childRef.set).toHaveBeenCalledWith('New Name');
+      expect(global.firebaseRead).toHaveBeenCalledWith('jmart-safety/devices/approved/DEV-REN');
+      expect(mockDb.ref).toHaveBeenCalledWith('jmart-safety/devices/approved/DEV-REN/name');
     });
 
     it('returns false for empty name', async () => {
