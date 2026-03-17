@@ -108,7 +108,7 @@ function SubcontractorInspectionView({ onSubmit, onUpdate, editingForm, sites = 
     setValidationErrors([]);
     const submitData = {
       siteConducted, preparedBy, location, completedBy, completedBySignature, inspectionItems,
-      date: new Date().toISOString()
+      date: (isEditing && editData.date) ? editData.date : new Date().toISOString()
     };
     if (isEditing && onUpdate) {
       onUpdate(editingForm.id, 'inspection', submitData);

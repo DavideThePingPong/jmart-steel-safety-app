@@ -9,9 +9,9 @@
 
 ## EXECUTIVE SUMMARY
 
-The JMart Steel Safety App is a production-grade PWA with strong fundamentals: pre-compiled JSX (no runtime Babel), pinned CDN versions, circuit-breaker patterns, REST API fallbacks, and aggressive storage management. However, this audit uncovered **10 bugs** (2 critical, 4 medium, 4 low) and **9 advisory findings** that should be addressed.
+The JMart Steel Safety App is a production-grade PWA with strong fundamentals: pre-compiled JSX (no runtime Babel), pinned CDN versions, circuit-breaker patterns, REST API fallbacks, and aggressive storage management. However, this audit uncovered **16 bugs** (3 critical, 7 medium, 6 low) across JS services and React components, plus **9 advisory findings**.
 
-**All bugs identified below have been fixed in this commit.**
+**All 16 bugs identified below have been fixed across 3 commits.**
 
 ---
 
@@ -91,6 +91,40 @@ The JMart Steel Safety App is a production-grade PWA with strong fundamentals: p
 **Severity**: LOW
 **Impact**: `sanitizeForm()` recursively traverses form objects but has no circular reference detection. Corrupt data from Firebase with circular references would cause infinite recursion and crash the app.
 **Fix**: Added `Set`-based seen tracking to break circular references.
+
+---
+
+## REACT COMPONENT BUGS (Fixed — Phase 2)
+
+### BUG-12: Auth Bypass When Firebase is Down
+**File**: `js/components/auth.jsx:261`
+**Severity**: CRITICAL
+**Impact**: When `isFirebaseConfigured` is false or `firebaseDb` is null (Firebase CDN blocked, misconfigured, or network failure), `checkAuth()` immediately sets `authState = 'authenticated'` — bypassing password entry entirely. Anyone could access all forms and data by simply blocking Firebase.
+**Fix**: Changed to require password verification even in local-only mode. If a password hash exists, the user must authenticate.
+
+### BUG-13: deletedFormIdsRef JSON.parse Crash
+**File**: `js/components/hooks.jsx:34`
+**Severity**: MEDIUM
+**Impact**: `new Set(JSON.parse(localStorage.getItem('jmart-deleted-form-ids') || '[]'))` — if localStorage contains corrupt data, `JSON.parse` throws an unhandled exception that crashes the entire `useFormManager` hook, making all form operations (create, edit, delete) non-functional.
+**Fix**: Wrapped in try/catch with empty array fallback.
+
+### BUG-14: All Form Types Overwrite Original Date on Edit
+**Files**: `form-inspection.jsx:111`, `form-toolbox.jsx:103`, `form-itp.jsx:182`, `form-steel-itp.jsx:175`
+**Severity**: MEDIUM
+**Impact**: When editing an existing form, `date: new Date().toISOString()` always replaces the original submission date. For WHS compliance, the original date of the inspection/toolbox/ITP is critical — editing should update the `updatedAt` field (which `useFormManager` handles), not the `date` field.
+**Fix**: All four forms now preserve `editData.date` (or `editData.submittedAt`) when editing.
+
+### BUG-15: ViewFormModal Hides All Structured Data
+**File**: `js/components/modals.jsx:66`
+**Severity**: MEDIUM
+**Impact**: `if (!value || typeof value === 'object') return null` silently skips inspection items, checklists, signatures, hazard notes, and all other object-type fields. Users viewing a submitted form see only basic text fields (site name, prepared by), missing 60-80% of the actual form content.
+**Fix**: Object values now render as labeled key-value pairs. Signature images display as thumbnails. Deeply nested objects show JSON.
+
+### BUG-16: Double-Submit Race Condition in addForm
+**File**: `js/components/hooks.jsx:62`
+**Severity**: LOW
+**Impact**: `addForm()` has no guard against concurrent calls. A fast double-tap on mobile could create duplicate forms with different IDs but identical data, generating duplicate PDFs and Firebase entries.
+**Fix**: Added `isSubmittingRef` guard that prevents re-entry until the current submission completes.
 
 ---
 

@@ -100,7 +100,7 @@ function ToolboxView({ onSubmit, onUpdate, editingForm, sites = [] }) {
     const submitData = {
       siteConducted, builder, address, preparedBy,
       topics: selectedTopics, otherTopic, correctiveAction, feedbackResponses,
-      signatures, date: new Date().toISOString()
+      signatures, date: (isEditing && editData.date) ? editData.date : new Date().toISOString()
     };
     if (isEditing && onUpdate) {
       onUpdate(editingForm.id, 'toolbox', submitData);
