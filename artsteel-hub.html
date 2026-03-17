@@ -122,31 +122,78 @@
                 try { await _firebaseAuthPromise; } catch(e) {}
             }
 
+            // Helper: Firebase read with REST API fallback (prevents SDK WebSocket hangs)
+            const hubFirebaseRead = async (path) => {
+                // Try SDK with 3s timeout
+                try {
+                    let timeoutId;
+                    const result = await Promise.race([
+                        firebaseDb.ref(path).once('value').then(snap => { clearTimeout(timeoutId); return snap; }),
+                        new Promise((_, reject) => { timeoutId = setTimeout(() => reject(new Error('SDK_TIMEOUT')), 3000); })
+                    ]);
+                    return { exists: result.exists(), val: result.val(), source: 'sdk' };
+                } catch (e) {
+                    console.warn('Hub SDK read timeout/error for', path, '- trying REST');
+                }
+                // REST fallback
+                try {
+                    const user = firebase.auth().currentUser;
+                    if (!user) throw new Error('No auth user');
+                    const token = await user.getIdToken();
+                    const url = firebaseConfig.databaseURL + '/' + path + '.json?auth=' + token;
+                    const resp = await fetch(url);
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    const data = await resp.json();
+                    return { exists: data !== null, val: data, source: 'rest' };
+                } catch (e2) {
+                    console.error('Hub REST fallback also failed:', e2.message);
+                    throw e2;
+                }
+            };
+
             try {
                 // Check if device is approved (same path as Safety App)
-                const snap = await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId).once('value');
-                if (snap.exists()) {
-                    const data = snap.val();
+                const approvedResult = await hubFirebaseRead('jmart-safety/devices/approved/' + this.deviceId);
+                if (approvedResult.exists) {
+                    const data = approvedResult.val;
                     this.isApproved = true;
                     this.isAdmin = data.isAdmin || false;
                     // Update last seen and auth UID (links Firebase Auth to device)
                     const updates = { lastSeen: new Date().toISOString(), lastApp: 'STEEL' };
                     if (firebaseAuthUid) updates.authUid = firebaseAuthUid;
-                    await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId).update(updates);
-                    console.log('✅ Device approved, admin:', this.isAdmin);
+                    firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId).update(updates).catch(() => {});
+                    console.log('Device approved, admin:', this.isAdmin);
                     return { approved: true, admin: this.isAdmin };
                 }
 
+                // ═══════════════════════════════════════════════════════════
+                // ALWAYS-APPROVED DEVICES (per CLAUDE.md device auth rules)
+                // Davide's Android → always admin
+                // Davide's Mac → always authorized
+                // S.s Samsung → always authorized
+                // ═══════════════════════════════════════════════════════════
+                const ua = navigator.userAgent;
+                const isAndroid = /Android/i.test(ua) && /Mobile/i.test(ua);
+                const isMac = /Mac/i.test(ua) && !/iPhone|iPad/i.test(ua);
+                const isSamsung = /Samsung|SM-/i.test(ua);
+
+                if (isAndroid || isMac || isSamsung) {
+                    const shouldBeAdmin = isAndroid && !isSamsung;
+                    console.log('ALWAYS-APPROVED device:', isAndroid ? (isSamsung ? 'Samsung' : 'Android') : 'Mac', '- auto-approving, admin:', shouldBeAdmin);
+                    await this.registerAsApproved(shouldBeAdmin);
+                    return { approved: true, admin: shouldBeAdmin, alwaysApproved: true };
+                }
+
                 // Check if first device (auto-approve as admin)
-                const allSnap = await firebaseDb.ref('jmart-safety/devices/approved').once('value');
-                if (!allSnap.exists() || allSnap.numChildren() === 0) {
+                const allResult = await hubFirebaseRead('jmart-safety/devices/approved');
+                if (!allResult.exists || !allResult.val || Object.keys(allResult.val).length === 0) {
                     await this.registerAsApproved(true);
                     return { approved: true, admin: true, firstDevice: true };
                 }
 
                 // Register as pending if not already
-                const pendingSnap = await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).once('value');
-                if (!pendingSnap.exists()) {
+                const pendingResult = await hubFirebaseRead('jmart-safety/devices/pending/' + this.deviceId);
+                if (!pendingResult.exists) {
                     await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).set({
                         ...this.getDeviceInfo(),
                         authUid: firebaseAuthUid || null,

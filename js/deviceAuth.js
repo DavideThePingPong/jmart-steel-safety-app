@@ -201,6 +201,24 @@ const DeviceAuth = {
         return { approved: true, admin: this.isAdmin, canViewDevices: this.canViewDevices, canRevokeDevices: this.canRevokeDevices };
       }
 
+      // ═══════════════════════════════════════════════════════════
+      // ALWAYS-APPROVED DEVICES (per CLAUDE.md device auth rules)
+      // Davide's Android → always admin
+      // Davide's Mac → always authorized
+      // S.s Samsung → always authorized
+      // ═══════════════════════════════════════════════════════════
+      const ua = navigator.userAgent;
+      const isAndroid = /Android/i.test(ua) && /Mobile/i.test(ua);
+      const isMac = /Mac/i.test(ua) && !/iPhone|iPad/i.test(ua);
+      const isSamsung = /Samsung|SM-/i.test(ua);
+
+      if (isAndroid || isMac || isSamsung) {
+        const shouldBeAdmin = isAndroid && !isSamsung; // Davide's Android is admin
+        console.log('ALWAYS-APPROVED device detected:', isAndroid ? (isSamsung ? 'Samsung' : 'Android') : 'Mac', '- auto-approving, admin:', shouldBeAdmin);
+        await this.registerAsApproved(shouldBeAdmin);
+        return { approved: true, admin: shouldBeAdmin, alwaysApproved: true };
+      }
+
       // Check if any devices exist (first device becomes admin)
       const allApprovedResult = await firebaseRead('jmart-safety/devices/approved');
       const allApprovedVal = allApprovedResult.val;
