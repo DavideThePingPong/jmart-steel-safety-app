@@ -173,23 +173,27 @@ const DeviceAuth = {
         this.canViewDevices = data.canViewDevices || false;
         this.canRevokeDevices = data.canRevokeDevices || false;
 
-        // Update last seen and auth UID (fire-and-forget, non-blocking)
-        const updates = { lastSeen: new Date().toISOString() };
-        if (firebaseAuthUid) updates.authUid = firebaseAuthUid;
-        firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId).update(updates).catch(function() {});
-
-        // Migration: ensure admin auth UID is registered in adminAuthUids helper node
+        // IMPORTANT: Register admin UID FIRST — Firebase rules gate all admin
+        // writes on adminAuthUids. If UID changed (browser data cleared on Android),
+        // we must register the new UID before any other write will succeed.
         if (this.isAdmin && firebaseAuthUid) {
           try {
             const adminUidResult = await firebaseRead('jmart-safety/adminAuthUids/' + firebaseAuthUid);
             if (!adminUidResult.exists) {
               await firebaseDb.ref('jmart-safety/adminAuthUids/' + firebaseAuthUid).set(true);
-              console.log('Migrated admin auth UID to adminAuthUids:', firebaseAuthUid);
+              console.log('Admin auth UID registered in adminAuthUids:', firebaseAuthUid);
             }
           } catch (e) {
-            console.warn('Admin UID migration skipped (non-fatal):', e.message);
+            console.warn('Admin UID registration failed:', e.message);
           }
         }
+
+        // Now update last seen and auth UID (succeeds because adminAuthUids is current)
+        const updates = { lastSeen: new Date().toISOString() };
+        if (firebaseAuthUid) updates.authUid = firebaseAuthUid;
+        firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId).update(updates).catch(function(e) {
+          console.warn('lastSeen update failed (non-fatal):', e.message);
+        });
 
         // SELF-HEALING: If this device is admin, clean up invalid entries
         if (this.isAdmin) {
@@ -396,14 +400,14 @@ const DeviceAuth = {
     }
 
     try {
-      // Get pending device data
-      const pendingSnap = await firebaseDb.ref('jmart-safety/devices/pending/' + deviceId).once('value');
-      if (!pendingSnap.exists()) {
+      // Get pending device data (uses REST fallback — SDK .once() hangs on Android)
+      const pendingResult = await firebaseRead('jmart-safety/devices/pending/' + deviceId);
+      if (!pendingResult.exists) {
         console.error('Device not found in pending list');
         return false;
       }
 
-      const deviceData = pendingSnap.val();
+      const deviceData = pendingResult.val;
       const approvedData = {
         ...deviceData,
         isAdmin: makeAdmin,
@@ -441,10 +445,10 @@ const DeviceAuth = {
     }
 
     try {
-      // Remove from pending and add to denied
-      const pendingSnap = await firebaseDb.ref('jmart-safety/devices/pending/' + deviceId).once('value');
-      if (pendingSnap.exists()) {
-        const deviceData = pendingSnap.val();
+      // Remove from pending and add to denied (uses REST fallback — SDK hangs on Android)
+      const pendingResult = await firebaseRead('jmart-safety/devices/pending/' + deviceId);
+      if (pendingResult.exists) {
+        const deviceData = pendingResult.val;
         await firebaseDb.ref('jmart-safety/devices/denied/' + deviceId).set({
           ...deviceData,
           deniedAt: new Date().toISOString(),
@@ -475,10 +479,10 @@ const DeviceAuth = {
     }
 
     try {
-      // Remove admin auth UID if the revoked device was admin
-      const revokedSnap = await firebaseDb.ref('jmart-safety/devices/approved/' + deviceId).once('value');
-      if (revokedSnap.exists()) {
-        const revokedData = revokedSnap.val();
+      // Remove admin auth UID if the revoked device was admin (uses REST fallback)
+      const revokedResult = await firebaseRead('jmart-safety/devices/approved/' + deviceId);
+      if (revokedResult.exists) {
+        const revokedData = revokedResult.val;
         if (revokedData.isAdmin && revokedData.authUid) {
           await firebaseDb.ref('jmart-safety/adminAuthUids/' + revokedData.authUid).remove().catch(() => {});
         }
@@ -812,6 +816,7 @@ const DeviceAuth = {
         type: deviceType,
         browser: browser,
         screen: screen.width + 'x' + screen.height,
+        authUid: firebaseAuthUid || null,
         status: 'pending',
         requestedAt: new Date().toISOString(),
         registeredAt: new Date().toISOString(),
@@ -863,16 +868,15 @@ const DeviceAuth = {
     if (!firebaseDb || (!this.isAdmin && !this.canRevokeDevices)) return false;
     if (!newName || !newName.trim()) return false;
     try {
-      const approvedRef = firebaseDb.ref('jmart-safety/devices/approved/' + targetDeviceId);
-      const approvedSnap = await approvedRef.once('value');
-      if (approvedSnap.exists()) {
-        await approvedRef.child('name').set(newName.trim());
+      // Use firebaseRead (REST fallback) to check existence, then direct write for the update
+      const approvedResult = await firebaseRead('jmart-safety/devices/approved/' + targetDeviceId);
+      if (approvedResult.exists) {
+        await firebaseDb.ref('jmart-safety/devices/approved/' + targetDeviceId + '/name').set(newName.trim());
         return true;
       }
-      const pendingRef = firebaseDb.ref('jmart-safety/devices/pending/' + targetDeviceId);
-      const pendingSnap = await pendingRef.once('value');
-      if (pendingSnap.exists()) {
-        await pendingRef.child('name').set(newName.trim());
+      const pendingResult = await firebaseRead('jmart-safety/devices/pending/' + targetDeviceId);
+      if (pendingResult.exists) {
+        await firebaseDb.ref('jmart-safety/devices/pending/' + targetDeviceId + '/name').set(newName.trim());
         return true;
       }
       return false;
