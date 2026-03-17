@@ -14,7 +14,9 @@ const AuditLogManager = {
       userName: localStorage.getItem('jmart-user-name') || 'Unknown User',
       timestamp: Date.now(), // Must be number for Firebase validation rules
       timestampISO: new Date().toISOString(), // Human-readable version
-      details: details
+      details: details ? Object.fromEntries(
+        Object.entries(details).map(([k, v]) => [k, v === undefined ? null : v])
+      ) : {}
     };
 
     // Save to local audit log — capped at 200 entries AND 200KB
