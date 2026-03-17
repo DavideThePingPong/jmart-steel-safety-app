@@ -84,10 +84,11 @@ async function firebaseRead(path, timeoutMs) {
   timeoutMs = timeoutMs || 3000;
   // Try SDK first (fast if working, hangs if broken)
   if (firebaseDb) {
+    var ref = firebaseDb.ref(path);
     try {
       var timeoutId;
       var result = await Promise.race([
-        firebaseDb.ref(path).once('value').then(function(snap) {
+        ref.once('value').then(function(snap) {
           clearTimeout(timeoutId);
           return snap;
         }),
@@ -97,6 +98,8 @@ async function firebaseRead(path, timeoutMs) {
       ]);
       return { exists: result.exists(), val: result.val(), source: 'sdk' };
     } catch (e) {
+      // Detach the dangling SDK listener to prevent connection/memory leak
+      try { ref.off(); } catch (offErr) { /* ignore */ }
       if (e.message === 'SDK_TIMEOUT') {
         console.warn('[firebaseRead] SDK timed out for', path, '— falling back to REST');
       } else {

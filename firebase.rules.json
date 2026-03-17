@@ -136,6 +136,17 @@
           ".write": "auth != null && !data.exists()",
           ".validate": "newData.hasChildren(['action', 'deviceId', 'timestamp']) && newData.child('action').isString() && newData.child('action').val().length < 500 && newData.child('deviceId').isString() && newData.child('timestamp').isNumber()"
         }
+      },
+
+      // Error telemetry - authenticated devices can write error logs (append-only per device)
+      "errors": {
+        ".read": "auth != null",
+        "$deviceId": {
+          "$logKey": {
+            ".write": "auth != null && !data.exists()",
+            ".validate": "newData.hasChildren(['device', 'timestamp']) && newData.child('timestamp').isNumber()"
+          }
+        }
       }
     },
 

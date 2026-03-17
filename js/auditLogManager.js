@@ -39,9 +39,12 @@ const AuditLogManager = {
       if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(e, 'audit-local');
     }
 
-    // Sync to Firebase if connected
+    // Sync to Firebase if connected (wait for auth to avoid PERMISSION_DENIED)
     if (typeof firebaseDb !== 'undefined' && firebaseDb && typeof isFirebaseConfigured !== 'undefined' && isFirebaseConfigured) {
       try {
+        if (typeof firebaseAuthReady !== 'undefined') {
+          await Promise.race([firebaseAuthReady, new Promise(function(_, rej) { setTimeout(function() { rej(new Error('auth_timeout')); }, 5000); })]);
+        }
         await firebaseDb.ref('jmart-safety/auditLog/' + logEntry.id).set(logEntry);
       } catch (e) {
         console.error('Error syncing audit log to Firebase:', e);

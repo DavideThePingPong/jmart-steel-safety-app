@@ -179,7 +179,7 @@ function ITPFormView({ onSubmit, onUpdate, editingForm, sites = [] }) {
       handrailSpecConfirmed, spigotsCouplingsTight, handrailCompliantHeight, threadOnFixings, fullWeldingJunctions,
       allGlassNoDefects, allHandrailNoDefects, balustradeAsPerDesign,
       builderSignoffName, builderSignature, futureCorrespondence,
-      date: new Date().toISOString()
+      date: (isEditing && editData.date) ? editData.date : new Date().toISOString()
     };
     if (isEditing && onUpdate) {
       onUpdate(editingForm.id, 'itp', submitData);

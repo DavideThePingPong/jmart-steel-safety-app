@@ -316,7 +316,7 @@ const TrainingCertGenerator = {
 
     } catch (error) {
       console.error('Error generating certificate PDF:', error);
-      ToastNotifier.error('Error generating certificate. Please try again.');
+      if (typeof ToastNotifier !== 'undefined') ToastNotifier.error('Error generating certificate. Please try again.');
     }
   }
 };

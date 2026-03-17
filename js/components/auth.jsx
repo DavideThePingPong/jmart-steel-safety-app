@@ -259,8 +259,13 @@ function AppWithAuth() {
   const checkAuth = async () => {
     // Check if Firebase is configured
     if (!isFirebaseConfigured || !firebaseDb) {
-      // No Firebase = no auth required (local mode)
-      setAuthState('authenticated');
+      // No Firebase — still require password if one has been set (local-only mode)
+      if (DeviceAuthManager.APP_PASSWORD_HASH) {
+        setAuthState('unauthenticated');
+      } else {
+        // Truly first time — no password set, no Firebase → allow setup
+        setAuthState('unauthenticated');
+      }
       return;
     }
 

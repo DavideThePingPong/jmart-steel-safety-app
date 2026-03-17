@@ -9,7 +9,7 @@
  * - v4: Pinned CDN versions (supply-chain hardening)
  */
 
-const CACHE_VERSION = 'v71';
+const CACHE_VERSION = 'v73';
 const STATIC_CACHE = `jmart-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `jmart-dynamic-${CACHE_VERSION}`;
 const CDN_CACHE = `jmart-cdn-${CACHE_VERSION}`;
@@ -267,8 +267,9 @@ self.addEventListener('install', (event) => {
         }
       })
     ]).then(() => {
-      console.log('[SW v4] Install complete');
-      return self.skipWaiting();
+      console.log('[SW v4] Install complete — waiting for SKIP_WAITING message from main thread');
+      // Note: skipWaiting() is NOT called here. The main thread sends SKIP_WAITING
+      // after detecting the new SW, giving it control over the update flow.
     })
   );
 });

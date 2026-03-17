@@ -172,7 +172,7 @@ function SteelITPView({ onSubmit, onUpdate, editingForm, sites = [] }) {
       weldTestingBooked, testingIssues, weldsPassed,
       colourConfirmed, defectsChecked, handoverAccepted,
       managerName, managerSignature, builderName, builderSignature,
-      submittedAt: new Date().toISOString()
+      submittedAt: (isEditing && editData.submittedAt) ? editData.submittedAt : new Date().toISOString()
     };
     if (isEditing && onUpdate) {
       onUpdate(editingForm.id, 'steel-itp', data);

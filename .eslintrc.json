@@ -1,0 +1,64 @@
+{
+  "env": {
+    "browser": true,
+    "es2020": true
+  },
+  "globals": {
+    "React": "readonly",
+    "ReactDOM": "readonly",
+    "firebase": "readonly",
+    "lucide": "readonly",
+    "jspdf": "readonly",
+    "gapi": "readonly",
+    "google": "readonly",
+    "firebaseConfig": "readonly",
+    "firebaseApp": "readonly",
+    "firebaseDb": "readonly",
+    "firebaseAuthUid": "readonly",
+    "firebaseAuthReady": "readonly",
+    "isFirebaseConfigured": "readonly",
+    "firebaseRead": "readonly",
+    "firebaseRestRead": "readonly",
+    "DeviceAuth": "readonly",
+    "DeviceAuthManager": "readonly",
+    "FirebaseSync": "readonly",
+    "NetworkStatus": "readonly",
+    "ErrorTelemetry": "readonly",
+    "StorageQuotaManager": "readonly",
+    "IntervalRegistry": "readonly",
+    "AuditLogManager": "readonly",
+    "ToastNotifier": "readonly",
+    "PhotoUploadManager": "readonly",
+    "OfflinePhotoQueue": "readonly",
+    "GoogleDriveSync": "readonly",
+    "DailyBackupScheduler": "readonly",
+    "JobsManager": "readonly",
+    "FormValidator": "readonly",
+    "FORM_CONSTANTS": "readonly",
+    "PDFConfig": "readonly",
+    "PDFGenerator": "readonly",
+    "TrainingCourseData": "readonly",
+    "TrainingCertGenerator": "readonly",
+    "COMPANY_ABN": "readonly"
+  },
+  "parserOptions": {
+    "ecmaVersion": 2020,
+    "sourceType": "script"
+  },
+  "rules": {
+    "no-unused-vars": ["warn", { "args": "none" }],
+    "no-undef": "error",
+    "no-redeclare": "error",
+    "no-constant-condition": "warn",
+    "no-debugger": "error",
+    "eqeqeq": ["warn", "smart"]
+  },
+  "overrides": [
+    {
+      "files": ["js/components/**/*.jsx"],
+      "parserOptions": {
+        "ecmaFeatures": { "jsx": true }
+      }
+    }
+  ]
+}

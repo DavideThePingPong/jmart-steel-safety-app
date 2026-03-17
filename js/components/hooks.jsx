@@ -10,6 +10,7 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
   const [deleteConfirmModal, setDeleteConfirmModal] = useState(null);
   const [updateConfirmModal, setUpdateConfirmModal] = useState(null);
   const [isUpdating, setIsUpdating] = useState(false);
+  const isSubmittingRef = useRef(false);
   const [backedUpForms, setBackedUpForms] = useState(() => {
     try {
       const saved = localStorage.getItem('jmart-backed-up-forms');
@@ -31,7 +32,10 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
   });
 
   const deletingFormRef = useRef(false);
-  const deletedFormIdsRef = useRef(new Set(JSON.parse(localStorage.getItem('jmart-deleted-form-ids') || '[]')));
+  const deletedFormIdsRef = useRef(new Set((() => {
+    try { return JSON.parse(localStorage.getItem('jmart-deleted-form-ids') || '[]'); }
+    catch (e) { console.warn('Could not parse deleted form IDs:', e); return []; }
+  })()));
 
   // Mark form as backed up (after PDF download)
   const markAsBackedUp = (formId) => {
@@ -58,8 +62,13 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
     ? 'Saved signatures are being reused. Ensure each signer is physically present and consents to signing.'
     : null;
 
-  // Add a new form
+  // Add a new form (with double-submit guard)
   const addForm = (formType, formData) => {
+    if (isSubmittingRef.current) {
+      console.warn('addForm: submission already in progress, ignoring duplicate call');
+      return;
+    }
+    isSubmittingRef.current = true;
     try {
       const uniqueId = Date.now().toString(36) + '-' + Math.random().toString(36).substr(2, 9);
       const newForm = {
@@ -129,6 +138,8 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
     } catch (err) {
       console.error('Error saving form:', err);
       ToastNotifier.error('Error saving form: ' + err.message + '. Please try again.');
+    } finally {
+      isSubmittingRef.current = false;
     }
   };
 

@@ -63,8 +63,40 @@ function ViewFormModal({ viewFormModal, onClose, onEdit, onDownloadPDF, onDelete
             {new Date(viewFormModal.createdAt).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })}
           </div>
           {viewFormModal.data && Object.entries(viewFormModal.data).map(([key, value]) => {
-            if (!value || typeof value === 'object') return null;
+            if (value === null || value === undefined || value === '') return null;
+            // Skip large binary data (signatures, photos stored as base64)
+            if (typeof value === 'string' && value.startsWith('data:image')) {
+              const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+              return (
+                <div key={key} className="border-b border-gray-100 pb-2">
+                  <p className="text-xs text-gray-500">{label}</p>
+                  <img src={value} alt={label} className="h-16 w-auto rounded border mt-1" />
+                </div>
+              );
+            }
             const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+            // Display object values (inspection items, checklists, etc.)
+            if (typeof value === 'object') {
+              const entries = Object.entries(value).filter(([, v]) => v !== null && v !== undefined);
+              if (entries.length === 0) return null;
+              return (
+                <div key={key} className="border-b border-gray-100 pb-2">
+                  <p className="text-xs text-gray-500 font-medium">{label}</p>
+                  <div className="mt-1 space-y-1">
+                    {entries.map(([subKey, subVal]) => {
+                      if (typeof subVal === 'string' && subVal.startsWith('data:image')) return null;
+                      const subLabel = subKey.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+                      return (
+                        <div key={subKey} className="flex justify-between text-sm">
+                          <span className="text-gray-600">{subLabel}</span>
+                          <span className="text-gray-800 font-medium">{typeof subVal === 'object' ? JSON.stringify(subVal) : String(subVal)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            }
             return (
               <div key={key} className="border-b border-gray-100 pb-2">
                 <p className="text-xs text-gray-500">{label}</p>

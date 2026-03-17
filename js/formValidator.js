@@ -39,15 +39,19 @@ window.formValidator = (function() {
   }
 
   // Sanitize an entire form object (recursive, all string fields)
-  function sanitizeForm(form) {
+  // Protected against circular references with a seen set
+  function sanitizeForm(form, _seen) {
     if (!form || typeof form !== 'object') return form;
+    if (!_seen) _seen = new Set();
+    if (_seen.has(form)) return form; // Break circular reference
+    _seen.add(form);
     const clean = Array.isArray(form) ? [] : {};
     for (const key of Object.keys(form)) {
       const val = form[key];
       if (typeof val === 'string') {
         clean[key] = sanitize(val);
       } else if (val && typeof val === 'object' && !(val instanceof Date)) {
-        clean[key] = sanitizeForm(val);
+        clean[key] = sanitizeForm(val, _seen);
       } else {
         clean[key] = val;
       }
