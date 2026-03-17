@@ -122,31 +122,60 @@
                 try { await _firebaseAuthPromise; } catch(e) {}
             }
 
+            // Helper: Firebase read with REST API fallback (prevents SDK WebSocket hangs)
+            const hubFirebaseRead = async (path) => {
+                // Try SDK with 3s timeout
+                try {
+                    let timeoutId;
+                    const result = await Promise.race([
+                        firebaseDb.ref(path).once('value').then(snap => { clearTimeout(timeoutId); return snap; }),
+                        new Promise((_, reject) => { timeoutId = setTimeout(() => reject(new Error('SDK_TIMEOUT')), 3000); })
+                    ]);
+                    return { exists: result.exists(), val: result.val(), source: 'sdk' };
+                } catch (e) {
+                    console.warn('Hub SDK read timeout/error for', path, '- trying REST');
+                }
+                // REST fallback
+                try {
+                    const user = firebase.auth().currentUser;
+                    if (!user) throw new Error('No auth user');
+                    const token = await user.getIdToken();
+                    const url = firebaseConfig.databaseURL + '/' + path + '.json?auth=' + token;
+                    const resp = await fetch(url);
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    const data = await resp.json();
+                    return { exists: data !== null, val: data, source: 'rest' };
+                } catch (e2) {
+                    console.error('Hub REST fallback also failed:', e2.message);
+                    throw e2;
+                }
+            };
+
             try {
                 // Check if device is approved (same path as Safety App)
-                const snap = await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId).once('value');
-                if (snap.exists()) {
-                    const data = snap.val();
+                const approvedResult = await hubFirebaseRead('jmart-safety/devices/approved/' + this.deviceId);
+                if (approvedResult.exists) {
+                    const data = approvedResult.val;
                     this.isApproved = true;
                     this.isAdmin = data.isAdmin || false;
                     // Update last seen and auth UID (links Firebase Auth to device)
                     const updates = { lastSeen: new Date().toISOString(), lastApp: 'STEEL' };
                     if (firebaseAuthUid) updates.authUid = firebaseAuthUid;
-                    await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId).update(updates);
-                    console.log('✅ Device approved, admin:', this.isAdmin);
+                    firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId).update(updates).catch(() => {});
+                    console.log('Device approved, admin:', this.isAdmin);
                     return { approved: true, admin: this.isAdmin };
                 }
 
                 // Check if first device (auto-approve as admin)
-                const allSnap = await firebaseDb.ref('jmart-safety/devices/approved').once('value');
-                if (!allSnap.exists() || allSnap.numChildren() === 0) {
+                const allResult = await hubFirebaseRead('jmart-safety/devices/approved');
+                if (!allResult.exists || !allResult.val || Object.keys(allResult.val).length === 0) {
                     await this.registerAsApproved(true);
                     return { approved: true, admin: true, firstDevice: true };
                 }
 
                 // Register as pending if not already
-                const pendingSnap = await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).once('value');
-                if (!pendingSnap.exists()) {
+                const pendingResult = await hubFirebaseRead('jmart-safety/devices/pending/' + this.deviceId);
+                if (!pendingResult.exists) {
                     await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).set({
                         ...this.getDeviceInfo(),
                         authUid: firebaseAuthUid || null,
@@ -2214,6 +2243,14 @@
                 <div style="font-size:26px;font-weight:700;color:#3b82f6;" id="dashSpendMonth">-</div>
                 <div style="font-size:11px;color:#aaa;margin-top:4px;">Spend This Month</div>
             </div>
+        </div>
+
+        <!-- Install App Card -->
+        <div id="installCard" style="display:none;margin-bottom:20px;background:linear-gradient(135deg,rgba(102,126,234,0.2),rgba(118,75,162,0.2));border:1px solid rgba(102,126,234,0.4);border-radius:12px;padding:18px;text-align:center;">
+            <div style="font-size:28px;margin-bottom:8px;">📲</div>
+            <div style="color:#fff;font-weight:700;font-size:16px;margin-bottom:4px;">Install Artsteel Hub</div>
+            <div id="installCardDesc" style="color:#aaa;font-size:12px;margin-bottom:14px;">Add to your home screen for quick access &amp; offline use</div>
+            <button id="installCardBtn" onclick="handleInstallCard()" style="background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border:none;border-radius:8px;padding:10px 28px;font-weight:700;font-size:14px;cursor:pointer;">Install App</button>
         </div>
 
         <!-- Agent Quick-Launch Grid -->
@@ -9532,8 +9569,41 @@
     }
 
     // Detect if running as installed PWA
-    if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
+    const _isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+    if (_isStandalone) {
         document.documentElement.classList.add('pwa-standalone');
+    }
+
+    // Show install card on dashboard if not already installed
+    (function setupInstallCard() {
+        if (_isStandalone) return; // Already installed, don't show
+        const card = document.getElementById('installCard');
+        const desc = document.getElementById('installCardDesc');
+        const btn = document.getElementById('installCardBtn');
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        if (isIOS) {
+            desc.textContent = 'Tap the Share button ⎋ then "Add to Home Screen"';
+            btn.textContent = 'How to Install';
+        }
+        card.style.display = 'block';
+    })();
+
+    function handleInstallCard() {
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        if (isIOS) {
+            alert('To install Artsteel Hub:\n\n1. Tap the Share button (⎋) at the bottom of Safari\n2. Scroll down and tap "Add to Home Screen"\n3. Tap "Add"');
+            return;
+        }
+        if (_hubInstallPrompt) {
+            _hubInstallPrompt.prompt();
+            _hubInstallPrompt.userChoice.then(() => {
+                document.getElementById('installCard').style.display = 'none';
+                _hubInstallPrompt = null;
+            });
+        } else {
+            // Fallback: guide the user via browser menu
+            alert('To install Artsteel Hub:\n\n1. Tap the browser menu (⋮) at the top right\n2. Tap "Add to Home Screen" or "Install App"\n3. Confirm the installation');
+        }
     }
     </script>
 </body>
