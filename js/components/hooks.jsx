@@ -407,14 +407,22 @@ function useDataSync({ setForms, setSites, deletingFormRef, deletedFormIdsRef })
     if (savedSites) {
       try {
         const parsed = JSON.parse(savedSites);
-        const sanitized = [...new Set((Array.isArray(parsed) ? parsed : Object.values(parsed || {})).map(s => {
+        const mapped = (Array.isArray(parsed) ? parsed : Object.values(parsed || {})).map(s => {
           if (typeof s === 'string') return s;
           if (s && typeof s === 'object') {
             const chars = Object.keys(s).filter(k => k !== '_lastModified' && !isNaN(k)).sort((a,b) => Number(a) - Number(b));
             return chars.map(k => s[k]).join('');
           }
           return String(s);
-        }).filter(s => s && s.length > 1 && s !== 'undefined' && s !== 'null'))];
+        }).filter(s => s && s.length > 1 && s !== 'undefined' && s !== 'null');
+        // Deduplicate case-insensitively, keeping first occurrence
+        const seen = new Set();
+        const sanitized = mapped.filter(s => {
+          const key = s.toLowerCase().trim();
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
         setSites(sanitized);
         localStorage.setItem('jmart-safety-sites', JSON.stringify(sanitized));
       } catch (e) {
@@ -497,14 +505,22 @@ function useDataSync({ setForms, setSites, deletingFormRef, deletedFormIdsRef })
 
       const unsubSites = FirebaseSync.onSitesChange((firebaseSites) => {
         const rawArray = Array.isArray(firebaseSites) ? firebaseSites : Object.values(firebaseSites || {});
-        const sitesArray = [...new Set(rawArray.map(s => {
+        const mapped = rawArray.map(s => {
           if (typeof s === 'string') return s;
           if (s && typeof s === 'object') {
             const chars = Object.keys(s).filter(k => k !== '_lastModified' && !isNaN(k)).sort((a,b) => Number(a) - Number(b));
             return chars.map(k => s[k]).join('');
           }
           return String(s);
-        }).filter(s => s && s.length > 0 && s !== 'undefined' && s !== 'null'))];
+        }).filter(s => s && s.length > 0 && s !== 'undefined' && s !== 'null');
+        // Deduplicate case-insensitively, keeping first occurrence
+        const seenSites = new Set();
+        const sitesArray = mapped.filter(s => {
+          const key = s.toLowerCase().trim();
+          if (seenSites.has(key)) return false;
+          seenSites.add(key);
+          return true;
+        });
         if (sitesArray.length > 0) {
           sitesFromFirebaseRef.current = true;
           setSites(sitesArray);
