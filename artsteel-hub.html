@@ -32,6 +32,18 @@
         return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
     }
 
+    // Firebase safety — replace undefined with null recursively before any .set()/.update()
+    function sanitizeForFirebase(obj) {
+        if (obj === undefined) return null;
+        if (obj === null || typeof obj !== 'object') return obj;
+        if (Array.isArray(obj)) return obj.map(sanitizeForFirebase);
+        const clean = {};
+        for (const key of Object.keys(obj)) {
+            clean[key] = sanitizeForFirebase(obj[key]);
+        }
+        return clean;
+    }
+
     // ═══════════════════════════════════════════════════════════════════════════
     // FIREBASE CONFIGURATION (Shared with JMart Safety App)
     // ═══════════════════════════════════════════════════════════════════════════
@@ -132,7 +144,7 @@
                     // Update last seen and auth UID (links Firebase Auth to device)
                     const updates = { lastSeen: new Date().toISOString(), lastApp: 'STEEL' };
                     if (firebaseAuthUid) updates.authUid = firebaseAuthUid;
-                    await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId).update(updates);
+                    await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId).update(sanitizeForFirebase(updates));
                     console.log('✅ Device approved, admin:', this.isAdmin);
                     return { approved: true, admin: this.isAdmin };
                 }
@@ -147,12 +159,12 @@
                 // Register as pending if not already
                 const pendingSnap = await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).once('value');
                 if (!pendingSnap.exists()) {
-                    await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).set({
+                    await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).set(sanitizeForFirebase({
                         ...this.getDeviceInfo(),
                         authUid: firebaseAuthUid || null,
                         requestedAt: new Date().toISOString(),
                         requestedFrom: 'STEEL'
-                    });
+                    }));
                 }
 
                 this.isApproved = false;
@@ -168,13 +180,13 @@
 
         async registerAsApproved(isAdmin) {
             if (!firebaseDb) return;
-            await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId).set({
+            await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId).set(sanitizeForFirebase({
                 ...this.getDeviceInfo(),
                 authUid: firebaseAuthUid || null,
                 isAdmin: isAdmin,
                 approvedAt: new Date().toISOString(),
                 approvedFrom: 'STEEL'
-            });
+            }));
             this.isApproved = true;
             this.isAdmin = isAdmin;
         },
@@ -209,12 +221,12 @@
                 const snap = await pendingRef.once('value');
                 if (!snap.exists()) return false;
                 const deviceData = snap.val();
-                await firebaseDb.ref('jmart-safety/devices/approved/' + deviceId).set({
+                await firebaseDb.ref('jmart-safety/devices/approved/' + deviceId).set(sanitizeForFirebase({
                     ...deviceData,
                     isAdmin: false,
                     approvedAt: new Date().toISOString(),
                     approvedBy: 'Admin (STEEL)'
-                });
+                }));
                 await pendingRef.remove();
                 return true;
             } catch (error) {
@@ -4489,7 +4501,7 @@
             localStorage.setItem('igor-pricing-data', JSON.stringify(data));
             // Sync to Firebase for cross-device access
             if (firebaseDb) {
-                try { firebaseDb.ref('jmart-safety/igor/pricing').set(data); }
+                try { firebaseDb.ref('jmart-safety/igor/pricing').set(sanitizeForFirebase(data)); }
                 catch(e) { console.warn('Igor Firebase save failed:', e.message); }
             }
         } catch (e) {
@@ -4521,11 +4533,11 @@
                 // No data in Firebase — push local if we have any
                 const local = localStorage.getItem('igor-pricing-data');
                 if (local) {
-                    try { firebaseDb.ref('jmart-safety/igor/pricing').set(JSON.parse(local)); }
+                    try { firebaseDb.ref('jmart-safety/igor/pricing').set(sanitizeForFirebase(JSON.parse(local))); }
                     catch(e) { /* ignore */ }
                 }
             }
-        });
+        }, (err) => { console.warn('Igor sync listener error:', err.message); igorFirebaseListenerActive = false; });
     }
     function igorStopSync() {
         if (_igorRef) { _igorRef.off('value'); _igorRef = null; }
@@ -5374,6 +5386,7 @@
         const sizeData = chemical.sizes[chuckSize];
 
         if (!sizeData) return;
+        if (depth <= 0) { document.getElementById('chuckResults').innerHTML = '<div class="result-card" style="grid-column:span 2;"><div class="label">Enter embedment depth</div></div>'; return; }
 
         // Rod diameter = the M-number (M10=10mm, M16=16mm, etc.)
         const rodDia = parseInt(chuckSize.replace('M', ''), 10);
@@ -5588,6 +5601,7 @@
 
         const load = parseInt(loadInput, 10);
         const capacity = loadType === 'tension' ? brittanyTotalTension : brittanyTotalShear;
+        if (!capacity || capacity <= 0) { resultDiv.style.display = 'none'; utilDisplay.style.display = 'none'; return; }
         const utilisation = load / capacity;
         const percent = Math.min(utilisation * 100, 150);
 
@@ -5687,6 +5701,7 @@
         chuckUpdateTimer();
 
         const condNames = { standard: '☀️ Standard', coastal: '🌊 Coastal', shade: '🌥️ Shade' };
+        const temp = chuckCurrentTemp || 20;
         document.getElementById('chuckConsole').textContent = `⏱️ Timer started - ${HILTI_DATA[chuckType].name} • ${condNames[chuckCondition]} • ${temp}°C • ${formatCureTime(chuckCureMinutes)}`;
     }
 
@@ -6271,7 +6286,7 @@
     function hannaSaveReceipts() {
         if (firebaseDb) {
             try {
-                firebaseDb.ref('jmart-safety/hanna/receipts').set(hannaReceipts);
+                firebaseDb.ref('jmart-safety/hanna/receipts').set(sanitizeForFirebase(hannaReceipts));
             } catch (e) { console.warn('Hanna Firebase save failed:', e.message); }
         }
         localStorage.setItem('hannaReceipts', JSON.stringify(hannaReceipts));
@@ -6290,12 +6305,12 @@
                 const local = JSON.parse(localStorage.getItem('hannaReceipts') || '[]');
                 if (local.length > 0) {
                     hannaReceipts = local;
-                    firebaseDb.ref('jmart-safety/hanna/receipts').set(local);
+                    firebaseDb.ref('jmart-safety/hanna/receipts').set(sanitizeForFirebase(local));
                 }
             }
             hannaUpdateRecentList();
             hannaUpdateStats();
-        });
+        }, (err) => { console.warn('Hanna sync listener error:', err.message); hannaFirebaseListenerActive = false; });
     }
 
     function hannaFileSelected(event) {
@@ -6630,7 +6645,7 @@
                 const input = document.getElementById('renameInput-' + editingDeviceId);
                 if (input) { input.focus(); input.select(); }
             }
-        });
+        }, (err) => { console.warn('Settings approved listener error:', err.message); });
 
         // Listen for pending devices
         _settingsPendingRef = firebaseDb.ref('jmart-safety/devices/pending');
@@ -6689,7 +6704,7 @@
                 card.appendChild(row);
                 container.appendChild(card);
             });
-        });
+        }, (err) => { console.warn('Settings pending listener error:', err.message); });
     }
 
     async function saveThisDeviceName() {
@@ -6885,6 +6900,7 @@
             try {
                 const q = encodeURIComponent(`name='${this._esc(HUB_DRIVE_ROOT_FOLDER)}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
                 const resp = await this.apiCall(`https://www.googleapis.com/drive/v3/files?q=${q}`);
+                if (!resp.ok) throw new Error('Drive query failed: ' + resp.status);
                 const data = await resp.json();
                 if (data.files && data.files.length > 0) {
                     this.rootFolderId = data.files[0].id;
@@ -6893,6 +6909,7 @@
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ name: HUB_DRIVE_ROOT_FOLDER, mimeType: 'application/vnd.google-apps.folder' })
                     });
+                    if (!cr.ok) throw new Error('Drive folder create failed: ' + cr.status);
                     this.rootFolderId = (await cr.json()).id;
                 }
                 return this.rootFolderId;
@@ -6911,6 +6928,7 @@
                 try {
                     const q = encodeURIComponent(`name='${this._esc(part)}' and '${parent}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`);
                     const resp = await this.apiCall(`https://www.googleapis.com/drive/v3/files?q=${q}`);
+                    if (!resp.ok) throw new Error('Drive folder query failed: ' + resp.status);
                     const data = await resp.json();
                     if (data.files && data.files.length > 0) {
                         parent = data.files[0].id;
@@ -6919,6 +6937,7 @@
                             method: 'POST', headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ name: part, mimeType: 'application/vnd.google-apps.folder', parents: [parent] })
                         });
+                        if (!cr.ok) throw new Error('Drive subfolder create failed: ' + cr.status);
                         parent = (await cr.json()).id;
                     }
                     this.folderCache[currentPath] = parent;
@@ -7567,7 +7586,7 @@
     function victorSaveProducts() {
         if (firebaseDb) {
             try {
-                firebaseDb.ref('jmart-safety/victor/products').set(victorProducts);
+                firebaseDb.ref('jmart-safety/victor/products').set(sanitizeForFirebase(victorProducts));
             } catch (e) { console.warn('Victor Firebase save failed:', e.message); }
         }
         localStorage.setItem('victor-products', JSON.stringify(victorProducts));
@@ -7599,14 +7618,14 @@
                     victorProducts = VICTOR_SEED_DATA.slice();
                     console.log('Victor: Seeded ' + victorProducts.length + ' SDS products from STEEL database');
                 }
-                firebaseDb.ref('jmart-safety/victor/products').set(victorProducts);
+                firebaseDb.ref('jmart-safety/victor/products').set(sanitizeForFirebase(victorProducts));
             }
             victorRenderProducts();
             // Kick off auto-update for expiring/expired MSDS (runs once after load, 3s delay)
             if (!victorAutoUpdateRunning) {
                 setTimeout(() => victorStartAutoUpdate(), 3000);
             }
-        });
+        }, (err) => { console.warn('Victor sync listener error:', err.message); victorFirebaseListenerActive = false; });
     }
 
     // Calculate compliance status dynamically from msds_date
@@ -8658,7 +8677,7 @@
     function frankSaveHistory() {
         if (firebaseDb) {
             try {
-                firebaseDb.ref('jmart-safety/frank/history').set(frankHistory);
+                firebaseDb.ref('jmart-safety/frank/history').set(sanitizeForFirebase(frankHistory));
             } catch (e) { console.warn('Frank Firebase save failed:', e.message); }
         }
         localStorage.setItem('frank-history', JSON.stringify(frankHistory));
@@ -8669,7 +8688,7 @@
     // Memory sync
     function frankSaveMemory() {
         if (firebaseDb) {
-            try { firebaseDb.ref('jmart-safety/frank/memory').set(frankMemory); }
+            try { firebaseDb.ref('jmart-safety/frank/memory').set(sanitizeForFirebase(frankMemory)); }
             catch (e) { console.warn('Frank memory save failed:', e.message); }
         }
         localStorage.setItem('frank-memory', JSON.stringify(frankMemory));
@@ -8686,16 +8705,16 @@
                 localStorage.setItem('frank-memory', JSON.stringify(data));
             } else if (data === null) {
                 const local = JSON.parse(localStorage.getItem('frank-memory') || '[]');
-                if (local.length > 0) { frankMemory = local; firebaseDb.ref('jmart-safety/frank/memory').set(local); }
+                if (local.length > 0) { frankMemory = local; firebaseDb.ref('jmart-safety/frank/memory').set(sanitizeForFirebase(local)); }
             }
             frankRenderArchive();
-        });
+        }, (err) => { console.warn('Frank memory sync error:', err.message); frankMemoryFirebaseActive = false; });
     }
 
     // Regulation updates sync
     function frankSaveRegUpdates() {
         if (firebaseDb) {
-            try { firebaseDb.ref('jmart-safety/frank/regulation-updates').set(frankRegUpdates); }
+            try { firebaseDb.ref('jmart-safety/frank/regulation-updates').set(sanitizeForFirebase(frankRegUpdates)); }
             catch (e) { console.warn('Frank reg save failed:', e.message); }
         }
         localStorage.setItem('frank-reg-updates', JSON.stringify(frankRegUpdates));
@@ -8711,7 +8730,7 @@
                 localStorage.setItem('frank-reg-updates', JSON.stringify(data));
             }
             frankRenderRegUpdates();
-        });
+        }, (err) => { console.warn('Frank reg sync error:', err.message); });
     }
 
     // Classify job type from description (keyword matching, no API call)
@@ -8766,11 +8785,11 @@
                 const local = JSON.parse(localStorage.getItem('frank-history') || '[]');
                 if (local.length > 0) {
                     frankHistory = local;
-                    firebaseDb.ref('jmart-safety/frank/history').set(local);
+                    firebaseDb.ref('jmart-safety/frank/history').set(sanitizeForFirebase(local));
                 }
             }
             frankRenderArchive();
-        });
+        }, (err) => { console.warn('Frank history sync error:', err.message); frankFirebaseListenerActive = false; });
     }
 
     function frankRenderHistory() {
@@ -9461,6 +9480,7 @@
     // INITIALIZATION
     // ═══════════════════════════════════════════════════════════════════════════
     document.addEventListener('DOMContentLoaded', async () => {
+      try {
         // Check device authorization first
         const authResult = await SteelAuth.init();
         if (!authResult.approved) {
@@ -9499,13 +9519,17 @@
         igorStartSync();
         // Fallback render from localStorage if Firebase hasn't loaded yet
         if (!victorFirebaseListenerActive) {
-            const localVictor = JSON.parse(localStorage.getItem('victor-products') || '[]');
-            victorProducts = localVictor.length > 0 ? localVictor : VICTOR_SEED_DATA.slice();
+            try {
+                const localVictor = JSON.parse(localStorage.getItem('victor-products') || '[]');
+                victorProducts = localVictor.length > 0 ? localVictor : VICTOR_SEED_DATA.slice();
+            } catch(e) { victorProducts = VICTOR_SEED_DATA.slice(); console.warn('Victor localStorage corrupt, using seed data'); }
             victorRenderProducts();
         }
-        if (!frankFirebaseListenerActive) { frankHistory = JSON.parse(localStorage.getItem('frank-history') || '[]'); frankRenderArchive(); }
-        if (!frankMemoryFirebaseActive) { frankMemory = JSON.parse(localStorage.getItem('frank-memory') || '[]'); }
-        frankRegUpdates = JSON.parse(localStorage.getItem('frank-reg-updates') || '[]');
+        try {
+            if (!frankFirebaseListenerActive) { frankHistory = JSON.parse(localStorage.getItem('frank-history') || '[]'); frankRenderArchive(); }
+            if (!frankMemoryFirebaseActive) { frankMemory = JSON.parse(localStorage.getItem('frank-memory') || '[]'); }
+            frankRegUpdates = JSON.parse(localStorage.getItem('frank-reg-updates') || '[]');
+        } catch(e) { console.warn('Frank localStorage corrupt, using defaults:', e.message); }
         frankRenderRegUpdates();
         // Regulation auto-search (January & June)
         if (frankShouldSearchRegs()) { setTimeout(() => frankStartRegSearch(), 5000); }
@@ -9531,6 +9555,15 @@
 
         // Log access
         console.log('🔩 J&M Artsteel Hub loaded. Admin:', SteelAuth.isAdmin);
+      } catch (initError) {
+        console.error('Hub initialization error:', initError);
+        // Show a visible error instead of blank screen
+        const errDiv = document.createElement('div');
+        errDiv.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#dc2626;color:#fff;padding:12px;text-align:center;font-size:14px;z-index:99999;';
+        errDiv.textContent = 'Hub init error: ' + initError.message + ' — tap to reload';
+        errDiv.onclick = () => location.reload();
+        document.body.appendChild(errDiv);
+      }
     });
 
     // ═══════════════════════════════════════════════════════════════════════════
