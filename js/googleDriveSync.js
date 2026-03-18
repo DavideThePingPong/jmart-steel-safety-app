@@ -57,6 +57,8 @@ const GoogleDriveSync = {
             token: response.access_token,
             savedAt: Date.now()
           }));
+          // Remember that user has connected — enables auto-reconnect on next app load
+          localStorage.setItem('google-drive-auto-connect', 'true');
           console.log('Google Drive connected!');
           self._notifyConnectionChange(true, null);
           self.getOrCreateFolder();
@@ -89,9 +91,17 @@ const GoogleDriveSync = {
             this._notifyConnectionChange(true, null);
             this.getOrCreateFolder();
           } else {
-            // Token expired — clear it
+            // Token expired — clear it and try silent reconnect
             localStorage.removeItem('google-drive-token');
+            if (localStorage.getItem('google-drive-auto-connect') === 'true') {
+              console.log('Google Drive token expired, attempting silent reconnect...');
+              this._silentReconnect();
+            }
           }
+        } else if (localStorage.getItem('google-drive-auto-connect') === 'true') {
+          // No token stored but user previously connected — try silent reconnect
+          console.log('Google Drive previously connected, attempting silent reconnect...');
+          this._silentReconnect();
         }
       } catch (e) {
         // Handle old format (raw string, not JSON)
@@ -100,6 +110,17 @@ const GoogleDriveSync = {
     } catch (error) {
       console.error('Google Drive init error:', error);
       if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(error, 'drive-init');
+    }
+  },
+
+  // Silent reconnect — requests a new token without showing consent popup
+  // Only works if the user has previously granted access in this browser session
+  _silentReconnect: function() {
+    if (!this.tokenClient) return;
+    try {
+      this.tokenClient.requestAccessToken({ prompt: '' });
+    } catch (e) {
+      console.log('Silent reconnect failed (expected if no prior session):', e.message);
     }
   },
 
@@ -489,6 +510,7 @@ const GoogleDriveSync = {
     this.accessToken = null;
     this.folderId = null;
     localStorage.removeItem('google-drive-token');
+    localStorage.removeItem('google-drive-auto-connect');
     this._notifyConnectionChange(false, null);
     console.log('Disconnected from Google Drive');
   },

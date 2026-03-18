@@ -241,15 +241,24 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
         return updatedForms;
       });
 
-      const filename = PDFGenerator.download(form);
-      markAsBackedUp(form.id);
-      console.log('Downloaded updated PDF:', filename);
+      try {
+        const filename = PDFGenerator.download(form);
+        if (filename) {
+          markAsBackedUp(form.id);
+          console.log('Downloaded updated PDF:', filename);
 
-      if (GoogleDriveSync.isConnected()) {
-        const { doc } = PDFGenerator.generate(form);
-        const pdfBlob = doc.output('blob');
-        await GoogleDriveSync.uploadPDF(pdfBlob, filename, form.type);
-        console.log('Uploaded new PDF to Drive:', form.type);
+          if (GoogleDriveSync.isConnected()) {
+            const result = PDFGenerator.generate(form);
+            if (result && result.doc) {
+              const pdfBlob = result.doc.output('blob');
+              await GoogleDriveSync.uploadPDF(pdfBlob, filename, form.type);
+              console.log('Uploaded new PDF to Drive:', form.type);
+            }
+          }
+        }
+      } catch (pdfErr) {
+        console.error('PDF generation failed during update:', pdfErr);
+        // Non-fatal — form data is already saved
       }
 
       AuditLogManager.log('update', {
@@ -281,9 +290,16 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
 
   const handleDownloadPDF = () => {
     if (successModal?.form) {
-      const filename = PDFGenerator.download(successModal.form);
-      markAsBackedUp(successModal.form.id);
-      console.log('Downloaded and backed up:', filename);
+      try {
+        const filename = PDFGenerator.download(successModal.form);
+        if (filename) {
+          markAsBackedUp(successModal.form.id);
+          console.log('Downloaded and backed up:', filename);
+        }
+      } catch (e) {
+        console.error('PDF download failed:', e);
+        if (typeof ToastNotifier !== 'undefined') ToastNotifier.error('Could not generate PDF');
+      }
     }
   };
 

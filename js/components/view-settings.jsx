@@ -116,7 +116,7 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
   const [fixStatus, setFixStatus] = useState('');
   const [isFixing, setIsFixing] = useState(false);
   const [fixDone, setFixDone] = useState(false);
-  const currentSites = sites.length > 0 ? sites : FORM_CONSTANTS.defaultSites;
+  const currentSites = [...new Set(sites.length > 0 ? sites : FORM_CONSTANTS.defaultSites)];
 
   // Listen to device changes if admin, viewer, or has revoke permission
   useEffect(() => {

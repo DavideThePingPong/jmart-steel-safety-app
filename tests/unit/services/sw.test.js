@@ -138,6 +138,15 @@ function buildSwEnv() {
 // Tests
 // ===========================================================================
 
+// ---------------------------------------------------------------------------
+// Read CACHE_VERSION dynamically from sw.js so tests never go stale
+// ---------------------------------------------------------------------------
+const CURRENT_VERSION = (function() {
+  const match = SW_SOURCE.match(/const\s+CACHE_VERSION\s*=\s*['"]([^'"]+)['"]/);
+  if (!match) throw new Error('Could not extract CACHE_VERSION from sw.js');
+  return match[1];
+})();
+
 describe('Service Worker (sw.js)', () => {
   let env;
 
@@ -149,14 +158,14 @@ describe('Service Worker (sw.js)', () => {
   // Constants
   // -----------------------------------------------------------------------
   describe('cache constants', () => {
-    it('should define CACHE_VERSION as v73', () => {
-      expect(env.CACHE_VERSION).toBe('v73');
+    it('should define CACHE_VERSION matching sw.js source', () => {
+      expect(env.CACHE_VERSION).toBe(CURRENT_VERSION);
     });
 
     it('should name caches with version suffix', () => {
-      expect(env.STATIC_CACHE).toBe('jmart-static-v73');
-      expect(env.DYNAMIC_CACHE).toBe('jmart-dynamic-v73');
-      expect(env.CDN_CACHE).toBe('jmart-cdn-v73');
+      expect(env.STATIC_CACHE).toBe(`jmart-static-${CURRENT_VERSION}`);
+      expect(env.DYNAMIC_CACHE).toBe(`jmart-dynamic-${CURRENT_VERSION}`);
+      expect(env.CDN_CACHE).toBe(`jmart-cdn-${CURRENT_VERSION}`);
     });
   });
 
@@ -225,9 +234,9 @@ describe('Service Worker (sw.js)', () => {
       env.mockCaches.keys.mockResolvedValue([
         'jmart-static-v54',
         'jmart-cdn-v54',
-        'jmart-static-v73',
-        'jmart-cdn-v73',
-        'jmart-dynamic-v73'
+        `jmart-static-${CURRENT_VERSION}`,
+        `jmart-cdn-${CURRENT_VERSION}`,
+        `jmart-dynamic-${CURRENT_VERSION}`
       ]);
 
       const handler = env.listeners['message'];
@@ -243,10 +252,10 @@ describe('Service Worker (sw.js)', () => {
       expect(deleted).toContain('jmart-static-v54');
       expect(deleted).toContain('jmart-cdn-v54');
 
-      // Current v73 caches MUST be preserved
-      expect(deleted).not.toContain('jmart-static-v73');
-      expect(deleted).not.toContain('jmart-cdn-v73');
-      expect(deleted).not.toContain('jmart-dynamic-v73');
+      // Current version caches MUST be preserved
+      expect(deleted).not.toContain(`jmart-static-${CURRENT_VERSION}`);
+      expect(deleted).not.toContain(`jmart-cdn-${CURRENT_VERSION}`);
+      expect(deleted).not.toContain(`jmart-dynamic-${CURRENT_VERSION}`);
     });
 
     it('should not delete non-jmart caches', async () => {
@@ -306,7 +315,7 @@ describe('Service Worker (sw.js)', () => {
 
       const result = await env.staleWhileRevalidate(
         { url: 'https://jmart-steel-safety.web.app/js/app.js' },
-        'jmart-static-v73'
+        `jmart-static-${CURRENT_VERSION}`
       );
 
       expect(result).toBe(cached);
@@ -319,7 +328,7 @@ describe('Service Worker (sw.js)', () => {
 
       const result = await env.staleWhileRevalidate(
         { url: 'https://jmart-steel-safety.web.app/js/app.js' },
-        'jmart-static-v73'
+        `jmart-static-${CURRENT_VERSION}`
       );
 
       expect(result).toBe(networkResp);

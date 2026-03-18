@@ -5,18 +5,28 @@
 // ========================================
 // Tracks all form operations for compliance
 const AuditLogManager = {
+  // Deep sanitizer: recursively replace undefined with null for Firebase
+  _sanitize: function(obj) {
+    if (obj === undefined) return null;
+    if (obj === null || typeof obj !== 'object') return obj;
+    if (Array.isArray(obj)) return obj.map(function(v) { return AuditLogManager._sanitize(v); });
+    var clean = {};
+    Object.keys(obj).forEach(function(k) {
+      clean[k] = AuditLogManager._sanitize(obj[k]);
+    });
+    return clean;
+  },
+
   // Log an action
   log: async function(action, details) {
-    const logEntry = {
+    var logEntry = {
       id: Date.now().toString(36) + '-' + Math.random().toString(36).substr(2, 9),
-      action: action, // 'create', 'update', 'delete', 'view', 'export'
-      deviceId: (typeof DeviceAuthManager !== 'undefined' ? DeviceAuthManager.deviceId : null) || 'unknown',
+      action: action || 'unknown',
+      deviceId: (typeof DeviceAuthManager !== 'undefined' && DeviceAuthManager.deviceId) ? DeviceAuthManager.deviceId : 'unknown',
       userName: localStorage.getItem('jmart-user-name') || 'Unknown User',
       timestamp: Date.now(), // Must be number for Firebase validation rules
       timestampISO: new Date().toISOString(), // Human-readable version
-      details: details ? Object.fromEntries(
-        Object.entries(details).map(([k, v]) => [k, v === undefined ? null : v])
-      ) : {}
+      details: this._sanitize(details || {})
     };
 
     // Save to local audit log — capped at 200 entries AND 200KB
@@ -44,7 +54,7 @@ const AuditLogManager = {
     // Sync to Firebase if connected
     if (typeof firebaseDb !== 'undefined' && firebaseDb && typeof isFirebaseConfigured !== 'undefined' && isFirebaseConfigured) {
       try {
-        await firebaseDb.ref('jmart-safety/auditLog/' + logEntry.id).set(logEntry);
+        await firebaseDb.ref('jmart-safety/auditLog/' + logEntry.id).set(this._sanitize(logEntry));
       } catch (e) {
         console.error('Error syncing audit log to Firebase:', e);
         if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(e, 'audit-firebase');

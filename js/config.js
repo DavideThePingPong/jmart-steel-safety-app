@@ -45,9 +45,17 @@ if (isFirebaseConfigured) {
     firebaseAuthReady = firebase.auth().signInAnonymously().then(cred => {
       firebaseAuthUid = cred.user.uid;
       console.log('Firebase connected, auth uid:', firebaseAuthUid);
+      // TASK-008: Start backup scheduler after auth is ready
+      if (typeof DailyBackupScheduler !== 'undefined') {
+        DailyBackupScheduler.start();
+      }
       return cred.user.uid;
     }).catch(err => {
       console.warn('Anonymous auth failed (app still works):', err.message);
+      // Still start scheduler even without auth (local backup still works)
+      if (typeof DailyBackupScheduler !== 'undefined') {
+        DailyBackupScheduler.start();
+      }
       return null;
     });
     console.log('Firebase connected successfully!');

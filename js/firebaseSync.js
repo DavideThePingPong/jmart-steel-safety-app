@@ -1,5 +1,19 @@
 // Firebase Sync
 // Extracted from index.html for maintainability
+
+// Universal sanitizer: recursively replace undefined with null in any object
+// Firebase Realtime DB rejects .set()/.update() if ANY nested value is undefined
+function sanitizeForFirebase(obj) {
+  if (obj === undefined) return null;
+  if (obj === null || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(sanitizeForFirebase);
+  var clean = {};
+  Object.keys(obj).forEach(function(k) {
+    clean[k] = sanitizeForFirebase(obj[k]);
+  });
+  return clean;
+}
+
 const FirebaseSync = {
   // Retry queue stored in localStorage
   pendingQueue: [],
@@ -279,8 +293,8 @@ const FirebaseSync = {
     if (item.path && item.operation) {
       const ref = firebaseDb.ref(item.path);
       switch (item.operation) {
-        case 'set': await ref.set(item.data); break;
-        case 'update': await ref.update(item.data); break;
+        case 'set': await ref.set(sanitizeForFirebase(item.data)); break;
+        case 'update': await ref.update(sanitizeForFirebase(item.data)); break;
         case 'delete': await ref.remove(); break;
         default: throw new Error('Unknown operation: ' + item.operation);
       }
@@ -290,7 +304,7 @@ const FirebaseSync = {
     // Legacy bulk operations (fallback)
     switch (item.type) {
       case 'forms':
-        await firebaseDb.ref('jmart-safety/forms').set(item.data);
+        await firebaseDb.ref('jmart-safety/forms').set(sanitizeForFirebase(item.data));
         break;
       case 'sites': {
         // Sanitize queued sites data — old queue entries may contain corrupted objects
@@ -307,10 +321,10 @@ const FirebaseSync = {
         break;
       }
       case 'training':
-        await firebaseDb.ref('jmart-safety/training').set(item.data);
+        await firebaseDb.ref('jmart-safety/training').set(sanitizeForFirebase(item.data));
         break;
       case 'signatures':
-        await firebaseDb.ref('signatures').set(item.data);
+        await firebaseDb.ref('signatures').set(sanitizeForFirebase(item.data));
         break;
       default:
         throw new Error('Unknown sync type: ' + item.type);
@@ -334,12 +348,13 @@ const FirebaseSync = {
       const updates = {};
       const formsArray = Array.isArray(forms) ? forms : Object.values(forms || {});
       formsArray.forEach(form => {
+        if (!form || !form.id) return; // Skip invalid forms
         const key = form.id || ('form-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6));
-        updates[key] = {
+        updates[key] = sanitizeForFirebase({
           ...form,
           _lastModified: Date.now(),
           _modifiedBy: deviceId
-        };
+        });
       });
       // Single atomic update of all forms (granular keys, no full overwrite)
       await firebaseDb.ref('jmart-safety/forms').update(updates);
@@ -402,7 +417,7 @@ const FirebaseSync = {
       const updates = {};
       trainingArray.forEach((record, i) => {
         const key = record.id || ('training-' + i);
-        updates[key] = { ...record, _lastModified: Date.now() };
+        updates[key] = sanitizeForFirebase({ ...record, _lastModified: Date.now() });
       });
       await firebaseDb.ref('jmart-safety/training').update(updates);
       console.log('Training synced to Firebase (granular):', trainingArray.length, 'records');

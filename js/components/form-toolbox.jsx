@@ -23,7 +23,7 @@ function ToolboxView({ onSubmit, onUpdate, editingForm, sites = [] }) {
   const teamMembers = FORM_CONSTANTS.teamMembers;
   const preparers = FORM_CONSTANTS.supervisors;
   const builders = FORM_CONSTANTS.builders;
-  const sitesList = (sites.length > 0 ? sites : FORM_CONSTANTS.defaultSites).filter(s => typeof s === 'string');
+  const sitesList = [...new Set((sites.length > 0 ? sites : FORM_CONSTANTS.defaultSites).filter(s => typeof s === 'string'))];
 
   const topics = [
     'Manual Handling', 'Working at Heights', 'Hot Work Safety', 'PPE Requirements',

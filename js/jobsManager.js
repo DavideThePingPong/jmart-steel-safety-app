@@ -19,9 +19,12 @@ const JobsManager = {
     // Listen for real-time job updates
     firebaseDb.ref('jmart-safety/jobs').on('value', (snapshot) => {
       const data = snapshot.val();
-      this.jobs = data ? Object.entries(data).map(([id, job]) => ({ id, ...job })) : [];
+      this.jobs = data ? Object.entries(data).map(([id, job]) => ({ id, ...(job || {}) })) : [];
       this.notifyListeners();
       console.log('JobsManager: Loaded', this.jobs.length, 'jobs');
+    }, (error) => {
+      console.error('JobsManager: Firebase listener error:', error);
+      if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(error, 'jobs-listener');
     });
 
     // Migrate old sites to new jobs structure if needed

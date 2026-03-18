@@ -81,7 +81,7 @@ function PrestartView({ onSubmit, onUpdate, editingForm, previousPrestarts = [],
   const displayDate = formDate.toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const displayTime = formDate.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
   const builders = FORM_CONSTANTS.builders;
-  const sitesList = (sites.length > 0 ? sites : FORM_CONSTANTS.defaultSites).filter(s => typeof s === 'string');
+  const sitesList = [...new Set((sites.length > 0 ? sites : FORM_CONSTANTS.defaultSites).filter(s => typeof s === 'string'))];
   const teamMembers = FORM_CONSTANTS.teamMembers;
   const checklistTypes = FORM_CONSTANTS.checklistTypes;
   const checklistItems = FORM_CONSTANTS.checklistItems;

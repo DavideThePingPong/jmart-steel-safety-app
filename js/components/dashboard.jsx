@@ -21,7 +21,7 @@ function Dashboard({ setCurrentView, forms, onViewForm, isFormBackedUp, sites = 
   };
 
   const defaultSites = ['Site 1 - Sydney CBD', 'Site 2 - Parramatta', 'Site 3 - North Sydney'];
-  const allJobs = sites.length > 0 ? sites : defaultSites;
+  const allJobs = [...new Set(sites.length > 0 ? sites : defaultSites)];
 
   const recentForms = forms.slice(0, 10); // Show last 10 forms
 

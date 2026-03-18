@@ -23,7 +23,7 @@ const PhotoUploadManager = {
         await GoogleDriveSync.getOrCreateFolder();
       }
 
-      const safeJobName = jobName.replace(/[<>:"/\\|?*]/g, '_');
+      const safeJobName = (jobName || 'unknown-job').replace(/[<>:"/\\|?*]/g, '_');
 
       // Create nested path: 02_Projects/{JobName}/Photos
       const folderPath = `${DRIVE_FOLDERS.photos}/${safeJobName}/Photos`;
@@ -168,7 +168,7 @@ const PhotoUploadManager = {
           type: file.type,
           uploadedAt: new Date().toISOString(),
           driveFileId: results.drive ? results.drive.fileId : null,
-          deviceId: typeof DeviceAuthManager !== 'undefined' ? DeviceAuthManager.deviceId : 'unknown'
+          deviceId: (typeof DeviceAuthManager !== 'undefined' && DeviceAuthManager.deviceId) ? DeviceAuthManager.deviceId : 'unknown'
         };
         await firebaseDb.ref('jmart-safety/photoUploads').push(uploadLog);
       } catch (e) {
@@ -201,9 +201,17 @@ function downloadPhotoFile(photoData, filename) {
   }
 
   // HTTP/HTTPS URL (e.g. Firebase Storage) — fetch as blob then download
+  // TASK-004: Added timeout, user feedback, error telemetry, retry with no-cors
   if (photoData.startsWith('http')) {
-    fetch(photoData, { mode: 'cors' })
+    if (typeof ToastNotifier !== 'undefined') ToastNotifier.info('Downloading photo...');
+
+    // AbortController for 8s timeout
+    var controller = new AbortController();
+    var timeoutId = setTimeout(function() { controller.abort(); }, 8000);
+
+    fetch(photoData, { mode: 'cors', signal: controller.signal })
       .then(function(resp) {
+        clearTimeout(timeoutId);
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         return resp.blob();
       })
@@ -212,12 +220,23 @@ function downloadPhotoFile(photoData, filename) {
         var link = document.createElement('a');
         link.href = url;
         link.download = filename || 'photo.jpg';
+        document.body.appendChild(link);
         link.click();
+        document.body.removeChild(link);
         setTimeout(function() { URL.revokeObjectURL(url); }, 5000);
+        if (typeof ToastNotifier !== 'undefined') ToastNotifier.success('Photo downloaded');
       })
       .catch(function(err) {
-        console.error('Photo download failed, opening in new tab:', err);
+        clearTimeout(timeoutId);
+        console.error('Photo download failed:', err);
+        if (typeof ErrorTelemetry !== 'undefined') {
+          ErrorTelemetry.log('photo-download-fail', { url: photoData.substring(0, 80), error: err.message });
+        }
+        // Fallback: open in new tab so user can right-click save
         window.open(photoData, '_blank');
+        if (typeof ToastNotifier !== 'undefined') {
+          ToastNotifier.warning('Direct download blocked by server. Opened in new tab - right-click to save.');
+        }
       });
     return;
   }

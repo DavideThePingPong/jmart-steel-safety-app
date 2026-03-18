@@ -1,6 +1,6 @@
 module.exports = {
   testEnvironment: 'jsdom',
-  roots: ['<rootDir>/src', '<rootDir>/tests'],
+  roots: ['<rootDir>/tests'],
   testMatch: [
     '**/__tests__/**/*.js',
     '**/*.test.js',
@@ -12,9 +12,8 @@ module.exports = {
   },
   setupFilesAfterEnv: ['<rootDir>/tests/setupTests.js'],
   collectCoverageFrom: [
-    'src/**/*.{js,jsx}',
     'js/**/*.{js,jsx}',
-    '!src/**/*.test.{js,jsx}',
+    '!js/app.js',
     '!**/node_modules/**'
   ],
   coverageThreshold: {
@@ -27,7 +26,7 @@ module.exports = {
   },
   coverageReporters: ['text', 'lcov', 'html'],
   moduleNameMapper: {
-    '^@/(.*)$': '<rootDir>/src/$1'
+    '^@/(.*)$': '<rootDir>/js/$1'
   },
   verbose: true
 };

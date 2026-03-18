@@ -532,7 +532,13 @@ const PDFGenerator = {
   },
 
   download: function(form) {
-    const { doc, filename } = this.generate(form);
+    const result = this.generate(form);
+    if (!result || !result.doc) {
+      console.error('PDF generation failed for form:', form?.id);
+      if (typeof ToastNotifier !== 'undefined') ToastNotifier.error('Could not generate PDF. Please try again.');
+      return null;
+    }
+    const { doc, filename } = result;
     doc.save(filename);
     return filename;
   }

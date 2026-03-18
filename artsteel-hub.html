@@ -3535,6 +3535,8 @@
         hobartUpdate();
     }
 
+    // TASK-007: Cache last rendered sizes to prevent duplicate re-renders
+    var _hobartLastSizesKey = '';
     function hobartUpdateSizes() {
         const container = document.getElementById('hobartSizeButtons');
         let sizes = ['M8','M10','M12','M16','M20'];
@@ -3542,13 +3544,23 @@
         else if (hobartType === 'HBCSK') sizes = ['M8','M10','M12','M16'];
         else if (hobartType === 'LB') sizes = ['M10','M12','M16','M20','M24'];
 
-        container.innerHTML = sizes.map(s =>
-            `<button class="btn${s === hobartSize ? ' active' : ''}" onclick="hobartSetSize('${escapeHtml(s)}', this)">${escapeHtml(s)}</button>`
-        ).join('');
+        const sizeKey = hobartType + ':' + sizes.join(',');
+        // Only re-render buttons if sizes actually changed
+        if (sizeKey !== _hobartLastSizesKey) {
+            _hobartLastSizesKey = sizeKey;
+            container.innerHTML = sizes.map(s =>
+                `<button class="btn${s === hobartSize ? ' active' : ''}" onclick="hobartSetSize('${escapeHtml(s)}', this)">${escapeHtml(s)}</button>`
+            ).join('');
+        } else {
+            container.querySelectorAll('.btn').forEach(b => {
+                b.classList.toggle('active', b.textContent === hobartSize);
+            });
+        }
 
         if (!sizes.includes(hobartSize)) {
             hobartSize = sizes[0];
-            container.querySelector('.btn').classList.add('active');
+            var firstBtn = container.querySelector('.btn');
+            if (firstBtn) firstBtn.classList.add('active');
         }
     }
 
@@ -3830,7 +3842,7 @@
         const qty = parseInt(qtyInput.value, 10) || 1;
 
         if (!section || !length) {
-            alert('Please select a section and enter a length');
+            showToast('Please select a section and enter a length', 'warning');
             return;
         }
 
@@ -3873,7 +3885,7 @@
     // Calculate total weight
     function igorCalculateTotal() {
         if (igorMembers.length === 0) {
-            alert('Please add at least one steel member');
+            showToast('Please add at least one steel member', 'warning');
             return;
         }
 
@@ -4579,7 +4591,7 @@
             }
         } catch (error) {
             consoleEl.textContent = `❌ Error: ${error.message}`;
-            alert('Failed to process file: ' + error.message);
+            showToast('Failed to process file: ' + error.message, 'error');
         }
     }
 
@@ -4868,7 +4880,7 @@
 
         // Validate required columns
         if (sizeCol === '' && priceCol === '') {
-            alert('Please select at least the Size and Price columns');
+            showToast('Please select at least the Size and Price columns', 'warning');
             return;
         }
 
@@ -4949,7 +4961,7 @@
         });
 
         if (imported === 0) {
-            alert('No valid price data found. Please check column mapping.');
+            showToast('No valid price data found. Please check column mapping.', 'warning');
             return;
         }
 
@@ -5190,7 +5202,7 @@
     function igorAddSupplier() {
         const name = document.getElementById('igorNewSupplierName').value.trim();
         if (!name) {
-            alert('Please enter a supplier name');
+            showToast('Please enter a supplier name', 'warning');
             return;
         }
 
@@ -5318,12 +5330,24 @@
         chuckCalculate();
     }
 
+    // TASK-007: Cache last rendered sizes to prevent duplicate re-renders
+    var _chuckLastSizesKey = '';
     function chuckUpdateSizes() {
         const sizes = Object.keys(HILTI_DATA[chuckType].sizes);
+        const sizeKey = chuckType + ':' + sizes.join(',');
         const container = document.getElementById('chuckSizeButtons');
-        container.innerHTML = sizes.map(s =>
-            `<button class="btn${s === chuckSize ? ' active' : ''}" onclick="chuckSetSize('${escapeHtml(s)}', this)">${escapeHtml(s)}</button>`
-        ).join('');
+        // Only re-render buttons if sizes actually changed
+        if (sizeKey !== _chuckLastSizesKey) {
+            _chuckLastSizesKey = sizeKey;
+            container.innerHTML = sizes.map(s =>
+                `<button class="btn${s === chuckSize ? ' active' : ''}" onclick="chuckSetSize('${escapeHtml(s)}', this)">${escapeHtml(s)}</button>`
+            ).join('');
+        } else {
+            // Just update active state without re-rendering
+            container.querySelectorAll('.btn').forEach(b => {
+                b.classList.toggle('active', b.textContent === chuckSize);
+            });
+        }
         if (!sizes.includes(chuckSize)) {
             chuckSize = sizes[Math.floor(sizes.length/2)];
         }
@@ -5420,14 +5444,25 @@
         brittanyCalculate();
     }
 
+    // TASK-007: Cache last rendered sizes to prevent duplicate re-renders
+    var _brittanyLastSizesKey = '';
     function brittanyUpdateSizes() {
         const data = FIXING_DATA[brittanyType];
         const availableSizes = Object.keys(data.sizes);
+        const sizeKey = brittanyType + ':' + availableSizes.join(',');
         const container = document.getElementById('brittanySizeButtons');
 
-        container.innerHTML = availableSizes.map(s =>
-            `<button class="btn${s === brittanySize ? ' active' : ''}" onclick="brittanySetSize('${escapeHtml(s)}', this)">${escapeHtml(s)}</button>`
-        ).join('');
+        // Only re-render buttons if sizes actually changed
+        if (sizeKey !== _brittanyLastSizesKey) {
+            _brittanyLastSizesKey = sizeKey;
+            container.innerHTML = availableSizes.map(s =>
+                `<button class="btn${s === brittanySize ? ' active' : ''}" onclick="brittanySetSize('${escapeHtml(s)}', this)">${escapeHtml(s)}</button>`
+            ).join('');
+        } else {
+            container.querySelectorAll('.btn').forEach(b => {
+                b.classList.toggle('active', b.textContent === brittanySize);
+            });
+        }
 
         if (!availableSizes.includes(brittanySize)) {
             brittanySize = availableSizes[0];
@@ -6656,13 +6691,13 @@
 
     async function saveThisDeviceName() {
         const name = document.getElementById('thisDeviceName').value.trim();
-        if (!name) { alert('Please enter a device name'); return; }
+        if (!name) { showToast('Please enter a device name', 'warning'); return; }
         if (!firebaseDb) return;
         try {
             await firebaseDb.ref('jmart-safety/devices/approved/' + SteelAuth.deviceId + '/name').set(name);
             document.getElementById('settingsConsole').textContent = '✅ Device name saved: ' + name;
         } catch (error) {
-            alert('Failed to save device name');
+            showToast('Failed to save device name', 'error');
         }
     }
 
@@ -6680,30 +6715,30 @@
         const input = document.getElementById('renameInput-' + deviceId);
         if (!input) return;
         const newName = input.value.trim();
-        if (!newName) { alert('Device name cannot be empty'); return; }
+        if (!newName) { showToast('Device name cannot be empty', 'warning'); return; }
         const success = await SteelAuth.renameDevice(deviceId, newName);
         editingDeviceId = null;
         if (!success) {
-            alert('Failed to rename device');
+            showToast('Failed to rename device', 'error');
         }
     }
 
     async function handleApproveDevice(deviceId) {
         if (!confirm('Approve this device?')) return;
         const success = await SteelAuth.approveDevice(deviceId);
-        if (!success) alert('Failed to approve device');
+        if (!success) showToast('Failed to approve device', 'error');
     }
 
     async function handleDenyDevice(deviceId) {
         if (!confirm('Deny and remove this device request?')) return;
         const success = await SteelAuth.denyDevice(deviceId);
-        if (!success) alert('Failed to deny device');
+        if (!success) showToast('Failed to deny device', 'error');
     }
 
     async function handleRemoveDevice(deviceId) {
         if (!confirm('Remove this device? It will need to be re-approved.')) return;
         const success = await SteelAuth.removeDevice(deviceId);
-        if (!success) alert('Failed to remove device');
+        if (!success) showToast('Failed to remove device', 'error');
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -7997,7 +8032,7 @@
 
         // Check API key first
         if (!getApiKey()) {
-            alert('No API key configured. Go to Settings (⚙️) and add your Anthropic API key first.');
+            showToast('No API key configured. Go to Settings and add your Anthropic API key first.', 'warning');
             victorLog('⚠️ API key needed — go to Settings to add it');
             return;
         }
@@ -8114,7 +8149,7 @@
             return;
         }
         if (!getApiKey()) {
-            alert('No API key configured. Go to Settings and add your Anthropic API key first.');
+            showToast('No API key configured. Go to Settings and add your Anthropic API key first.', 'warning');
             return;
         }
         const btn = document.getElementById('victorRefreshAllBtn');
@@ -8219,7 +8254,7 @@
     async function victorSearch() {
         const productName = document.getElementById('victorProductName').value.trim();
         const manufacturer = document.getElementById('victorManufacturer').value.trim();
-        if (!productName) { alert('Enter a product name'); return; }
+        if (!productName) { showToast('Enter a product name', 'warning'); return; }
 
         const console_el = document.getElementById('victorConsole');
         const searching = document.getElementById('victorSearching');
@@ -8393,7 +8428,7 @@
             return;
         }
         if (!getApiKey()) {
-            alert('No API key configured. Go to Settings and add your Anthropic API key first.');
+            showToast('No API key configured. Go to Settings and add your Anthropic API key first.', 'warning');
             victorLog('⚠️ API key needed for PDF upload');
             return;
         }
@@ -8548,7 +8583,7 @@
 
     function victorSaveUpload() {
         const name = document.getElementById('victorUpName').value.trim();
-        if (!name) { alert('Product name is required.'); return; }
+        if (!name) { showToast('Product name is required.', 'warning'); return; }
 
         const dateVal = document.getElementById('victorUpDate').value.trim();
         const product = {
@@ -8883,11 +8918,11 @@
         const ext = file.name.toLowerCase().split('.').pop();
         const validTypes = ['pdf', 'txt', 'png', 'jpg', 'jpeg'];
         if (!validTypes.includes(ext)) {
-            alert('Supported formats: PDF, TXT, PNG, JPG');
+            showToast('Supported formats: PDF, TXT, PNG, JPG', 'warning');
             return;
         }
         if (file.size > 10 * 1024 * 1024) {
-            alert('File too large (' + (file.size / 1024 / 1024).toFixed(1) + 'MB). Max 10MB.');
+            showToast('File too large (' + (file.size / 1024 / 1024).toFixed(1) + 'MB). Max 10MB.', 'warning');
             return;
         }
 
@@ -8907,7 +8942,7 @@
                     reader.readAsText(file);
                 });
             } else {
-                if (!getApiKey()) { alert('API key needed for PDF/image extraction.'); progress.style.display = 'none'; return; }
+                if (!getApiKey()) { showToast('API key needed for PDF/image extraction.', 'warning'); progress.style.display = 'none'; return; }
                 status.textContent = '🤖 Extracting requirements...';
 
                 const base64 = await new Promise((resolve, reject) => {

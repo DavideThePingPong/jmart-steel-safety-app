@@ -35,7 +35,7 @@ function SubcontractorInspectionView({ onSubmit, onUpdate, editingForm, sites = 
   const todayDate = new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const preparers = FORM_CONSTANTS.supervisors;
   const inspectors = ['Scott Seeho', 'Davide Casolini'];
-  const sitesList = (sites.length > 0 ? sites : FORM_CONSTANTS.defaultSites).filter(s => typeof s === 'string');
+  const sitesList = [...new Set((sites.length > 0 ? sites : FORM_CONSTANTS.defaultSites).filter(s => typeof s === 'string'))];
 
   useEffect(() => {
     const data = editingForm?.data || {};

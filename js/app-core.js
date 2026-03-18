@@ -1402,8 +1402,8 @@ function useFormManager({
           formId: formId,
           formType: deletedForm?.type || 'unknown',
           site: deletedForm?.data?.siteConducted || deletedForm?.data?.site || 'Unknown',
-          originalCreatedBy: deletedForm?.createdBy,
-          originalCreatedAt: deletedForm?.createdAt,
+          originalCreatedBy: deletedForm?.createdBy || deletedForm?._modifiedBy || 'unknown',
+          originalCreatedAt: deletedForm?.createdAt || 'unknown',
           action: 'Form deleted'
         });
       }
