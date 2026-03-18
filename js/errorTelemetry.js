@@ -221,7 +221,7 @@ const ErrorTelemetry = {
     };
 
     try {
-      firebaseDb.ref('jmart-safety/errors/' + deviceId + '/' + key).set(payload);
+      firebaseDb.ref('jmart-safety/errors/' + deviceId + '/' + key).set(typeof sanitizeForFirebase === 'function' ? sanitizeForFirebase(payload) : payload);
     } catch (e) {
       // Firebase write failed — drop silently, errors are still in localStorage
       console.warn('[ErrorTelemetry] Firebase sync failed:', e.message);

@@ -31,7 +31,7 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
   });
 
   const deletingFormRef = useRef(false);
-  const deletedFormIdsRef = useRef(new Set(JSON.parse(localStorage.getItem('jmart-deleted-form-ids') || '[]')));
+  const deletedFormIdsRef = useRef(new Set(function() { try { return JSON.parse(localStorage.getItem('jmart-deleted-form-ids') || '[]'); } catch(e) { return []; } }()));
 
   // Mark form as backed up (after PDF download)
   const markAsBackedUp = (formId) => {
@@ -48,7 +48,7 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
     setSavedSignatures(newSignatures);
     if (typeof StorageQuotaManager !== 'undefined' && StorageQuotaManager.safeSignaturesWrite) { StorageQuotaManager.safeSignaturesWrite(newSignatures); } else { localStorage.setItem('jmart-team-signatures', JSON.stringify(newSignatures)); }
     if (FirebaseSync.isConnected()) {
-      firebaseDb.ref('signatures').set(newSignatures)
+      firebaseDb.ref('signatures').set(typeof sanitizeForFirebase === 'function' ? sanitizeForFirebase(newSignatures) : newSignatures)
         .catch(err => console.error('Signature sync error:', err));
     }
   };
@@ -801,7 +801,7 @@ function useDeviceAuth() {
               approvalRef.off('value');
               window.location.reload();
             }
-          });
+          }, function(err) { console.warn('[hooks] Approval listener error:', err.message); });
           cleanups.push(() => approvalRef.off('value'));
         }
       }

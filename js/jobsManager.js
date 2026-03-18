@@ -105,7 +105,8 @@ const JobsManager = {
     };
 
     try {
-      const ref = await firebaseDb.ref('jmart-safety/jobs').push(job);
+      var safeJob = typeof sanitizeForFirebase === 'function' ? sanitizeForFirebase(job) : job;
+      const ref = await firebaseDb.ref('jmart-safety/jobs').push(safeJob);
       console.log('JobsManager: Added job', job.name, ref.key);
       return { id: ref.key, ...job };
     } catch (error) {
@@ -119,7 +120,8 @@ const JobsManager = {
     if (!firebaseDb || !jobId) return false;
 
     try {
-      const updateData = { ...updates, updatedAt: new Date().toISOString() };
+      var updateData = { ...updates, updatedAt: new Date().toISOString() };
+      updateData = typeof sanitizeForFirebase === 'function' ? sanitizeForFirebase(updateData) : updateData;
       await firebaseDb.ref(`jmart-safety/jobs/${jobId}`).update(updateData);
       console.log('JobsManager: Updated job', jobId);
       return true;

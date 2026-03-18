@@ -133,7 +133,7 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
   useEffect(() => {
     if (typeof GoogleDriveSync === 'undefined') return;
     let active = true;
-    GoogleDriveSync.onConnectionChange((connected, error) => {
+    var unsubscribe = GoogleDriveSync.onConnectionChange((connected, error) => {
       if (!active) return;
       setDriveConnected(connected);
       if (error) {
@@ -142,7 +142,7 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
         setDriveError('');
       }
     });
-    return () => { active = false; };
+    return () => { active = false; if (typeof unsubscribe === 'function') unsubscribe(); };
   }, []);
 
   const handleApproveDevice = async (deviceId) => {

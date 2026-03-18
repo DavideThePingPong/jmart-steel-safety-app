@@ -3787,6 +3787,7 @@
             return;
         }
 
+        if (!STEEL_SECTIONS[selectedType]) return;
         const sections = STEEL_SECTIONS[selectedType].data;
         sectionSelect.innerHTML = '<option value="">Select section</option>';
 
@@ -5333,6 +5334,7 @@
     // TASK-007: Cache last rendered sizes to prevent duplicate re-renders
     var _chuckLastSizesKey = '';
     function chuckUpdateSizes() {
+        if (!HILTI_DATA[chuckType]) return;
         const sizes = Object.keys(HILTI_DATA[chuckType].sizes);
         const sizeKey = chuckType + ':' + sizes.join(',');
         const container = document.getElementById('chuckSizeButtons');
@@ -5448,6 +5450,7 @@
     var _brittanyLastSizesKey = '';
     function brittanyUpdateSizes() {
         const data = FIXING_DATA[brittanyType];
+        if (!data) return;
         const availableSizes = Object.keys(data.sizes);
         const sizeKey = brittanyType + ':' + availableSizes.join(',');
         const container = document.getElementById('brittanySizeButtons');
@@ -8800,9 +8803,9 @@
         list.innerHTML = filtered.slice(0, 20).map(h =>
             '<div style="background:rgba(16,185,129,0.05);border:1px solid rgba(16,185,129,0.15);border-radius:8px;padding:10px;margin-bottom:6px;cursor:pointer;" onclick="frankShowSaved(' + h._idx + ')">' +
             '<div style="display:flex;justify-content:space-between;align-items:center;">' +
-            '<div><strong style="color:#fff;font-size:13px;">' + escapeHtml(h.jobDesc.substring(0, 50)) + (h.jobDesc.length > 50 ? '...' : '') + '</strong>' +
+            '<div><strong style="color:#fff;font-size:13px;">' + escapeHtml((h.jobDesc || '').substring(0, 50)) + ((h.jobDesc || '').length > 50 ? '...' : '') + '</strong>' +
             '<br><span style="font-size:11px;color:#888;">' + escapeHtml(h.date || '') + (h.jobNumber ? ' | Job #' + escapeHtml(h.jobNumber) : '') +
-            ' | <span style="color:#34d399;">' + escapeHtml(frankClassifyJobType(h.jobDesc)) + '</span></span></div>' +
+            ' | <span style="color:#34d399;">' + escapeHtml(frankClassifyJobType(h.jobDesc || '')) + '</span></span></div>' +
             '<button onclick="event.stopPropagation();frankDownloadSWMS(' + h._idx + ')" style="color:#667eea;background:none;border:none;cursor:pointer;font-size:13px;margin-right:6px;" title="Download PDF">📥</button>' +
             '<button onclick="event.stopPropagation();frankRemoveHistory(' + h._idx + ')" style="color:#f44336;background:none;border:none;cursor:pointer;font-size:14px;">✕</button>' +
             '</div></div>'

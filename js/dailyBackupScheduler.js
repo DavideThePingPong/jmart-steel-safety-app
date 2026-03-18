@@ -65,15 +65,19 @@ const DailyBackupScheduler = {
   },
 
   _fire: async function() {
-    var today = new Date().toDateString();
-    this.lastBackupDate = localStorage.getItem('last-drive-backup-date');
+    try {
+      var today = new Date().toDateString();
+      this.lastBackupDate = localStorage.getItem('last-drive-backup-date');
 
-    if (this.lastBackupDate !== today) {
-      console.log('7pm backup triggered!');
-      await this.performBackup();
+      if (this.lastBackupDate !== today) {
+        console.log('7pm backup triggered!');
+        await this.performBackup();
+      }
+    } catch (e) {
+      console.error('[DailyBackup] _fire error (will reschedule):', e.message);
     }
 
-    // Reschedule for tomorrow
+    // Reschedule for tomorrow — always runs even if backup failed
     this._scheduleNext();
   },
 

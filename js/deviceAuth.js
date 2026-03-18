@@ -151,7 +151,11 @@ const DeviceAuth = {
           if (oldData.status && typeof oldData.status === 'string') {
             console.log('Migrating device from old path:', oldData.status);
             const targetPath = 'jmart-safety/devices/' + oldData.status + '/' + this.deviceId;
-            await firebaseDb.ref(targetPath).set({
+            await firebaseDb.ref(targetPath).set(typeof sanitizeForFirebase === 'function' ? sanitizeForFirebase({
+              ...oldData,
+              id: this.deviceId,
+              migratedAt: new Date().toISOString()
+            }) : {
               ...oldData,
               id: this.deviceId,
               migratedAt: new Date().toISOString()
@@ -300,7 +304,7 @@ const DeviceAuth = {
         status: 'pending'
       };
 
-      await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).set(deviceData);
+      await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).set(typeof sanitizeForFirebase === 'function' ? sanitizeForFirebase(deviceData) : deviceData);
       console.log('Device registered as pending approval');
       this.notifyAdminsOfNewDevice(deviceData);
     } catch (e) {
@@ -362,29 +366,34 @@ const DeviceAuth = {
   registerAsApproved: async function(isAdmin = false) {
     if (!firebaseDb) return;
 
-    const deviceData = {
-      ...this.deviceInfo,
-      authUid: firebaseAuthUid || null,
-      isAdmin: isAdmin,
-      approvedAt: new Date().toISOString(),
-      approvedBy: isAdmin ? 'SYSTEM (First Device)' : 'Admin',
-      lastSeen: new Date().toISOString()
-    };
+    try {
+      const deviceData = {
+        ...this.deviceInfo,
+        authUid: firebaseAuthUid || null,
+        isAdmin: isAdmin,
+        approvedAt: new Date().toISOString(),
+        approvedBy: isAdmin ? 'SYSTEM (First Device)' : 'Admin',
+        lastSeen: new Date().toISOString()
+      };
 
-    await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId).set(deviceData);
+      await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId).set(typeof sanitizeForFirebase === 'function' ? sanitizeForFirebase(deviceData) : deviceData);
 
-    // Register admin auth UID for Firebase rules enforcement
-    if (isAdmin && firebaseAuthUid) {
-      try {
-        await firebaseDb.ref('jmart-safety/adminAuthUids/' + firebaseAuthUid).set(true);
-        console.log('Admin auth UID registered:', firebaseAuthUid);
-      } catch (e) {
-        console.warn('Could not register admin auth UID (non-fatal):', e.message);
+      // Register admin auth UID for Firebase rules enforcement
+      if (isAdmin && firebaseAuthUid) {
+        try {
+          await firebaseDb.ref('jmart-safety/adminAuthUids/' + firebaseAuthUid).set(true);
+          console.log('Admin auth UID registered:', firebaseAuthUid);
+        } catch (e) {
+          console.warn('Could not register admin auth UID (non-fatal):', e.message);
+        }
       }
-    }
 
-    // Remove from pending if exists
-    await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).remove();
+      // Remove from pending if exists
+      await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).remove();
+    } catch (e) {
+      console.error('[DeviceAuth] registerAsApproved failed:', e.message);
+      return;
+    }
 
     this.isApproved = true;
     this.isAdmin = isAdmin;
@@ -417,7 +426,7 @@ const DeviceAuth = {
       };
 
       // Move to approved
-      await firebaseDb.ref('jmart-safety/devices/approved/' + deviceId).set(approvedData);
+      await firebaseDb.ref('jmart-safety/devices/approved/' + deviceId).set(typeof sanitizeForFirebase === 'function' ? sanitizeForFirebase(approvedData) : approvedData);
       await firebaseDb.ref('jmart-safety/devices/pending/' + deviceId).remove();
 
       // If making admin, register their auth UID for Firebase rules
@@ -449,11 +458,12 @@ const DeviceAuth = {
       const pendingResult = await firebaseRead('jmart-safety/devices/pending/' + deviceId);
       if (pendingResult.exists) {
         const deviceData = pendingResult.val;
-        await firebaseDb.ref('jmart-safety/devices/denied/' + deviceId).set({
+        var deniedData = {
           ...deviceData,
           deniedAt: new Date().toISOString(),
           deniedBy: this.deviceId
-        });
+        };
+        await firebaseDb.ref('jmart-safety/devices/denied/' + deviceId).set(typeof sanitizeForFirebase === 'function' ? sanitizeForFirebase(deniedData) : deniedData);
         await firebaseDb.ref('jmart-safety/devices/pending/' + deviceId).remove();
       }
 
@@ -507,7 +517,7 @@ const DeviceAuth = {
       this.pendingDevices = data ? Object.entries(data).map(([id, info]) => ({ id, ...info })) : [];
       callback(this.pendingDevices);
     };
-    ref.on('value', valueHandler);
+    ref.on('value', valueHandler, function(err) { console.warn('[DeviceAuth] Pending listener error:', err.message); });
 
     // Also listen for child_added for new device notifications
     // Skip initial fire (child_added fires for all existing children on first attach)
@@ -518,7 +528,7 @@ const DeviceAuth = {
       const newDevice = { id: snapshot.key, ...snapshot.val() };
       this.notifyNotificationListeners('new_device', newDevice);
     };
-    ref.on('child_added', childHandler);
+    ref.on('child_added', childHandler, function(err) { console.warn('[DeviceAuth] child_added listener error:', err.message); });
 
     return () => {
       ref.off('value', valueHandler);
@@ -535,7 +545,7 @@ const DeviceAuth = {
       const data = snapshot.val();
       this.approvedDevices = data ? Object.entries(data).map(([id, info]) => ({ id, ...info })) : [];
       callback(this.approvedDevices);
-    });
+    }, function(err) { console.warn('[DeviceAuth] Approved listener error:', err.message); });
 
     return () => ref.off('value');
   },
@@ -552,7 +562,7 @@ const DeviceAuth = {
         this.isAdmin = false;
         callback({ revoked: true });
       }
-    });
+    }, function(err) { console.warn('[DeviceAuth] Own device status listener error:', err.message); });
 
     return () => ref.off('value');
   },
@@ -561,15 +571,19 @@ const DeviceAuth = {
   notifyAdminsOfNewDevice: async function(deviceData) {
     if (!firebaseDb) return;
 
-    // Store notification in Firebase for all admins
-    const notification = {
-      type: 'new_device_request',
-      device: deviceData,
-      timestamp: new Date().toISOString(),
-      read: false
-    };
+    try {
+      // Store notification in Firebase for all admins
+      var notification = {
+        type: 'new_device_request',
+        device: deviceData,
+        timestamp: new Date().toISOString(),
+        read: false
+      };
 
-    await firebaseDb.ref('jmart-safety/notifications').push(notification);
+      await firebaseDb.ref('jmart-safety/notifications').push(typeof sanitizeForFirebase === 'function' ? sanitizeForFirebase(notification) : notification);
+    } catch (e) {
+      console.warn('[DeviceAuth] notifyAdmins failed (non-fatal):', e.message);
+    }
   },
 
   // Add status listener
@@ -907,19 +921,19 @@ const DeviceAuth = {
       const data = snapshot.val();
       this.pendingDevices = data ? Object.entries(data).map(([id, info]) => ({ id, ...info })) : [];
       updateDevices();
-    });
+    }, function(err) { console.warn('[DeviceAuth] Pending devices listener error:', err.message); });
 
     approvedRef.on('value', (snapshot) => {
       const data = snapshot.val();
       this.approvedDevices = data ? Object.entries(data).map(([id, info]) => ({ id, ...info })) : [];
       updateDevices();
-    });
+    }, function(err) { console.warn('[DeviceAuth] Approved devices listener error:', err.message); });
 
     deniedRef.on('value', (snapshot) => {
       const data = snapshot.val();
       deniedDevices = data ? Object.entries(data).map(([id, info]) => ({ id, ...info })) : [];
       updateDevices();
-    });
+    }, function(err) { console.warn('[DeviceAuth] Denied devices listener error:', err.message); });
 
     return () => {
       pendingRef.off();

@@ -724,8 +724,8 @@ describe('DeviceAuth', () => {
       const unsub = DeviceAuth.listenForPendingDevices(cb);
 
       expect(mockDb.ref).toHaveBeenCalledWith('jmart-safety/devices/pending');
-      expect(mockDb._mockRef.on).toHaveBeenCalledWith('value', expect.any(Function));
-      expect(mockDb._mockRef.on).toHaveBeenCalledWith('child_added', expect.any(Function));
+      expect(mockDb._mockRef.on).toHaveBeenCalledWith('value', expect.any(Function), expect.any(Function));
+      expect(mockDb._mockRef.on).toHaveBeenCalledWith('child_added', expect.any(Function), expect.any(Function));
       expect(typeof unsub).toBe('function');
     });
 
@@ -759,7 +759,7 @@ describe('DeviceAuth', () => {
       const unsub = DeviceAuth.listenForApprovedDevices(cb);
 
       expect(mockDb.ref).toHaveBeenCalledWith('jmart-safety/devices/approved');
-      expect(mockDb._mockRef.on).toHaveBeenCalledWith('value', expect.any(Function));
+      expect(mockDb._mockRef.on).toHaveBeenCalledWith('value', expect.any(Function), expect.any(Function));
       expect(typeof unsub).toBe('function');
     });
 
