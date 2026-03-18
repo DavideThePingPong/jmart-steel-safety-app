@@ -59,10 +59,12 @@ function JMartSteelSafetyApp({ isAdmin = false }) {
   const { showInstallPrompt, handleInstall, dismissInstall } = usePWAInstall();
 
   // Sync forms when they change
-  useEffect(() => { syncFormsEffect(forms); }, [forms, isOnline]);
+  // NOTE: isOnline removed from deps — it caused double-sync on reconnect
+  // (this effect + FirebaseSync.processQueue both fire on 'online' event).
+  useEffect(() => { syncFormsEffect(forms); }, [forms]);
 
   // Sync sites when they change
-  useEffect(() => { syncSitesEffect(sites); }, [sites, isOnline]);
+  useEffect(() => { syncSitesEffect(sites); }, [sites]);
 
   const previousPrestarts = forms.filter(f => f.type === 'prestart');
 

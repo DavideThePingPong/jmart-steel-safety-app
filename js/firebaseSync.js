@@ -514,10 +514,29 @@ FirebaseSync.init();
 // Expose processQueue for SW background sync triggers
 window.processSyncQueue = () => FirebaseSync.processQueue();
 
-// Process queue when coming back online
+// Process queue when coming back online — with delay to let network stabilize
 window.addEventListener('online', () => {
-  console.log('Back online - processing sync queue');
+  console.log('Back online - waiting 2s for network to stabilize...');
   // Reset auth flag so we re-check (network change may have invalidated token)
   FirebaseSync._authReady = false;
-  FirebaseSync.processQueue();
+  // Delay processing to let the network connection fully establish.
+  // Without this, the first Firebase write often fails because the TCP connection
+  // isn't fully ready yet, which trips the circuit breaker.
+  setTimeout(() => {
+    console.log('Processing sync queue after reconnect');
+    FirebaseSync.processQueue();
+  }, 2000);
+});
+
+// Also attempt Google Drive silent reconnect when coming online
+window.addEventListener('online', () => {
+  if (typeof GoogleDriveSync !== 'undefined' && !GoogleDriveSync.isConnected()) {
+    var autoConnect = localStorage.getItem('google-drive-auto-connect');
+    if (autoConnect === 'true') {
+      console.log('Back online — attempting Google Drive silent reconnect');
+      setTimeout(() => {
+        GoogleDriveSync._silentReconnect();
+      }, 3000); // Wait a bit longer for Google APIs to be reachable
+    }
+  }
 });

@@ -1224,6 +1224,7 @@ function useDataSync({
   const formsFromFirebaseRef = useRef(false); // Anti-loop: skip syncing back to Firebase when data came FROM Firebase
   const sitesFromFirebaseRef = useRef(false);
   const lastFormsWriteRef = useRef(0); // throttle forms listener writes
+  const formsListenerTimerRef = useRef(null); // debounce timer for Firebase forms listener
 
   // Load saved data from localStorage first, then listen to Firebase
   useEffect(() => {
@@ -1273,10 +1274,19 @@ function useDataSync({
       const unsubForms = FirebaseSync.onFormsChange(firebaseForms => {
         const formsArray = Array.isArray(firebaseForms) ? firebaseForms : Object.values(firebaseForms || {});
 
-        // Throttle: skip if last write was <5s ago (prevents rapid-fire listener loop)
-        var now = Date.now();
-        if (now - lastFormsWriteRef.current < 5000) return;
-        lastFormsWriteRef.current = now;
+        // Debounce: coalesce rapid Firebase listener fires into one update.
+        // Old approach (hard skip if <5s) silently dropped updates.
+        // New approach: always process the LATEST data after a 1s settle period.
+        if (formsListenerTimerRef.current) clearTimeout(formsListenerTimerRef.current);
+        formsListenerTimerRef.current = setTimeout(() => {
+          formsListenerTimerRef.current = null;
+          _processFormsFromFirebase(formsArray);
+        }, 1000);
+      });
+
+      // Extracted handler so the debounce closure captures the latest formsArray
+      const _processFormsFromFirebase = formsArray => {
+        lastFormsWriteRef.current = Date.now();
         console.log('Firebase forms received:', formsArray.length, 'forms');
         if (deletingFormRef.current) {
           deletingFormRef.current = false;
@@ -1335,7 +1345,7 @@ function useDataSync({
         setSyncStatus('synced');
         setLastSynced(new Date().toISOString());
         setSyncError(null);
-      });
+      };
       const unsubSites = FirebaseSync.onSitesChange(firebaseSites => {
         const rawArray = Array.isArray(firebaseSites) ? firebaseSites : Object.values(firebaseSites || {});
         const mapped = rawArray.map(s => {
@@ -1399,41 +1409,40 @@ function useDataSync({
     }
   }, []);
 
+  // Debounced Firebase sync — prevents rapid-fire writes when multiple form changes happen
+  const formsSyncTimerRef = useRef(null);
+
   // Save forms to localStorage and sync to Firebase
   const syncFormsEffect = forms => {
     if (!isInitialLoad.current) {
       try {
-        // FIXED: Use safeFormsWrite instead of raw setItem.
-        // Raw setItem wrote unstripped base64 photos from React state → storage bomb.
-        // safeFormsWrite strips large data and enforces 2MB cap.
         StorageQuotaManager.safeFormsWrite(forms);
         localStorage.setItem('jmart-last-sync', new Date().toISOString());
       } catch (storageErr) {
         console.error('[syncFormsEffect] localStorage write failed:', storageErr.message, '— forms NOT lost, still in React state');
-        // Don't crash — forms are still in React state and can be synced to Firebase
       }
       setLastSynced(new Date().toISOString());
-      console.log('Forms saved to localStorage:', forms.length, 'forms');
 
-      // FIXED: Anti-loop — don't send forms back to Firebase when they just came FROM Firebase.
-      // Without this, the Firebase listener → setForms → syncFormsEffect → syncForms loop
-      // sent full photo data back on every update, and if the write failed, the ENTIRE
-      // forms array (with photos) was stored in the sync queue → 5MB+ in localStorage.
-      // syncSitesEffect already had this protection (sitesFromFirebaseRef). Forms didn't.
+      // Anti-loop — don't send forms back to Firebase when they just came FROM Firebase.
       if (formsFromFirebaseRef.current) {
         formsFromFirebaseRef.current = false;
         setSyncStatus('synced');
         return;
       }
       if (FirebaseSync.isConnected() && isOnlineRef.current && forms.length > 0) {
+        // Debounce Firebase writes — wait 2s for rapid changes to settle
+        if (formsSyncTimerRef.current) clearTimeout(formsSyncTimerRef.current);
         setSyncStatus('syncing');
-        FirebaseSync.syncForms(forms).then(() => {
-          setSyncStatus('synced');
-          console.log('Forms synced to Firebase:', forms.length, 'forms');
-        }).catch(err => {
-          setSyncStatus('offline');
-          console.error('Firebase sync failed:', err);
-        });
+        formsSyncTimerRef.current = setTimeout(() => {
+          formsSyncTimerRef.current = null;
+          FirebaseSync.syncForms(forms).then(() => {
+            setSyncStatus('synced');
+            console.log('Forms synced to Firebase:', forms.length, 'forms');
+          }).catch(err => {
+            setSyncStatus('offline');
+            console.error('Firebase sync failed:', err);
+          });
+        }, 2000);
       }
     }
   };
@@ -2497,14 +2506,16 @@ function JMartSteelSafetyApp({
   } = usePWAInstall();
 
   // Sync forms when they change
+  // NOTE: isOnline removed from deps — it caused double-sync on reconnect
+  // (this effect + FirebaseSync.processQueue both fire on 'online' event).
   useEffect(() => {
     syncFormsEffect(forms);
-  }, [forms, isOnline]);
+  }, [forms]);
 
   // Sync sites when they change
   useEffect(() => {
     syncSitesEffect(sites);
-  }, [sites, isOnline]);
+  }, [sites]);
   const previousPrestarts = forms.filter(f => f.type === 'prestart');
   const navItems = [{
     id: 'dashboard',

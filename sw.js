@@ -9,7 +9,7 @@
  * - v4: Pinned CDN versions (supply-chain hardening)
  */
 
-const CACHE_VERSION = 'v75';
+const CACHE_VERSION = 'v76';
 const STATIC_CACHE = `jmart-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `jmart-dynamic-${CACHE_VERSION}`;
 const CDN_CACHE = `jmart-cdn-${CACHE_VERSION}`;
@@ -108,6 +108,13 @@ function getStrategy(request) {
     return STRATEGIES.CACHE_FIRST;
   }
 
+  // Main HTML page — network-first so deploys take effect immediately
+  // Without this, stale-while-revalidate serves the old cached HTML on first load
+  // after every deploy, requiring a second load to get the new version.
+  if (url.pathname === '/' || url.pathname.endsWith('/index.html') || url.pathname.endsWith('.html')) {
+    return STRATEGIES.NETWORK_FIRST;
+  }
+
   // Local JS/CSS — stale-while-revalidate (serve cached, update in background)
   if (url.pathname.endsWith('.js') ||
       url.pathname.endsWith('.jsx') ||
@@ -115,7 +122,7 @@ function getStrategy(request) {
     return STRATEGIES.STALE_WHILE_REVALIDATE;
   }
 
-  // HTML pages - stale while revalidate
+  // Default - stale while revalidate
   return STRATEGIES.STALE_WHILE_REVALIDATE;
 }
 

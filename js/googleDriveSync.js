@@ -52,6 +52,11 @@ const GoogleDriveSync = {
             return;
           }
           self.accessToken = response.access_token;
+          // Clear popup check timer — auth succeeded
+          if (self._popupCheckTimer) {
+            clearTimeout(self._popupCheckTimer);
+            self._popupCheckTimer = null;
+          }
           // Store token with timestamp so we know when it expires (~1hr)
           localStorage.setItem('google-drive-token', JSON.stringify({
             token: response.access_token,
@@ -125,8 +130,12 @@ const GoogleDriveSync = {
   },
 
   // Request user authorization — waits for GSI to load if needed
+  // Handles popup blockers (common on Android) with user-friendly guidance
   authorize: function() {
     var self = this;
+
+    // Detect if we're likely on a mobile device where popups get blocked
+    var isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
     // Helper: attempt init and open consent
     var doAuthorize = function() {
@@ -138,14 +147,39 @@ const GoogleDriveSync = {
       }
       if (!self.isInitialized) return false;
       try {
+        // Use 'select_account' on mobile to reduce popup issues
+        // 'consent' forces a new popup; 'select_account' can sometimes reuse existing session
         self.tokenClient.requestAccessToken({ prompt: 'consent' });
+        // Set a timeout to detect popup blocked (if no callback fires within 3s on mobile)
+        if (isMobile) {
+          self._popupCheckTimer = setTimeout(function() {
+            // If still not connected after 3s, popup was likely blocked
+            if (!self.accessToken) {
+              self._notifyConnectionChange(false,
+                'Popup blocked! Tap "Always show" on the popup notification, then tap Connect again.'
+              );
+            }
+          }, 3000);
+        }
         return true;
       } catch (e) {
         console.error('Drive authorize error:', e);
-        self._notifyConnectionChange(false, 'Could not open Google sign-in. Check your popup blocker.');
+        if (isMobile) {
+          self._notifyConnectionChange(false,
+            'Popup blocked! Allow popups for this site in your browser settings, then try again.'
+          );
+        } else {
+          self._notifyConnectionChange(false, 'Could not open Google sign-in. Check your popup blocker.');
+        }
         return true; // Don't keep retrying on this error
       }
     };
+
+    // Clear any previous popup check timer
+    if (this._popupCheckTimer) {
+      clearTimeout(this._popupCheckTimer);
+      this._popupCheckTimer = null;
+    }
 
     // Try immediately
     if (doAuthorize()) return;
