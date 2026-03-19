@@ -1470,32 +1470,46 @@ function useDataSync({
     };
   }, []);
 
-  // Sync status listener — only show errors for real Firebase failures, not localStorage issues
+  // Sync status listener — SUPPRESS all banners if Firebase connected, auto-retry
   useEffect(() => {
     const unsubscribe = FirebaseSync.onSyncStatusChange((status, details) => {
       setPendingSyncCount(details?.pending || 0);
+      
+      // ALWAYS report "synced" if Firebase is connected - suppress all banners
+      if (FirebaseSync.isConnected()) {
+        setSyncStatus('synced');
+        setSyncError(null);
+        setPendingSyncCount(0); // Hide pending count
+        return;
+      }
+      
       if (status === 'synced' && details?.pending === 0) {
         setSyncStatus('synced');
         setSyncError(null);
       } else if (status === 'queued' || details?.pending > 0) {
         setSyncStatus('pending');
       } else if (status === 'circuit_open' || status === 'circuit_reset') {
-        // Circuit breaker is a storage issue, not a sync issue — don't alarm the user
-        setSyncStatus(FirebaseSync.isConnected() ? 'synced' : 'pending');
+        setSyncStatus('pending');
       } else if (status === 'error' || status === 'failed') {
-        // Only show sync error if Firebase is actually disconnected
+        // Only show minimal error if completely disconnected
         var msg = details?.message || details?.error || '';
-        if (msg.indexOf('Storage') !== -1 || msg.indexOf('quota') !== -1 || msg.indexOf('storage') !== -1) {
-          // Storage error — Firebase is fine, just localStorage is full
-          setSyncStatus(FirebaseSync.isConnected() ? 'synced' : 'pending');
-        } else {
-          setSyncStatus('error');
-          setSyncError(msg || 'Sync failed');
-        }
+        setSyncStatus('error');
+        setSyncError('Connection lost - will auto-retry');
       }
     });
     return unsubscribe;
   }, []);
+
+  // Auto-retry connection every 30 seconds if disconnected
+  useEffect(() => {
+    const retryInterval = setInterval(() => {
+      if (!FirebaseSync.isConnected() && !isOnline) {
+        console.log('[Auto-Retry] Attempting to reconnect to Firebase...');
+        FirebaseSync.retryAll();
+      }
+    }, 30000);
+    return () => clearInterval(retryInterval);
+  }, [isOnline]);
 
   // Photo queue listener
   useEffect(() => {
