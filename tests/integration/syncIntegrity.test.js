@@ -16,7 +16,7 @@
  * - Silently drop data or resurrect deleted forms
  */
 
-const loadScript = require('../../helpers/loadScript');
+const loadScript = require('../helpers/loadScript');
 const fs = require('fs');
 const path = require('path');
 
