@@ -345,7 +345,7 @@ const FirebaseSync = {
           }
           return null;
         }).filter(s => s && s.length > 1 && s !== 'undefined' && s !== 'null'))];
-        await firebaseDb.ref('jmart-safety/sites').set(clean);
+        await firebaseDb.ref('jmart-safety/sites').set(sanitizeForFirebase(clean));
         break;
       }
       case 'training':
@@ -418,7 +418,7 @@ const FirebaseSync = {
       )];
 
       // Use set() to REPLACE the entire sites node — prevents accumulation
-      await firebaseDb.ref('jmart-safety/sites').set(sitesArray);
+      await firebaseDb.ref('jmart-safety/sites').set(sanitizeForFirebase(sitesArray));
       console.log('Sites synced to Firebase (clean replace):', sitesArray.length, 'sites');
       return { success: true };
     } catch (error) {
