@@ -62,7 +62,7 @@ const FirebaseSync = {
     }
   },
 
-  // Initialize - load pending queue from localStorage
+  // Initialize - load pending queue from localStorage AND eagerly resolve auth
   init: function() {
     try {
       const saved = localStorage.getItem('jmart-sync-queue');
@@ -73,37 +73,57 @@ const FirebaseSync = {
         this.pendingQueue = this.pendingQueue.slice(-this.MAX_QUEUE_SIZE);
         this.saveQueue();
       }
-      if (this.pendingQueue.length > 0) {
-        console.log('[FirebaseSync] Found ' + this.pendingQueue.length + ' pending sync items — waiting for auth before processing');
-        // FIXED: Wait for auth before processing queue.
-        // Previously this called processQueue() immediately, which fired
-        // before signInAnonymously() completed → PERMISSION_DENIED → circuit breaker trip
-        this._processAfterAuth();
-      }
+      // ALWAYS eagerly resolve auth — even if queue is empty.
+      // Previously _authReady only got set when the queue had items
+      // (via _processAfterAuth). On a clean load with empty queue,
+      // _authReady stayed false until the first sync operation,
+      // adding latency and fragility to every subsequent write.
+      this._initAuth();
     } catch (e) {
       console.error('Error loading sync queue:', e);
       if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(e, 'sync-queue-load');
       this.pendingQueue = [];
+      // Still try to init auth even if queue load failed
+      this._initAuth();
     }
   },
 
-  // Deferred queue processing — waits for Firebase auth then processes
-  _processAfterAuth: async function() {
-    var authOk = await this._ensureAuth();
-    if (authOk) {
-      console.log('[FirebaseSync] Auth ready — processing ' + this.pendingQueue.length + ' queued items');
-      // Reset circuit breaker on fresh auth — previous PERMISSION_DENIED errors
-      // would have tripped it, but now auth is valid so we should retry
+  // Eagerly resolve auth on startup — sets _authReady as soon as Firebase auth completes,
+  // then processes any pending queue items. Replaces the old pattern where auth was only
+  // resolved lazily when the first sync operation tried to write.
+  _initAuth: async function() {
+    if (!isFirebaseConfigured || !firebaseDb) return;
+    try {
+      await Promise.race([
+        firebaseAuthReady,
+        new Promise(function(_, reject) {
+          setTimeout(function() { reject(new Error('AUTH_TIMEOUT')); }, 10000);
+        })
+      ]);
+      this._authReady = true;
+      console.log('[FirebaseSync] Auth ready (eager init)');
+
+      // Reset circuit breaker if it was tripped by pre-auth PERMISSION_DENIED errors
       if (this.circuitOpen) {
         console.log('[FirebaseSync] Resetting circuit breaker after auth recovery');
         this.circuitOpen = false;
         this.consecutiveStorageErrors = 0;
         this.circuitOpenedAt = null;
       }
-      this.processQueue();
-    } else {
-      console.warn('[FirebaseSync] Auth failed — queue processing deferred until online event');
+
+      // Process any pending queue items now that auth is ready
+      if (this.pendingQueue.length > 0) {
+        console.log('[FirebaseSync] Processing ' + this.pendingQueue.length + ' queued items after auth');
+        this.processQueue();
+      }
+    } catch (e) {
+      console.warn('[FirebaseSync] Auth init failed:', e.message, '— sync will use lazy auth');
     }
+  },
+
+  // Legacy alias — kept for backward compat but _initAuth is now the primary path
+  _processAfterAuth: async function() {
+    await this._initAuth();
   },
 
   // Save queue to localStorage — tracks storage errors for circuit breaker
@@ -453,12 +473,17 @@ const FirebaseSync = {
   // Listen for real-time form updates
   // FIXED: Sets up listener immediately but the Firebase SDK handles auth internally
   // for .on() listeners — they auto-retry after auth completes
+  // Listen for real-time form updates from Firebase
+  // FIXED: Always calls callback, even when data is null (empty node).
+  // Previously, null data was silently dropped, which meant:
+  // - If all forms were deleted from Firebase, local state was never updated
+  // - The merge logic in hooks.jsx handles null/empty correctly (pushes local forms)
   onFormsChange: (callback) => {
     if (!firebaseDb || !isFirebaseConfigured) return () => {};
     const ref = firebaseDb.ref('jmart-safety/forms');
     const handler = (snapshot) => {
       const data = snapshot.val();
-      if (data) callback(data);
+      callback(data); // Always call — null means "Firebase has no forms"
     };
     const errorHandler = (error) => {
       console.error('Firebase listener error:', error);
@@ -475,7 +500,7 @@ const FirebaseSync = {
     const ref = firebaseDb.ref('jmart-safety/sites');
     const handler = (snapshot) => {
       const data = snapshot.val();
-      if (data) callback(data);
+      callback(data); // Always call — null means no sites in Firebase
     };
     const errorHandler = (error) => {
       console.error('Firebase sites listener error:', error);
@@ -491,7 +516,7 @@ const FirebaseSync = {
     const ref = firebaseDb.ref('jmart-safety/training');
     const handler = (snapshot) => {
       const data = snapshot.val();
-      if (data) callback(data);
+      callback(data); // Always call — null means no training records in Firebase
     };
     const errorHandler = (error) => {
       console.error('Firebase training listener error:', error);
