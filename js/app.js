@@ -879,12 +879,11 @@ function useFormManager({
         // Safe write to localStorage (strips large data, trims to fit)
         StorageQuotaManager.safeFormsWrite(updatedForms);
 
-        // Sync full form (with photos) to Firebase — Firebase is the source of truth
-        if (FirebaseSync.isConnected()) {
-          FirebaseSync.syncForms(updatedForms).then(() => {
-            console.log('Synced to Firebase');
-          }).catch(err => console.error('Firebase sync error:', err));
-        }
+        // NOTE: Do NOT call FirebaseSync.syncForms() here.
+        // setForms triggers the useEffect in app.jsx → syncFormsEffect → debounced syncForms.
+        // Calling syncForms directly here PLUS via syncFormsEffect causes double-sync:
+        // first sync might succeed, second (2s later) fails → error banner shows.
+
         return updatedForms;
       });
 
@@ -1055,11 +1054,10 @@ function useFormManager({
         });
         StorageQuotaManager.safeFormsWrite(updatedForms);
         console.log('Updated form saved to localStorage');
-        if (FirebaseSync.isConnected()) {
-          FirebaseSync.syncForms(updatedForms).then(() => {
-            console.log('Updated form synced to Firebase');
-          }).catch(err => console.error('Firebase sync error:', err));
-        }
+
+        // NOTE: Firebase sync handled by syncFormsEffect via setForms trigger.
+        // Do NOT call syncForms directly here — causes double-sync.
+
         return updatedForms;
       });
       try {
@@ -1153,22 +1151,24 @@ function useFormManager({
       });
       StorageQuotaManager.safeFormsWrite(updatedForms);
       console.log('Form deleted, saved to localStorage:', updatedForms.length, 'forms remaining');
-      deletingFormRef.current = true;
+
+      // NOTE: Firebase sync handled by syncFormsEffect via setForms trigger.
+      // For deletions, we also need to remove the form from Firebase directly,
+      // since update() only adds/modifies keys — it can't delete them.
       if (FirebaseSync.isConnected()) {
-        FirebaseSync.syncForms(updatedForms).then(() => {
-          console.log('Deletion synced to Firebase');
-          deletingFormRef.current = false;
-          // Clean up the persisted deleted ID since Firebase is now in sync
-          deletedFormIdsRef.current.delete(formId);
-          try {
-            localStorage.setItem('jmart-deleted-form-ids', JSON.stringify([...deletedFormIdsRef.current]));
-          } catch (e) {}
-        }).catch(err => {
-          console.error('Failed to sync deletion to Firebase:', err);
-          deletingFormRef.current = false;
+        FirebaseSync._ensureAuth().then(function (ok) {
+          if (ok && firebaseDb) {
+            firebaseDb.ref('jmart-safety/forms/' + formId).remove().then(function () {
+              console.log('Form deleted from Firebase:', formId);
+              deletedFormIdsRef.current.delete(formId);
+              try {
+                localStorage.setItem('jmart-deleted-form-ids', JSON.stringify([...deletedFormIdsRef.current]));
+              } catch (e) {}
+            }).catch(function (err) {
+              console.error('Failed to delete form from Firebase:', err);
+            });
+          }
         });
-      } else {
-        deletingFormRef.current = false;
       }
       return updatedForms;
     });
@@ -1288,9 +1288,6 @@ function useDataSync({
       const _processFormsFromFirebase = formsArray => {
         lastFormsWriteRef.current = Date.now();
         console.log('Firebase forms received:', formsArray.length, 'forms');
-        if (deletingFormRef.current) {
-          deletingFormRef.current = false;
-        }
         if (formsArray.length > 0) {
           const formMap = new Map();
 
@@ -1342,9 +1339,18 @@ function useDataSync({
             FirebaseSync.syncForms(freshLocalForms);
           }
         }
+
+        // Firebase listener confirmed data — clear ALL error states.
+        // This must override any pending error from concurrent sync operations,
+        // queue processing, or previous session failures.
         setSyncStatus('synced');
         setLastSynced(new Date().toISOString());
         setSyncError(null);
+        // Also notify through FirebaseSync so the sync status listener
+        // doesn't override us with a stale 'error' from a concurrent sync
+        FirebaseSync.notifyListeners('synced', {
+          pending: FirebaseSync.getPendingCount()
+        });
       };
       const unsubSites = FirebaseSync.onSitesChange(firebaseSites => {
         const rawArray = Array.isArray(firebaseSites) ? firebaseSites : Object.values(firebaseSites || {});

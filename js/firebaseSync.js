@@ -67,6 +67,10 @@ const FirebaseSync = {
     try {
       const saved = localStorage.getItem('jmart-sync-queue');
       this.pendingQueue = saved ? JSON.parse(saved) : [];
+      // Reset retry attempts on fresh app load — previous session's retry state
+      // shouldn't prevent items from being processed again. Without this, an item
+      // saved with attempts:4 would fail once more and hit max retries immediately.
+      this.pendingQueue.forEach(function(item) { item.attempts = 0; });
       // Enforce size cap on load (in case of corruption or old bloated data)
       if (this.pendingQueue.length > this.MAX_QUEUE_SIZE) {
         console.warn('[FirebaseSync] Queue over cap (' + this.pendingQueue.length + '), trimming to ' + this.MAX_QUEUE_SIZE);
@@ -281,6 +285,12 @@ const FirebaseSync = {
           this.saveQueue();
         }
       }
+      // After processing all items, clear error state if queue is empty.
+      // Without this, the error banner from a failed item persists forever
+      // even after the item is removed (max retries reached).
+      if (this.pendingQueue.length === 0) {
+        this.notifyListeners('synced', { pending: 0 });
+      }
     } finally {
       this._isProcessing = false;
     }
@@ -309,9 +319,20 @@ const FirebaseSync = {
 
     // Legacy bulk operations (fallback)
     switch (item.type) {
-      case 'forms':
-        await firebaseDb.ref('jmart-safety/forms').set(sanitizeForFirebase(item.data));
+      case 'forms': {
+        // FIXED: Use .update() not .set() — set() replaces ALL forms in Firebase,
+        // which corrupts data because queued items have photos stripped to '[queued]'.
+        const formsArr = Array.isArray(item.data) ? item.data : Object.values(item.data || {});
+        const formUpdates = {};
+        formsArr.forEach(function(form) {
+          if (!form || !form.id) return;
+          formUpdates[form.id] = sanitizeForFirebase(form);
+        });
+        if (Object.keys(formUpdates).length > 0) {
+          await firebaseDb.ref('jmart-safety/forms').update(formUpdates);
+        }
         break;
+      }
       case 'sites': {
         // Sanitize queued sites data — old queue entries may contain corrupted objects
         const raw = Array.isArray(item.data) ? item.data : Object.values(item.data || {});
@@ -457,54 +478,95 @@ const FirebaseSync = {
   },
 
   // Listen for real-time form updates
-  // FIXED: Sets up listener immediately but the Firebase SDK handles auth internally
-  // for .on() listeners — they auto-retry after auth completes
+  // CRITICAL: Must wait for auth before attaching listener.
+  // Firebase SDK v8 permanently kills .on() listeners that get PERMISSION_DENIED.
+  // If the listener fires before signInAnonymously() completes, it dies and never recovers.
   onFormsChange: (callback) => {
     if (!firebaseDb || !isFirebaseConfigured) return () => {};
+    let currentHandler = null;
     const ref = firebaseDb.ref('jmart-safety/forms');
-    const handler = (snapshot) => {
-      const data = snapshot.val();
-      if (data) callback(data);
+    const attachListener = () => {
+      const handler = (snapshot) => {
+        const data = snapshot.val();
+        if (data) callback(data);
+      };
+      const errorHandler = (error) => {
+        console.error('Firebase listener error:', error);
+        // If PERMISSION_DENIED, re-attach after auth (listener is dead)
+        if (error.code === 'PERMISSION_DENIED' || (error.message && error.message.indexOf('PERMISSION_DENIED') !== -1)) {
+          console.log('[onFormsChange] PERMISSION_DENIED — will re-attach after auth');
+          FirebaseSync._ensureAuth().then(function(ok) {
+            if (ok) {
+              console.log('[onFormsChange] Re-attaching listener after auth recovery');
+              currentHandler = handler;
+              ref.on('value', handler, errorHandler);
+            }
+          });
+        } else {
+          if (typeof ToastNotifier !== 'undefined') ToastNotifier.error('Lost connection to form updates');
+        }
+        if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(error, 'firebase-listener');
+      };
+      currentHandler = handler;
+      ref.on('value', handler, errorHandler);
     };
-    const errorHandler = (error) => {
-      console.error('Firebase listener error:', error);
-      if (typeof ToastNotifier !== 'undefined') ToastNotifier.error('Lost connection to form updates');
-      if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(error, 'firebase-listener');
-    };
-    ref.on('value', handler, errorHandler);
-    return () => ref.off('value', handler);
+    // Wait for auth before attaching to avoid PERMISSION_DENIED that kills the listener
+    firebaseAuthReady.then(function() { attachListener(); }).catch(function() { attachListener(); });
+    return () => { if (currentHandler) ref.off('value', currentHandler); };
   },
 
   // Listen for real-time site updates
   onSitesChange: (callback) => {
     if (!firebaseDb || !isFirebaseConfigured) return () => {};
+    let currentHandler = null;
     const ref = firebaseDb.ref('jmart-safety/sites');
-    const handler = (snapshot) => {
-      const data = snapshot.val();
-      if (data) callback(data);
+    const attachListener = () => {
+      const handler = (snapshot) => {
+        const data = snapshot.val();
+        if (data) callback(data);
+      };
+      const errorHandler = (error) => {
+        console.error('Firebase sites listener error:', error);
+        if (error.code === 'PERMISSION_DENIED' || (error.message && error.message.indexOf('PERMISSION_DENIED') !== -1)) {
+          console.log('[onSitesChange] PERMISSION_DENIED — will re-attach after auth');
+          FirebaseSync._ensureAuth().then(function(ok) {
+            if (ok) { currentHandler = handler; ref.on('value', handler, errorHandler); }
+          });
+        }
+        if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(error, 'firebase-sites-listener');
+      };
+      currentHandler = handler;
+      ref.on('value', handler, errorHandler);
     };
-    const errorHandler = (error) => {
-      console.error('Firebase sites listener error:', error);
-      if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(error, 'firebase-sites-listener');
-    };
-    ref.on('value', handler, errorHandler);
-    return () => ref.off('value', handler);
+    firebaseAuthReady.then(function() { attachListener(); }).catch(function() { attachListener(); });
+    return () => { if (currentHandler) ref.off('value', currentHandler); };
   },
 
   // Listen for real-time training updates
   onTrainingChange: (callback) => {
     if (!firebaseDb || !isFirebaseConfigured) return () => {};
+    let currentHandler = null;
     const ref = firebaseDb.ref('jmart-safety/training');
-    const handler = (snapshot) => {
-      const data = snapshot.val();
-      if (data) callback(data);
+    const attachListener = () => {
+      const handler = (snapshot) => {
+        const data = snapshot.val();
+        if (data) callback(data);
+      };
+      const errorHandler = (error) => {
+        console.error('Firebase training listener error:', error);
+        if (error.code === 'PERMISSION_DENIED' || (error.message && error.message.indexOf('PERMISSION_DENIED') !== -1)) {
+          console.log('[onTrainingChange] PERMISSION_DENIED — will re-attach after auth');
+          FirebaseSync._ensureAuth().then(function(ok) {
+            if (ok) { currentHandler = handler; ref.on('value', handler, errorHandler); }
+          });
+        }
+        if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(error, 'firebase-training-listener');
+      };
+      currentHandler = handler;
+      ref.on('value', handler, errorHandler);
     };
-    const errorHandler = (error) => {
-      console.error('Firebase training listener error:', error);
-      if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(error, 'firebase-training-listener');
-    };
-    ref.on('value', handler, errorHandler);
-    return () => ref.off('value', handler);
+    firebaseAuthReady.then(function() { attachListener(); }).catch(function() { attachListener(); });
+    return () => { if (currentHandler) ref.off('value', currentHandler); };
   },
 
   // Check if Firebase is configured and connected
