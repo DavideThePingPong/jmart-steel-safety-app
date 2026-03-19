@@ -79,12 +79,12 @@ describe('FirebaseSync (runtime)', () => {
   // init()
   // =====================================================
   describe('init()', () => {
-    // init() calls _processAfterAuth() async — mock to prevent background processing
+    // init() calls _initAuth() async — mock to prevent background processing
     beforeEach(() => {
-      jest.spyOn(FirebaseSync, '_processAfterAuth').mockResolvedValue();
+      jest.spyOn(FirebaseSync, '_initAuth').mockResolvedValue();
     });
     afterEach(() => {
-      FirebaseSync._processAfterAuth.mockRestore();
+      FirebaseSync._initAuth.mockRestore();
     });
 
     it('loads empty queue when nothing saved', () => {
@@ -111,10 +111,15 @@ describe('FirebaseSync (runtime)', () => {
       expect(FirebaseSync.pendingQueue).toEqual([]);
     });
 
-    it('calls _processAfterAuth when queue has items', () => {
+    it('always calls _initAuth (even with empty queue)', () => {
+      FirebaseSync.init();
+      expect(FirebaseSync._initAuth).toHaveBeenCalled();
+    });
+
+    it('calls _initAuth when queue has items', () => {
       store['jmart-sync-queue'] = JSON.stringify([{ id: '1', type: 'forms' }]);
       FirebaseSync.init();
-      expect(FirebaseSync._processAfterAuth).toHaveBeenCalled();
+      expect(FirebaseSync._initAuth).toHaveBeenCalled();
     });
   });
 

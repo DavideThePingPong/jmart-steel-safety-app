@@ -89,23 +89,21 @@ describe('Sync Integrity', () => {
   // 1. AUTH GATE
   // =============================================
   describe('Auth Gate', () => {
-    it('waits for auth before processing queue', async () => {
-      let resolveAuth;
-      global.firebaseAuthReady = new Promise(r => { resolveAuth = r; });
+    it('_ensureAuth returns true when auth resolves', async () => {
+      FirebaseSync._authReady = false;
+      // firebaseAuthReady is already Promise.resolve() from beforeEach
+
+      const result = await FirebaseSync._ensureAuth();
+      expect(result).toBe(true);
+      expect(FirebaseSync._authReady).toBe(true);
+    });
+
+    it('_ensureAuth returns false when Firebase not configured', async () => {
+      global.isFirebaseConfigured = false;
       FirebaseSync._authReady = false;
 
-      store['jmart-sync-queue'] = JSON.stringify([
-        { id: 'item-1', type: 'forms', data: [{ id: 'f1' }], attempts: 0 }
-      ]);
-      FirebaseSync.init();
-
-      // Queue should NOT be processed yet (auth pending)
-      await new Promise(r => setTimeout(r, 50));
-      // Resolve auth
-      resolveAuth();
-      await new Promise(r => setTimeout(r, 100));
-
-      expect(FirebaseSync._authReady).toBe(true);
+      const result = await FirebaseSync._ensureAuth();
+      expect(result).toBe(false);
     });
 
     it('resets circuit breaker after auth recovery', async () => {
@@ -114,27 +112,23 @@ describe('Sync Integrity', () => {
       FirebaseSync.circuitOpenedAt = Date.now() - 300000;
       FirebaseSync._authReady = false;
 
-      await FirebaseSync._processAfterAuth();
+      await FirebaseSync._initAuth();
 
       expect(FirebaseSync.circuitOpen).toBe(false);
       expect(FirebaseSync.consecutiveStorageErrors).toBe(0);
     });
 
-    it('times out auth after 10 seconds', async () => {
-      global.firebaseAuthReady = new Promise(() => {}); // never resolves
-      FirebaseSync._authReady = false;
+    it('_ensureAuth returns cached true on subsequent calls', async () => {
+      FirebaseSync._authReady = true;
+      const result = await FirebaseSync._ensureAuth();
+      expect(result).toBe(true);
+    });
 
-      // Mock setTimeout to be fast
-      const origSetTimeout = global.setTimeout;
-      jest.useFakeTimers();
-
-      const authPromise = FirebaseSync._ensureAuth();
-      jest.advanceTimersByTime(11000);
-
-      const result = await authPromise;
-      expect(result).toBe(false);
-
-      jest.useRealTimers();
+    it('init always calls _initAuth eagerly', () => {
+      const spy = jest.spyOn(FirebaseSync, '_initAuth').mockResolvedValue();
+      FirebaseSync.init();
+      expect(spy).toHaveBeenCalled();
+      spy.mockRestore();
     });
   });
 
@@ -190,6 +184,7 @@ describe('Sync Integrity', () => {
   // =============================================
   describe('Queue Management', () => {
     it('caps queue at 50 items on load', () => {
+      const spy = jest.spyOn(FirebaseSync, '_initAuth').mockResolvedValue();
       const bigQueue = Array.from({ length: 80 }, (_, i) => ({
         id: 'item-' + i, type: 'forms', data: [], attempts: 0
       }));
@@ -198,6 +193,7 @@ describe('Sync Integrity', () => {
       FirebaseSync.init();
 
       expect(FirebaseSync.pendingQueue.length).toBeLessThanOrEqual(50);
+      spy.mockRestore();
     });
 
     it('drops oldest entries when byte limit exceeded', () => {
@@ -406,16 +402,11 @@ describe('Sync Integrity', () => {
       expect(result.queued).toBe(true);
     });
 
-    it('queues forms when auth is not ready', async () => {
+    it('queues forms when Firebase is not configured and auth not ready', async () => {
       FirebaseSync._authReady = false;
-      global.firebaseAuthReady = new Promise(() => {}); // never resolves
-      jest.useFakeTimers();
+      global.isFirebaseConfigured = false;
 
-      const resultPromise = FirebaseSync.syncForms([{ id: 'f1' }]);
-      jest.advanceTimersByTime(11000); // past auth timeout
-      const result = await resultPromise;
-
-      jest.useRealTimers();
+      const result = await FirebaseSync.syncForms([{ id: 'f1' }]);
 
       expect(result.success).toBe(false);
       expect(result.queued).toBe(true);

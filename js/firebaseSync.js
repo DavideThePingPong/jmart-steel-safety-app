@@ -47,16 +47,21 @@ const FirebaseSync = {
     if (!isFirebaseConfigured || !firebaseDb) return false;
 
     // Wait for the auth promise (set in config.js)
+    // Important: cancel the timeout when auth resolves to prevent dangling timers
+    // (unhandled rejections from losing Promise.race entries crash Jest workers)
+    var timeoutId;
     try {
       await Promise.race([
         firebaseAuthReady,
         new Promise(function(_, reject) {
-          setTimeout(function() { reject(new Error('AUTH_TIMEOUT')); }, 10000);
+          timeoutId = setTimeout(function() { reject(new Error('AUTH_TIMEOUT')); }, 10000);
         })
       ]);
+      clearTimeout(timeoutId);
       this._authReady = true;
       return true;
     } catch (e) {
+      clearTimeout(timeoutId);
       console.warn('[FirebaseSync] Auth not ready:', e.message);
       return false;
     }
@@ -93,13 +98,15 @@ const FirebaseSync = {
   // resolved lazily when the first sync operation tried to write.
   _initAuth: async function() {
     if (!isFirebaseConfigured || !firebaseDb) return;
+    var timeoutId;
     try {
       await Promise.race([
         firebaseAuthReady,
         new Promise(function(_, reject) {
-          setTimeout(function() { reject(new Error('AUTH_TIMEOUT')); }, 10000);
+          timeoutId = setTimeout(function() { reject(new Error('AUTH_TIMEOUT')); }, 10000);
         })
       ]);
+      clearTimeout(timeoutId);
       this._authReady = true;
       console.log('[FirebaseSync] Auth ready (eager init)');
 
@@ -117,6 +124,7 @@ const FirebaseSync = {
         this.processQueue();
       }
     } catch (e) {
+      clearTimeout(timeoutId);
       console.warn('[FirebaseSync] Auth init failed:', e.message, '— sync will use lazy auth');
     }
   },
