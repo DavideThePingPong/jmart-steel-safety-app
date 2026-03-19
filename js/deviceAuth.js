@@ -220,10 +220,21 @@ const DeviceAuth = {
         return { approved: true, admin: true, firstDevice: true };
       }
 
+      // CLAUDE.MD RULE: "Davide's Android phone — ALWAYS the admin device.
+      // If no admin exists, this device reclaims admin automatically.
+      // Never require approval for this device."
+      // For Android phones: use a 1-hour threshold instead of 7 days.
+      // This handles the common case of clearing browser data / reinstalling,
+      // which generates a new device ID but the physical device is the same.
+      const isAndroidPhone = this.deviceInfo && this.deviceInfo.type === 'Android Phone';
+
       // ADMIN RECOVERY: Check if all approved devices are orphaned (no recent activity)
       const approvedDevices = allApprovedVal;
       const now = Date.now();
-      const ORPHAN_THRESHOLD = 7 * 24 * 60 * 60 * 1000;
+      // Android phone gets fast recovery (1 hour), others wait 7 days
+      const ORPHAN_THRESHOLD = isAndroidPhone
+        ? 1 * 60 * 60 * 1000    // 1 hour for Android (Davide's primary device)
+        : 7 * 24 * 60 * 60 * 1000; // 7 days for other devices
       let hasActiveAdmin = false;
 
       if (approvedDevices) {

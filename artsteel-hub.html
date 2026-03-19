@@ -168,12 +168,16 @@
                     return { approved: true, admin: true, firstDevice: true };
                 }
 
-                // ADMIN RECOVERY: If no admin has been active for 7+ days,
-                // this device claims admin (matches Safety App behavior)
+                // ADMIN RECOVERY: If no admin has been active recently,
+                // this device claims admin. Android phones get fast recovery (1 hour)
+                // per CLAUDE.MD: "Davide's Android phone — ALWAYS the admin device"
                 const allApproved = allSnap.val();
                 if (allApproved) {
                     const now = Date.now();
-                    const ORPHAN_THRESHOLD = 7 * 24 * 60 * 60 * 1000;
+                    const isAndroid = /Android/i.test(navigator.userAgent);
+                    const ORPHAN_THRESHOLD = isAndroid
+                        ? 1 * 60 * 60 * 1000       // 1 hour for Android
+                        : 7 * 24 * 60 * 60 * 1000;  // 7 days for others
                     let hasActiveAdmin = false;
                     Object.values(allApproved).forEach(dev => {
                         if (dev && dev.isAdmin) {
