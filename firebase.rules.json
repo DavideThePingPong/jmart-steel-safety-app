@@ -112,7 +112,7 @@
         }
       },
 
-      // Hanna - Receipts (authenticated devices only)
+      // Hanna - Documents: receipts, certificates, service reports, invoices, etc.
       "hanna": {
         "receipts": {
           ".read": "auth != null",

@@ -2093,16 +2093,39 @@
         }
         .hanna-recent-item {
             display: flex;
-            justify-content: space-between;
             align-items: center;
+            gap: 10px;
             padding: 10px;
             background: rgba(0,0,0,0.2);
             border-radius: 8px;
             margin-bottom: 8px;
         }
+        .hanna-recent-type {
+            font-size: 1.3rem;
+            flex-shrink: 0;
+        }
+        .hanna-recent-info {
+            flex: 1;
+            min-width: 0;
+        }
         .hanna-recent-store {
             font-weight: 600;
             color: #fff;
+        }
+        .hanna-recent-meta {
+            font-size: 0.78rem;
+            color: #9ca3af;
+        }
+        .hanna-recent-brands {
+            margin-top: 3px;
+        }
+        .hanna-recent-right {
+            text-align: right;
+            flex-shrink: 0;
+        }
+        .hanna-recent-total {
+            color: #4ade80;
+            font-weight: 700;
         }
         .hanna-recent-amount {
             color: #4ade80;
@@ -2111,6 +2134,76 @@
         .hanna-recent-date {
             font-size: 0.75rem;
             color: #6b7280;
+        }
+        /* Document type filter bar */
+        .hanna-filter-bar {
+            display: flex;
+            gap: 6px;
+            overflow-x: auto;
+            padding: 8px 0 12px;
+            margin-bottom: 8px;
+            -webkit-overflow-scrolling: touch;
+        }
+        .hanna-filter-btn {
+            padding: 6px 12px;
+            border-radius: 20px;
+            border: 1px solid #374151;
+            background: #1f2937;
+            color: #9ca3af;
+            font-size: 0.85rem;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.2s;
+        }
+        .hanna-filter-btn.active {
+            background: #065f46;
+            border-color: #4ade80;
+            color: #fff;
+        }
+        .hanna-filter-btn:hover {
+            border-color: #4ade80;
+        }
+        /* Brand tags */
+        .hanna-brand-tag {
+            display: inline-block;
+            background: rgba(74, 222, 128, 0.15);
+            color: #4ade80;
+            padding: 1px 8px;
+            border-radius: 10px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            margin-left: 4px;
+        }
+        .hanna-brand-tag-sm {
+            display: inline-block;
+            background: rgba(74, 222, 128, 0.1);
+            color: #6ee7b7;
+            padding: 0px 6px;
+            border-radius: 8px;
+            font-size: 0.7rem;
+            margin-right: 3px;
+        }
+        /* Extra fields for non-receipt docs */
+        .hanna-extra-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            font-size: 0.9rem;
+        }
+        .hanna-extra-row:last-child { border-bottom: none; }
+        .hanna-extra-row > span:first-child {
+            color: rgba(255,255,255,0.6);
+            font-weight: 500;
+        }
+        .hanna-extra-row > span:last-child {
+            color: #fff;
+            text-align: right;
+        }
+        /* Doc type breakdown in stats */
+        .hanna-type-count {
+            font-size: 0.85rem;
+            font-weight: 600;
         }
         .hanna-scanning {
             display: none;
@@ -2180,7 +2273,7 @@
         </div>
         <div class="mobile-nav-row">
             <button class="mobile-nav-btn" onclick="showSection('brittany')" data-section="brittany">💪<span>BRITTANY</span></button>
-            <button class="mobile-nav-btn" onclick="showSection('hanna')" data-section="hanna">🧾<span>HANNA</span></button>
+            <button class="mobile-nav-btn" onclick="showSection('hanna')" data-section="hanna">📄<span>HANNA</span></button>
             <button class="mobile-nav-btn" onclick="showSection('victor')" data-section="victor">🔍<span>VICTOR</span></button>
             <button class="mobile-nav-btn" onclick="showSection('frank')" data-section="frank">🦺<span>FRANK</span></button>
             <button class="mobile-nav-btn" onclick="showSection('settings')" data-section="settings">⚙️<span>MORE</span></button>
@@ -2819,41 +2912,45 @@
     <!-- HANNA Section -->
     <div id="hanna" class="agent-section">
         <div class="agent-header">
-            <div class="agent-icon">🧾</div>
+            <div class="agent-icon">📄</div>
             <div class="agent-title">
-                <h2>HANNA - Receipt Scanner</h2>
-                <p>AI-powered receipt scanning for expense tracking</p>
+                <h2>HANNA - Document Scanner</h2>
+                <p>AI-powered scanning for receipts, certificates, services & more</p>
             </div>
         </div>
 
         <!-- Upload Zone -->
         <div class="hanna-upload-zone" id="hannaUploadZone" onclick="document.getElementById('hannaFileInput').click()">
             <div class="hanna-upload-icon">📸</div>
-            <div class="hanna-upload-text">Tap to take photo or upload receipt</div>
-            <div class="hanna-upload-hint">Supports JPG, PNG, PDF</div>
+            <div class="hanna-upload-text">Tap to take photo or upload document</div>
+            <div class="hanna-upload-hint">Receipts, certificates, service reports, invoices, quotes & more</div>
             <input type="file" id="hannaFileInput" accept="image/*,application/pdf" capture="environment" style="display:none" onchange="hannaFileSelected(event)">
         </div>
 
         <!-- Preview Area -->
         <div class="hanna-preview" id="hannaPreview" style="display:none">
-            <img id="hannaPreviewImage" src="" alt="Receipt preview">
+            <img id="hannaPreviewImage" src="" alt="Document preview">
             <button class="hanna-preview-remove" onclick="hannaClearPreview()">✕</button>
         </div>
 
         <!-- Scanning Animation -->
         <div class="hanna-scanning" id="hannaScanning" style="display:none">
             <div class="hanna-scan-animation"></div>
-            <div class="hanna-scan-text">Scanning receipt...</div>
+            <div class="hanna-scan-text">Analyzing document...</div>
         </div>
 
         <!-- Results Card -->
         <div class="hanna-result-card" id="hannaResult" style="display:none">
             <div class="hanna-result-header">
+                <span class="hanna-doc-type-badge" id="hannaDocTypeBadge" style="display:none;color:#fff;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600"></span>
                 <span class="hanna-store-name" id="hannaStoreName">-</span>
                 <span class="hanna-receipt-date" id="hannaReceiptDate">-</span>
             </div>
 
-            <div class="hanna-totals">
+            <!-- Extra fields for non-receipt docs -->
+            <div id="hannaExtraFields" style="display:none;padding:8px 12px;background:rgba(255,255,255,0.05);border-radius:8px;margin-bottom:8px"></div>
+
+            <div class="hanna-totals" id="hannaTotals">
                 <div class="hanna-total-row">
                     <span>Subtotal</span>
                     <span id="hannaSubtotal">$0.00</span>
@@ -2889,21 +2986,33 @@
             <!-- Notes -->
             <div class="hanna-notes-section">
                 <label>Notes (optional)</label>
-                <textarea id="hannaNotes" placeholder="Add any notes about this receipt..."></textarea>
+                <textarea id="hannaNotes" placeholder="Add any notes about this document..."></textarea>
             </div>
 
             <!-- Action Buttons -->
             <div class="hanna-actions">
                 <button class="btn" onclick="hannaClearAll()">Clear</button>
-                <button class="btn primary" onclick="hannaSaveReceipt()">💾 Save Receipt</button>
+                <button class="btn primary" onclick="hannaSaveReceipt()">💾 Save Document</button>
             </div>
         </div>
 
-        <!-- Recent Receipts -->
+        <!-- Document Filter Tabs -->
+        <div class="hanna-filter-bar">
+            <button class="hanna-filter-btn active" data-type="all" onclick="hannaFilterByType('all')">All</button>
+            <button class="hanna-filter-btn" data-type="receipt" onclick="hannaFilterByType('receipt')">🧾</button>
+            <button class="hanna-filter-btn" data-type="invoice" onclick="hannaFilterByType('invoice')">📄</button>
+            <button class="hanna-filter-btn" data-type="certificate" onclick="hannaFilterByType('certificate')">📜</button>
+            <button class="hanna-filter-btn" data-type="service" onclick="hannaFilterByType('service')">🔧</button>
+            <button class="hanna-filter-btn" data-type="quote" onclick="hannaFilterByType('quote')">💬</button>
+            <button class="hanna-filter-btn" data-type="delivery" onclick="hannaFilterByType('delivery')">🚚</button>
+            <button class="hanna-filter-btn" data-type="warranty" onclick="hannaFilterByType('warranty')">🛡️</button>
+        </div>
+
+        <!-- Recent Documents -->
         <div class="hanna-recent-section">
-            <h4>📋 Recent Receipts</h4>
+            <h4>📋 Recent Documents</h4>
             <div class="hanna-recent-list" id="hannaRecentList">
-                <div class="hanna-empty-state">No receipts scanned yet</div>
+                <div class="hanna-empty-state">No documents scanned yet</div>
             </div>
         </div>
 
@@ -2922,8 +3031,9 @@
                 <div class="hanna-stat-label">GST Claimable</div>
             </div>
         </div>
+        <div id="hannaStatBreakdown" style="display:flex;gap:10px;justify-content:center;padding:4px 0;flex-wrap:wrap"></div>
 
-        <div class="console" id="hannaConsole">🧾 HANNA Ready - "I'll scan your receipts in a flash"</div>
+        <div class="console" id="hannaConsole">📄 HANNA Ready - "I'll scan your documents in a flash"</div>
     </div>
 
     <!-- VICTOR - MSDS Register Section -->
@@ -6270,13 +6380,27 @@
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // HANNA - Receipt Scanner Functions (Firebase-synced across all devices)
+    // HANNA - Document Scanner Functions (Firebase-synced across all devices)
+    // Supports: Receipts, Certificates, Service Reports, Invoices, Quotes,
+    //           Delivery Dockets, Warranties, and more
     // ═══════════════════════════════════════════════════════════════════════════
     let hannaCurrentFile = null;
     let hannaCurrentResult = null;
-    let hannaReceipts = [];
+    let hannaReceipts = [];       // legacy name kept for backward compat
     let hannaFirebaseListenerActive = false;
     var _hannaRef = null;
+    let hannaFilterType = 'all';  // current doc type filter
+
+    const HANNA_DOC_TYPES = {
+        receipt:    { label: 'Receipt',          icon: '🧾', color: '#4caf50' },
+        invoice:    { label: 'Invoice',          icon: '📄', color: '#2196f3' },
+        certificate:{ label: 'Certificate',      icon: '📜', color: '#ff9800' },
+        service:    { label: 'Service Report',   icon: '🔧', color: '#9c27b0' },
+        quote:      { label: 'Quote',            icon: '💬', color: '#00bcd4' },
+        delivery:   { label: 'Delivery Docket',  icon: '🚚', color: '#795548' },
+        warranty:   { label: 'Warranty',         icon: '🛡️', color: '#607d8b' },
+        other:      { label: 'Other Document',   icon: '📋', color: '#999' }
+    };
 
     function hannaStopSync() {
         if (_hannaRef) { _hannaRef.off('value'); _hannaRef = null; }
@@ -6323,7 +6447,7 @@
             document.getElementById('hannaPreviewImage').src = e.target.result;
             document.getElementById('hannaPreview').style.display = 'block';
             document.getElementById('hannaUploadZone').style.display = 'none';
-            document.getElementById('hannaConsole').textContent = `📷 Image loaded: ${file.name}`;
+            document.getElementById('hannaConsole').textContent = `📷 Document loaded: ${file.name}`;
 
             // Auto-scan after upload
             hannaScanReceipt();
@@ -6336,7 +6460,7 @@
         document.getElementById('hannaUploadZone').style.display = 'flex';
         document.getElementById('hannaFileInput').value = '';
         hannaCurrentFile = null;
-        document.getElementById('hannaConsole').textContent = '🧾 HANNA Ready - "I\'ll scan your receipts in a flash"';
+        document.getElementById('hannaConsole').textContent = '📄 HANNA Ready - "I\'ll scan your documents in a flash"';
     }
 
     function hannaClearAll() {
@@ -6350,13 +6474,13 @@
 
     async function hannaScanReceipt() {
         if (!hannaCurrentFile) {
-            document.getElementById('hannaConsole').textContent = '⚠️ Please upload a receipt first';
+            document.getElementById('hannaConsole').textContent = '⚠️ Please upload a document first';
             return;
         }
 
         // Show scanning animation
         document.getElementById('hannaScanning').style.display = 'flex';
-        document.getElementById('hannaConsole').textContent = '🔍 Scanning receipt with AI...';
+        document.getElementById('hannaConsole').textContent = '🔍 Scanning document with AI...';
 
         try {
             // Convert to base64
@@ -6369,7 +6493,7 @@
             // Detect media type
             const mediaType = hannaCurrentFile.type || 'image/jpeg';
 
-            // Call Claude API directly with vision (no backend needed)
+            // Call Claude API with expanded document detection prompt
             const result = await callClaudeAPI(
                 [{
                     role: 'user',
@@ -6380,15 +6504,37 @@
                         },
                         {
                             type: 'text',
-                            text: 'Extract all data from this receipt. Return ONLY valid JSON:\n' +
-                                '{"store_name":"store name","date":"DD/MM/YYYY","subtotal":0.00,"gst":0.00,"total":0.00,' +
-                                '"items":[{"name":"item name","qty":1,"price":0.00}],"confidence":0.95}\n' +
-                                'Rules:\n- All prices in AUD\n- GST is 10% in Australia (calculate if not shown)\n' +
-                                '- confidence: 0.0-1.0 based on image clarity\n- Return ONLY JSON, no other text'
+                            text: 'Analyze this document. First determine what TYPE of document it is, then extract all relevant data.\n\n' +
+                                'Return ONLY valid JSON with this structure:\n' +
+                                '{\n' +
+                                '  "doc_type": "receipt|invoice|certificate|service|quote|delivery|warranty|other",\n' +
+                                '  "doc_type_label": "human readable type e.g. Tax Invoice, Training Certificate",\n' +
+                                '  "store_name": "business/issuer name",\n' +
+                                '  "date": "DD/MM/YYYY",\n' +
+                                '  "reference_number": "invoice/cert/quote number if present",\n' +
+                                '  "subtotal": 0.00,\n' +
+                                '  "gst": 0.00,\n' +
+                                '  "total": 0.00,\n' +
+                                '  "items": [{"name":"item name","qty":1,"price":0.00,"brand":"brand/manufacturer if visible"}],\n' +
+                                '  "description": "brief summary of document content",\n' +
+                                '  "expiry_date": "DD/MM/YYYY if applicable (certificates, warranties)",\n' +
+                                '  "holder_name": "person/company the document is issued to",\n' +
+                                '  "brands_detected": ["list of brand names found on document"],\n' +
+                                '  "confidence": 0.95\n' +
+                                '}\n\n' +
+                                'Rules:\n' +
+                                '- doc_type MUST be one of: receipt, invoice, certificate, service, quote, delivery, warranty, other\n' +
+                                '- All prices in AUD. GST is 10% in Australia (calculate if not shown)\n' +
+                                '- For certificates: extract cert number, issuer, holder, expiry\n' +
+                                '- For service reports: extract technician, work done, parts used\n' +
+                                '- For every item, identify the brand/manufacturer if visible\n' +
+                                '- brands_detected: list ALL brand names visible anywhere on the document\n' +
+                                '- confidence: 0.0-1.0 based on image clarity\n' +
+                                '- Return ONLY JSON, no other text'
                         }
                     ]
                 }],
-                { model: 'claude-3-5-haiku-20241022', maxTokens: 1024 }
+                { model: 'claude-3-5-haiku-20241022', maxTokens: 2048 }
             );
 
             // Extract text from response
@@ -6402,11 +6548,23 @@
             // Parse JSON
             const jsonMatch = text.match(/\{[\s\S]*\}/);
             const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
-            if (!parsed) throw new Error('Could not parse receipt data');
+            if (!parsed) throw new Error('Could not parse document data');
+
+            // Ensure doc_type defaults to receipt for backward compat
+            if (!parsed.doc_type || !HANNA_DOC_TYPES[parsed.doc_type]) {
+                parsed.doc_type = 'receipt';
+            }
 
             hannaCurrentResult = parsed;
             hannaDisplayResult(parsed);
-            document.getElementById('hannaConsole').textContent = '✅ Receipt scanned! Store: ' + (parsed.store_name || 'Unknown') + ', Total: $' + (parsed.total || 0).toFixed(2);
+
+            const typeInfo = HANNA_DOC_TYPES[parsed.doc_type];
+            const brandStr = parsed.brands_detected && parsed.brands_detected.length > 0
+                ? ' | Brands: ' + parsed.brands_detected.join(', ')
+                : '';
+            document.getElementById('hannaConsole').textContent =
+                `✅ ${typeInfo.icon} ${typeInfo.label} scanned! ${parsed.store_name || 'Unknown'}` +
+                (parsed.total ? `, Total: $${parsed.total.toFixed(2)}` : '') + brandStr;
 
         } catch (error) {
             console.error('Scan error:', error);
@@ -6422,20 +6580,51 @@
     }
 
     function hannaSimulateScan() {
-        // Demo data for offline use
-        const demoResult = {
-            store_name: 'Bunnings Warehouse',
-            date: new Date().toLocaleDateString('en-AU'),
-            subtotal: 127.27,
-            gst: 12.73,
-            total: 140.00,
-            items: [
-                { name: 'M16 Galvanised Bolt Pack', qty: 2, price: 24.50 },
-                { name: 'Chemical Anchor HY200', qty: 1, price: 89.00 },
-                { name: 'Safety Glasses', qty: 1, price: 14.00 }
-            ],
-            confidence: 0.85
-        };
+        // Demo data for offline use - show different doc types
+        const demos = [
+            {
+                doc_type: 'receipt',
+                doc_type_label: 'Tax Receipt',
+                store_name: 'Bunnings Warehouse',
+                date: new Date().toLocaleDateString('en-AU'),
+                subtotal: 127.27, gst: 12.73, total: 140.00,
+                items: [
+                    { name: 'M16 Galvanised Bolt Pack', qty: 2, price: 24.50, brand: 'Zenith' },
+                    { name: 'Chemical Anchor HY200', qty: 1, price: 89.00, brand: 'Hilti' },
+                    { name: 'Sunflower Oil 4L', qty: 1, price: 14.00, brand: 'Coles' }
+                ],
+                brands_detected: ['Zenith', 'Hilti', 'Coles'],
+                confidence: 0.85
+            },
+            {
+                doc_type: 'certificate',
+                doc_type_label: 'Training Certificate',
+                store_name: 'SafeWork NSW',
+                date: new Date().toLocaleDateString('en-AU'),
+                reference_number: 'CERT-2026-4421',
+                description: 'White Card - General Construction Induction',
+                holder_name: 'Davide Martini',
+                expiry_date: '19/03/2031',
+                brands_detected: [],
+                confidence: 0.90
+            },
+            {
+                doc_type: 'service',
+                doc_type_label: 'Service Report',
+                store_name: 'Lincoln Electric',
+                date: new Date().toLocaleDateString('en-AU'),
+                reference_number: 'SR-88712',
+                description: 'Annual welder service & calibration',
+                items: [
+                    { name: 'Wire feeder roller replacement', qty: 1, price: 85.00, brand: 'Lincoln' },
+                    { name: 'Torch liner 4.5m', qty: 1, price: 42.00, brand: 'Lincoln' }
+                ],
+                subtotal: 345.45, gst: 34.55, total: 380.00,
+                brands_detected: ['Lincoln Electric'],
+                confidence: 0.88
+            }
+        ];
+        const demoResult = demos[Math.floor(Math.random() * demos.length)];
 
         hannaCurrentResult = demoResult;
         hannaDisplayResult(demoResult);
@@ -6443,20 +6632,59 @@
     }
 
     function hannaDisplayResult(result) {
-        document.getElementById('hannaStoreName').textContent = result.store_name || 'Unknown Store';
+        const docType = result.doc_type || 'receipt';
+        const typeInfo = HANNA_DOC_TYPES[docType] || HANNA_DOC_TYPES.other;
+
+        // Show doc type badge
+        const typeBadge = document.getElementById('hannaDocTypeBadge');
+        if (typeBadge) {
+            typeBadge.textContent = `${typeInfo.icon} ${result.doc_type_label || typeInfo.label}`;
+            typeBadge.style.background = typeInfo.color;
+            typeBadge.style.display = 'inline-block';
+        }
+
+        document.getElementById('hannaStoreName').textContent = result.store_name || 'Unknown';
         document.getElementById('hannaReceiptDate').textContent = result.date || '-';
+
+        // Show/hide financial fields based on doc type
+        const totalsEl = document.getElementById('hannaTotals');
+        const hasFinancials = result.total || result.subtotal;
+        if (totalsEl) totalsEl.style.display = hasFinancials ? 'block' : 'none';
         document.getElementById('hannaSubtotal').textContent = `$${(result.subtotal || 0).toFixed(2)}`;
         document.getElementById('hannaGST').textContent = `$${(result.gst || 0).toFixed(2)}`;
         document.getElementById('hannaTotal').textContent = `$${(result.total || 0).toFixed(2)}`;
 
-        // Display items
+        // Show extra fields for non-receipt documents
+        const extraEl = document.getElementById('hannaExtraFields');
+        if (extraEl) {
+            let extraHtml = '';
+            if (result.reference_number) {
+                extraHtml += `<div class="hanna-extra-row"><span>Reference #</span><span>${escapeHtml(result.reference_number)}</span></div>`;
+            }
+            if (result.description) {
+                extraHtml += `<div class="hanna-extra-row"><span>Description</span><span>${escapeHtml(result.description)}</span></div>`;
+            }
+            if (result.holder_name) {
+                extraHtml += `<div class="hanna-extra-row"><span>Issued To</span><span>${escapeHtml(result.holder_name)}</span></div>`;
+            }
+            if (result.expiry_date) {
+                extraHtml += `<div class="hanna-extra-row"><span>Expires</span><span>${escapeHtml(result.expiry_date)}</span></div>`;
+            }
+            if (result.brands_detected && result.brands_detected.length > 0) {
+                extraHtml += `<div class="hanna-extra-row"><span>Brands</span><span>${result.brands_detected.map(b => `<span class="hanna-brand-tag">${escapeHtml(b)}</span>`).join(' ')}</span></div>`;
+            }
+            extraEl.innerHTML = extraHtml;
+            extraEl.style.display = extraHtml ? 'block' : 'none';
+        }
+
+        // Display items with brand info
         const itemsList = document.getElementById('hannaItemsList');
         if (result.items && result.items.length > 0) {
             itemsList.innerHTML = result.items.map(item => `
                 <div class="hanna-item">
-                    <span class="hanna-item-name">${escapeHtml(item.name)}</span>
-                    <span class="hanna-item-qty">x${escapeHtml(item.qty || 1)}</span>
-                    <span class="hanna-item-price">$${escapeHtml((item.price || 0).toFixed(2))}</span>
+                    <span class="hanna-item-name">${escapeHtml(item.name)}${item.brand ? ` <span class="hanna-brand-tag">${escapeHtml(item.brand)}</span>` : ''}</span>
+                    <span class="hanna-item-qty">x${escapeHtml(String(item.qty || 1))}</span>
+                    <span class="hanna-item-price">${item.price ? '$' + escapeHtml((item.price || 0).toFixed(2)) : ''}</span>
                 </div>
             `).join('');
         } else {
@@ -6464,12 +6692,11 @@
         }
 
         document.getElementById('hannaResult').style.display = 'block';
-        document.getElementById('hannaConsole').textContent = `✅ Receipt scanned! Store: ${result.store_name}, Total: $${result.total?.toFixed(2) || '0.00'}`;
     }
 
     function hannaSaveReceipt() {
         if (!hannaCurrentResult) {
-            document.getElementById('hannaConsole').textContent = '⚠️ No receipt to save';
+            document.getElementById('hannaConsole').textContent = '⚠️ No document to save';
             return;
         }
 
@@ -6481,6 +6708,7 @@
         const receipt = {
             id: Date.now(),
             ...hannaCurrentResult,
+            doc_type: hannaCurrentResult.doc_type || 'receipt',
             job: job,
             notes: notes,
             saved_at: new Date().toISOString()
@@ -6488,7 +6716,7 @@
 
         // Save to Firebase + localStorage
         hannaReceipts.unshift(receipt);
-        if (hannaReceipts.length > 100) hannaReceipts = hannaReceipts.slice(0, 100); // Keep last 100
+        if (hannaReceipts.length > 200) hannaReceipts = hannaReceipts.slice(0, 200); // Keep last 200
         hannaSaveReceipts();
 
         // Update UI
@@ -6496,26 +6724,57 @@
         hannaUpdateStats();
         hannaClearAll();
 
-        document.getElementById('hannaConsole').textContent = `💾 Receipt saved to "${job}"! Total: $${receipt.total?.toFixed(2) || '0.00'}`;
+        const typeInfo = HANNA_DOC_TYPES[receipt.doc_type] || HANNA_DOC_TYPES.other;
+        const totalStr = receipt.total ? ` Total: $${receipt.total.toFixed(2)}` : '';
+        document.getElementById('hannaConsole').textContent = `💾 ${typeInfo.icon} ${typeInfo.label} saved to "${job}"!${totalStr}`;
 
         // Auto-backup to Google Drive
         hubDriveBackupReceipt(receipt, 0);
     }
 
+    function hannaFilterByType(type) {
+        hannaFilterType = type;
+        // Update active filter button
+        document.querySelectorAll('.hanna-filter-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.type === type);
+        });
+        hannaUpdateRecentList();
+    }
+
+    function hannaGetFiltered() {
+        if (hannaFilterType === 'all') return hannaReceipts;
+        return hannaReceipts.filter(r => (r.doc_type || 'receipt') === hannaFilterType);
+    }
+
     function hannaUpdateRecentList() {
         const list = document.getElementById('hannaRecentList');
-        if (hannaReceipts.length === 0) {
-            list.innerHTML = '<div class="hanna-empty-state">No receipts scanned yet</div>';
+        const filtered = hannaGetFiltered();
+
+        if (filtered.length === 0) {
+            const msg = hannaFilterType === 'all' ? 'No documents scanned yet' : `No ${(HANNA_DOC_TYPES[hannaFilterType] || {}).label || hannaFilterType}s yet`;
+            list.innerHTML = `<div class="hanna-empty-state">${msg}</div>`;
             return;
         }
 
-        list.innerHTML = hannaReceipts.slice(0, 5).map(r => `
+        list.innerHTML = filtered.slice(0, 8).map(r => {
+            const typeInfo = HANNA_DOC_TYPES[r.doc_type || 'receipt'] || HANNA_DOC_TYPES.other;
+            const brandTags = (r.brands_detected && r.brands_detected.length > 0)
+                ? r.brands_detected.map(b => `<span class="hanna-brand-tag-sm">${escapeHtml(b)}</span>`).join('')
+                : '';
+            return `
             <div class="hanna-recent-item">
-                <div class="hanna-recent-store">${escapeHtml(r.store_name || 'Unknown')}</div>
-                <div class="hanna-recent-job">${escapeHtml(r.job || '-')}</div>
-                <div class="hanna-recent-total">$${escapeHtml((r.total || 0).toFixed(2))}</div>
-            </div>
-        `).join('');
+                <div class="hanna-recent-type" style="color:${typeInfo.color}">${typeInfo.icon}</div>
+                <div class="hanna-recent-info">
+                    <div class="hanna-recent-store">${escapeHtml(r.store_name || 'Unknown')}</div>
+                    <div class="hanna-recent-meta">${escapeHtml(r.job || '-')}${r.reference_number ? ' · #' + escapeHtml(r.reference_number) : ''}</div>
+                    ${brandTags ? `<div class="hanna-recent-brands">${brandTags}</div>` : ''}
+                </div>
+                <div class="hanna-recent-right">
+                    ${r.total ? `<div class="hanna-recent-total">$${escapeHtml((r.total || 0).toFixed(2))}</div>` : ''}
+                    <div class="hanna-recent-date">${escapeHtml(r.date || '')}</div>
+                </div>
+            </div>`;
+        }).join('');
     }
 
     function hannaUpdateStats() {
@@ -6529,6 +6788,20 @@
         });
         const monthTotal = thisMonth.reduce((sum, r) => sum + (r.total || 0), 0);
         document.getElementById('hannaStatMonth').textContent = `$${monthTotal.toFixed(0)}`;
+
+        // Doc type breakdown
+        const typeCounts = {};
+        hannaReceipts.forEach(r => {
+            const t = r.doc_type || 'receipt';
+            typeCounts[t] = (typeCounts[t] || 0) + 1;
+        });
+        const breakdownEl = document.getElementById('hannaStatBreakdown');
+        if (breakdownEl) {
+            breakdownEl.innerHTML = Object.entries(typeCounts).map(([t, c]) => {
+                const info = HANNA_DOC_TYPES[t] || HANNA_DOC_TYPES.other;
+                return `<span class="hanna-type-count" style="color:${info.color}">${info.icon} ${c}</span>`;
+            }).join('');
+        }
 
         // GST claimable
         const gstTotal = hannaReceipts.reduce((sum, r) => sum + (r.gst || 0), 0);
@@ -7058,21 +7331,33 @@
             if (!await this.loadLib()) return null;
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
-            let y = this._header(doc, 'RECEIPT');
+            const docType = receipt.doc_type || 'receipt';
+            const typeLabels = {
+                receipt: 'RECEIPT', invoice: 'INVOICE', certificate: 'CERTIFICATE',
+                service: 'SERVICE REPORT', quote: 'QUOTE', delivery: 'DELIVERY DOCKET',
+                warranty: 'WARRANTY', other: 'DOCUMENT'
+            };
+            let y = this._header(doc, receipt.doc_type_label || typeLabels[docType] || 'DOCUMENT');
             doc.setFontSize(10);
             const fields = [
+                ['Type', receipt.doc_type_label || typeLabels[docType] || 'Document'],
                 ['Date', receipt.date || 'N/A'],
-                ['Store', receipt.store_name || receipt.store || 'N/A'],
+                ['Store/Issuer', receipt.store_name || receipt.store || 'N/A'],
+                ['Reference #', receipt.reference_number || ''],
+                ['Description', receipt.description || ''],
+                ['Issued To', receipt.holder_name || ''],
+                ['Expiry', receipt.expiry_date || ''],
                 ['Items', receipt.description || receipt.items || 'N/A'],
-                ['Subtotal', receipt.subtotal ? `$${receipt.subtotal}` : 'N/A'],
-                ['GST', receipt.gst ? `$${receipt.gst}` : 'N/A'],
-                ['Total', receipt.total ? `$${receipt.total}` : 'N/A'],
+                ['Subtotal', receipt.subtotal ? `$${receipt.subtotal}` : ''],
+                ['GST', receipt.gst ? `$${receipt.gst}` : ''],
+                ['Total', receipt.total ? `$${receipt.total}` : ''],
+                ['Brands', receipt.brands_detected && receipt.brands_detected.length > 0 ? receipt.brands_detected.join(', ') : ''],
                 ['Job', receipt.job || 'N/A'],
-                ['Category', receipt.category || 'N/A'],
+                ['Category', receipt.category || ''],
                 ['Notes', receipt.notes || '']
             ];
             fields.forEach(([label, value]) => {
-                if (!value || value === 'N/A' && label === 'Notes') return;
+                if (!value || (value === 'N/A' && (label === 'Notes' || label === 'Category'))) return;
                 doc.setFont(undefined, 'bold');
                 doc.text(label + ':', 15, y);
                 doc.setFont(undefined, 'normal');
@@ -7083,7 +7368,8 @@
             this._footer(doc);
             const dateStr = (receipt.date || new Date().toLocaleDateString('en-AU')).replace(/\//g, '-');
             const store = (receipt.store_name || receipt.store || 'Unknown').replace(/[^a-zA-Z0-9]/g, '_').substring(0, 20);
-            return { blob: doc.output('blob'), filename: `Receipt_${store}_${dateStr}.pdf` };
+            const prefix = (typeLabels[docType] || 'Doc').replace(/\s+/g, '_');
+            return { blob: doc.output('blob'), filename: `${prefix}_${store}_${dateStr}.pdf` };
         },
 
         async generateMSDSRegister(products) {
@@ -7288,7 +7574,14 @@
     // ═══════════════════════════════════════════════════════════════════════════
     function hubDriveBackupReceipt(receipt, index) {
         const ym = new Date().toISOString().substring(0, 7);
-        const folderPath = `11_Finance/Receipts/${ym}`;
+        const docType = receipt.doc_type || 'receipt';
+        const folderMap = {
+            receipt: 'Receipts', invoice: 'Invoices', certificate: 'Certificates',
+            service: 'Service_Reports', quote: 'Quotes', delivery: 'Delivery_Dockets',
+            warranty: 'Warranties', other: 'Other_Documents'
+        };
+        const folderName = folderMap[docType] || 'Documents';
+        const folderPath = `11_Finance/${folderName}/${ym}`;
         if (HubDrive.isConnected()) {
             HubPdfGen.generateReceipt(receipt).then(result => {
                 if (result) return HubDrive.uploadPDF(result.blob, result.filename, folderPath);
