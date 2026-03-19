@@ -219,6 +219,12 @@ const FirebaseSync = {
       return;
     }
 
+    // Verify Firebase is actually reachable (not just navigator.onLine lie-fi)
+    if (typeof NetworkStatus !== 'undefined' && !NetworkStatus.isActuallyOnline) {
+      console.log('[FirebaseSync] Lie-fi detected — deferring queue processing');
+      return;
+    }
+
     // FIXED: Wait for Firebase auth before processing
     // Without this, operations fire before signInAnonymously() completes
     var authOk = await this._ensureAuth();
@@ -514,29 +520,39 @@ FirebaseSync.init();
 // Expose processQueue for SW background sync triggers
 window.processSyncQueue = () => FirebaseSync.processQueue();
 
-// Process queue when coming back online — with delay to let network stabilize
+// Process queue when coming back online — verify Firebase connection first
 window.addEventListener('online', () => {
-  console.log('Back online - waiting 2s for network to stabilize...');
-  // Reset auth flag so we re-check (network change may have invalidated token)
-  FirebaseSync._authReady = false;
-  // Delay processing to let the network connection fully establish.
-  // Without this, the first Firebase write often fails because the TCP connection
-  // isn't fully ready yet, which trips the circuit breaker.
-  setTimeout(() => {
-    console.log('Processing sync queue after reconnect');
+  console.log('Back online - verifying Firebase connection before sync...');
+  // Wait for network to stabilize, then verify Firebase is actually connected
+  // before processing queue. Do NOT blindly reset _authReady — if auth is
+  // already valid, resetting it causes unnecessary re-auth that can fail.
+  setTimeout(async () => {
+    // Check if Firebase is actually reachable, not just navigator.onLine
+    if (typeof firebaseDb !== 'undefined' && firebaseDb) {
+      try {
+        const snap = await Promise.race([
+          firebaseDb.ref('.info/connected').once('value'),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))
+        ]);
+        if (snap.val() !== true) {
+          console.log('Firebase not yet connected — deferring queue processing');
+          return;
+        }
+      } catch (e) {
+        console.log('Firebase connection check failed:', e.message, '— deferring queue');
+        return;
+      }
+    }
+    // Only reset auth if Firebase user is actually gone (e.g. token expired)
+    if (typeof firebase !== 'undefined' && firebase.auth && !firebase.auth().currentUser) {
+      console.log('Firebase auth user missing — resetting auth flag');
+      FirebaseSync._authReady = false;
+    }
+    console.log('Firebase connected — processing sync queue');
     FirebaseSync.processQueue();
   }, 2000);
 });
 
-// Also attempt Google Drive silent reconnect when coming online
-window.addEventListener('online', () => {
-  if (typeof GoogleDriveSync !== 'undefined' && !GoogleDriveSync.isConnected()) {
-    var autoConnect = localStorage.getItem('google-drive-auto-connect');
-    if (autoConnect === 'true') {
-      console.log('Back online — attempting Google Drive silent reconnect');
-      setTimeout(() => {
-        GoogleDriveSync._silentReconnect();
-      }, 3000); // Wait a bit longer for Google APIs to be reachable
-    }
-  }
-});
+// NOTE: Google Drive silent reconnect removed from online handler.
+// On Android, requestAccessToken({ prompt: '' }) opens a popup that gets blocked.
+// User must tap Connect manually to re-auth Google Drive.

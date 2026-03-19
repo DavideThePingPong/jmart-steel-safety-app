@@ -1429,7 +1429,10 @@ function useDataSync({
         setSyncStatus('synced');
         return;
       }
-      if (FirebaseSync.isConnected() && isOnlineRef.current && forms.length > 0) {
+
+      // Check both navigator.onLine AND NetworkStatus lie-fi detection
+      const actuallyOnline = isOnlineRef.current && (typeof NetworkStatus === 'undefined' || NetworkStatus.isActuallyOnline);
+      if (FirebaseSync.isConnected() && actuallyOnline && forms.length > 0) {
         // Debounce Firebase writes — wait 2s for rapid changes to settle
         if (formsSyncTimerRef.current) clearTimeout(formsSyncTimerRef.current);
         setSyncStatus('syncing');
@@ -1439,7 +1442,8 @@ function useDataSync({
             setSyncStatus('synced');
             console.log('Forms synced to Firebase:', forms.length, 'forms');
           }).catch(err => {
-            setSyncStatus('offline');
+            setSyncStatus('error');
+            setSyncError(err.message || 'Sync failed');
             console.error('Firebase sync failed:', err);
           });
         }, 2000);
@@ -1455,7 +1459,8 @@ function useDataSync({
         sitesFromFirebaseRef.current = false;
         return;
       }
-      if (FirebaseSync.isConnected() && isOnlineRef.current) {
+      const sitesSyncOnline = isOnlineRef.current && (typeof NetworkStatus === 'undefined' || NetworkStatus.isActuallyOnline);
+      if (FirebaseSync.isConnected() && sitesSyncOnline) {
         FirebaseSync.syncSites(sites);
       }
     }

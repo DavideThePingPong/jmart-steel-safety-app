@@ -96,17 +96,21 @@ const GoogleDriveSync = {
             this._notifyConnectionChange(true, null);
             this.getOrCreateFolder();
           } else {
-            // Token expired — clear it and try silent reconnect
+            // Token expired — clear it. Do NOT call _silentReconnect() here.
+            // On Android, requestAccessToken({ prompt: '' }) still opens a popup,
+            // which Chrome blocks on page load → "Pop-up blocked" banner.
+            // User must tap Connect to re-auth.
             localStorage.removeItem('google-drive-token');
             if (localStorage.getItem('google-drive-auto-connect') === 'true') {
-              console.log('Google Drive token expired, attempting silent reconnect...');
-              this._silentReconnect();
+              console.log('Google Drive token expired — user must tap Connect to reconnect');
+              this._notifyConnectionChange(false, 'Session expired. Tap Connect to reconnect.');
             }
           }
         } else if (localStorage.getItem('google-drive-auto-connect') === 'true') {
-          // No token stored but user previously connected — try silent reconnect
-          console.log('Google Drive previously connected, attempting silent reconnect...');
-          this._silentReconnect();
+          // No token stored but user previously connected — show reconnect prompt
+          // Do NOT call _silentReconnect() — it opens a popup that Android blocks.
+          console.log('Google Drive previously connected — user must tap Connect');
+          this._notifyConnectionChange(false, 'Tap Connect to reconnect Google Drive.');
         }
       } catch (e) {
         // Handle old format (raw string, not JSON)
