@@ -141,6 +141,18 @@
                     const data = snap.val();
                     this.isApproved = true;
                     this.isAdmin = data.isAdmin || false;
+                    // IMPORTANT: Register admin UID FIRST — Firebase rules gate all admin
+                    // writes on adminAuthUids. If UID changed (e.g. browser data cleared),
+                    // we must register the new UID before any other write will succeed.
+                    if (this.isAdmin && firebaseAuthUid) {
+                        try {
+                            const uidSnap = await firebaseDb.ref('jmart-safety/adminAuthUids/' + firebaseAuthUid).once('value');
+                            if (!uidSnap.exists()) {
+                                await firebaseDb.ref('jmart-safety/adminAuthUids/' + firebaseAuthUid).set(true);
+                                console.log('Admin auth UID registered:', firebaseAuthUid);
+                            }
+                        } catch (e) { console.warn('Admin UID registration failed:', e.message); }
+                    }
                     // Update last seen and auth UID (links Firebase Auth to device)
                     const updates = { lastSeen: new Date().toISOString(), lastApp: 'STEEL' };
                     if (firebaseAuthUid) updates.authUid = firebaseAuthUid;
@@ -154,6 +166,26 @@
                 if (!allSnap.exists() || allSnap.numChildren() === 0) {
                     await this.registerAsApproved(true);
                     return { approved: true, admin: true, firstDevice: true };
+                }
+
+                // ADMIN RECOVERY: If no admin has been active for 7+ days,
+                // this device claims admin (matches Safety App behavior)
+                const allApproved = allSnap.val();
+                if (allApproved) {
+                    const now = Date.now();
+                    const ORPHAN_THRESHOLD = 7 * 24 * 60 * 60 * 1000;
+                    let hasActiveAdmin = false;
+                    Object.values(allApproved).forEach(dev => {
+                        if (dev && dev.isAdmin) {
+                            const lastSeen = dev.lastSeen ? new Date(dev.lastSeen).getTime() : 0;
+                            if ((now - lastSeen) < ORPHAN_THRESHOLD) hasActiveAdmin = true;
+                        }
+                    });
+                    if (!hasActiveAdmin) {
+                        console.log('ADMIN RECOVERY: No active admin found — reclaiming admin');
+                        await this.registerAsApproved(true);
+                        return { approved: true, admin: true, adminRecovery: true };
+                    }
                 }
 
                 // Register as pending if not already
@@ -185,8 +217,21 @@
                 authUid: firebaseAuthUid || null,
                 isAdmin: isAdmin,
                 approvedAt: new Date().toISOString(),
+                approvedBy: isAdmin ? 'SYSTEM (First Device)' : 'Admin (STEEL)',
                 approvedFrom: 'STEEL'
             }));
+            // Register admin auth UID for Firebase rules enforcement
+            // Without this, admin writes to most paths will get PERMISSION_DENIED
+            if (isAdmin && firebaseAuthUid) {
+                try {
+                    await firebaseDb.ref('jmart-safety/adminAuthUids/' + firebaseAuthUid).set(true);
+                    console.log('Admin auth UID registered:', firebaseAuthUid);
+                } catch (e) {
+                    console.warn('Could not register admin auth UID:', e.message);
+                }
+            }
+            // Remove from pending if exists
+            try { await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).remove(); } catch(e) {}
             this.isApproved = true;
             this.isAdmin = isAdmin;
         },
