@@ -83,7 +83,7 @@ const JobsManager = {
       }
 
       // Mark migration as complete so it never runs again
-      await firebaseDb.ref('jmart-safety/config/jobsMigrationComplete').set(true);
+      await firebaseDb.ref('jmart-safety/config/jobsMigrationComplete').set(sanitizeForFirebase(true));
       console.log('JobsManager: Migration flagged as complete');
     } catch (error) {
       console.error('JobsManager: Migration error:', error);
@@ -206,7 +206,7 @@ const JobsManager = {
         console.log('JobsManager: Removing', duplicateKeys.length, 'duplicate jobs');
         const updates = {};
         duplicateKeys.forEach(key => { updates[key] = null; });
-        await firebaseDb.ref('jmart-safety/jobs').update(updates);
+        await firebaseDb.ref('jmart-safety/jobs').update(sanitizeForFirebase(updates));
         console.log('JobsManager: Deduplication complete');
       } else {
         console.log('JobsManager: No duplicate jobs found');

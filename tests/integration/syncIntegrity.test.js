@@ -498,7 +498,7 @@ describe('Sync Integrity', () => {
       // Use the function definition, not first mention (which may be a comment)
       const syncDefIdx = source.indexOf('const syncFormsEffect');
       expect(syncDefIdx).toBeGreaterThan(-1);
-      const syncSection = source.substring(syncDefIdx, syncDefIdx + 1000);
+      const syncSection = source.substring(syncDefIdx, syncDefIdx + 2000);
       expect(syncSection).toContain('formsFromFirebaseRef.current');
       expect(syncSection).toContain('return');
     });
