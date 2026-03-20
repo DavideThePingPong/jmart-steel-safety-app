@@ -120,11 +120,15 @@ const DailyBackupScheduler = {
       console.log('Daily backup complete: ' + result.uploaded + ' forms uploaded');
 
       // Show notification if available
-      if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification('JMart Safety Backup', {
-          body: result.uploaded + ' forms backed up to Google Drive',
-          icon: '/icons/icon-192.png'
-        });
+      try {
+        if ('Notification' in window && Notification.permission === 'granted') {
+          new Notification('JMart Safety Backup', {
+            body: result.uploaded + ' forms backed up to Google Drive',
+            icon: '/icons/icon-192.png'
+          });
+        }
+      } catch (e) {
+        // Silently skip — Notification constructor throws on some mobile browsers/PWAs
       }
     }
   },

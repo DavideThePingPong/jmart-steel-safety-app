@@ -616,18 +616,23 @@ const DeviceAuth = {
 
   // Request browser notification permission
   requestNotificationPermission: async function() {
-    if (!('Notification' in window)) {
-      console.log('Browser does not support notifications');
-      return false;
-    }
+    try {
+      if (!('Notification' in window)) {
+        console.log('Browser does not support notifications');
+        return false;
+      }
 
-    if (Notification.permission === 'granted') {
-      return true;
-    }
+      if (Notification.permission === 'granted') {
+        return true;
+      }
 
-    if (Notification.permission !== 'denied') {
-      const permission = await Notification.requestPermission();
-      return permission === 'granted';
+      if (Notification.permission !== 'denied') {
+        const permission = await Notification.requestPermission();
+        return permission === 'granted';
+      }
+    } catch (e) {
+      // Silently skip — Notification API throws on some mobile browsers/PWAs
+      console.log('[DeviceAuth] Notification permission unavailable:', e.message);
     }
 
     return false;
@@ -635,13 +640,18 @@ const DeviceAuth = {
 
   // Show browser notification for new device
   showBrowserNotification: function(title, body) {
-    if (Notification.permission === 'granted') {
-      new Notification(title, {
-        body: body,
-        icon: '🛡️',
-        tag: 'jmart-device-auth',
-        requireInteraction: true
-      });
+    try {
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification(title, {
+          body: body,
+          icon: '🛡️',
+          tag: 'jmart-device-auth',
+          requireInteraction: true
+        });
+      }
+    } catch (e) {
+      // Silently skip — Notification constructor throws on some mobile browsers/PWAs
+      console.log('[DeviceAuth] Browser notification unavailable:', e.message);
     }
   },
 
