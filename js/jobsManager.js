@@ -8,11 +8,27 @@
 const JobsManager = {
   jobs: [],
   listeners: [],
+  CACHE_KEY: 'jmart-safety-jobs',
 
-  // Initialize and load jobs from Firebase
+  // Initialize and load jobs from Firebase (with localStorage fallback)
   init: async function() {
+    // Load cached jobs from localStorage first for instant availability
+    try {
+      const cached = localStorage.getItem(this.CACHE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          this.jobs = parsed;
+          this.notifyListeners();
+          console.log('JobsManager: Loaded', this.jobs.length, 'jobs from localStorage cache');
+        }
+      }
+    } catch (e) {
+      console.warn('JobsManager: Could not parse cached jobs:', e.message);
+    }
+
     if (!firebaseDb || !isFirebaseConfigured) {
-      console.log('JobsManager: Firebase not configured');
+      console.log('JobsManager: Firebase not configured, using cached jobs');
       return;
     }
 
@@ -20,8 +36,14 @@ const JobsManager = {
     firebaseDb.ref('jmart-safety/jobs').on('value', (snapshot) => {
       const data = snapshot.val();
       this.jobs = data ? Object.entries(data).map(([id, job]) => ({ id, ...(job || {}) })) : [];
+      // Cache to localStorage for offline resilience
+      try {
+        localStorage.setItem(this.CACHE_KEY, JSON.stringify(this.jobs));
+      } catch (e) {
+        console.warn('JobsManager: Could not cache jobs to localStorage:', e.message);
+      }
       this.notifyListeners();
-      console.log('JobsManager: Loaded', this.jobs.length, 'jobs');
+      console.log('JobsManager: Loaded', this.jobs.length, 'jobs from Firebase (cached locally)');
     }, (error) => {
       console.error('JobsManager: Firebase listener error:', error);
       if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(error, 'jobs-listener');
@@ -108,7 +130,10 @@ const JobsManager = {
       var safeJob = typeof sanitizeForFirebase === 'function' ? sanitizeForFirebase(job) : job;
       const ref = await firebaseDb.ref('jmart-safety/jobs').push(safeJob);
       console.log('JobsManager: Added job', job.name, ref.key);
-      return { id: ref.key, ...job };
+      var newJob = { id: ref.key, ...job };
+      // Immediately cache updated jobs list
+      try { localStorage.setItem(this.CACHE_KEY, JSON.stringify(this.jobs)); } catch (e) {}
+      return newJob;
     } catch (error) {
       console.error('JobsManager: Error adding job:', error);
       return null;

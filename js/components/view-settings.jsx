@@ -360,7 +360,7 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
       setFixStatus('Step 3/6: Clearing sync queue & temp data...');
       var nuked = 0;
       ['jmart-sync-queue', 'jmart-audit-log', 'jmart-photo-queue', 'jmart-job-recordings',
-       'jmart-backed-up-forms', 'jmart-team-signatures'].forEach(function(k) {
+       'jmart-backed-up-forms'].forEach(function(k) {
         try { if (localStorage.getItem(k)) { localStorage.removeItem(k); nuked++; } } catch(e) {}
       });
       steps.push('Cleared ' + nuked + ' data store(s)');
