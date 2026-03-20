@@ -358,25 +358,56 @@ const DeviceAuth = {
         }
       }
 
-      // DEDUPLICATION: Remove duplicate devices with same type+screen combo.
-      // When localStorage is cleared, a new device ID is generated for the same physical device.
-      // Keep only the most recently seen device for each type+screen fingerprint.
+      // ONE-TIME PURGE: Keep only the current device (admin) and S.s.
+      // Removes all stale/duplicate "Unknown Device" entries from old localStorage resets.
       if (devices) {
-        const fingerprints = new Map(); // "type|screen" → { id, lastSeen }
-        for (const [devId, dev] of Object.entries(devices)) {
-          if (!dev || devId === this.deviceId) continue; // Never remove current device
-          if (dev.permanentlyApproved) continue; // Never remove permanently approved
+        const purgedFlag = await firebaseRead('jmart-safety/config/devicesPurgeV1');
+        if (!purgedFlag.exists) {
+          let purgedCount = 0;
+          for (const [devId, dev] of Object.entries(devices)) {
+            if (!dev) continue;
+            if (devId === this.deviceId) continue; // Keep current device
+            const name = (dev.name || '').toLowerCase().trim();
+            if (name === 's.s') {
+              // Keep S.s but ensure only current device is admin
+              if (dev.isAdmin) {
+                await firebaseDb.ref('jmart-safety/devices/approved/' + devId + '/isAdmin').set(false).catch(() => {});
+                console.log('[DeviceAuth] Purge: demoted S.s from admin (only current device is admin)');
+              }
+              continue;
+            }
+            // Remove everything else
+            console.log('[DeviceAuth] Purge: removing stale device:', devId, dev.name || dev.type || 'unknown');
+            await firebaseDb.ref('jmart-safety/devices/approved/' + devId).remove().catch(() => {});
+            if (dev.authUid) {
+              await firebaseDb.ref('jmart-safety/adminAuthUids/' + dev.authUid).remove().catch(() => {});
+            }
+            purgedCount++;
+          }
+          await firebaseDb.ref('jmart-safety/config/devicesPurgeV1').set(true).catch(() => {});
+          if (purgedCount > 0) {
+            console.log('[DeviceAuth] Purge complete: removed', purgedCount, 'stale devices');
+          }
+        }
+
+        // ONGOING DEDUP: For future duplicates, keep only the most recently seen
+        // device per type+screen fingerprint.
+        const fingerprints = new Map();
+        // Re-read after purge
+        const freshResult = await firebaseRead('jmart-safety/devices/approved');
+        const freshDevices = freshResult.val || {};
+        for (const [devId, dev] of Object.entries(freshDevices)) {
+          if (!dev || devId === this.deviceId) continue;
+          if (dev.permanentlyApproved) continue;
           const fp = (dev.type || 'unknown') + '|' + (dev.screen || 'unknown');
           const lastSeen = dev.lastSeen ? new Date(dev.lastSeen).getTime() : 0;
           if (fingerprints.has(fp)) {
             const existing = fingerprints.get(fp);
             if (lastSeen > existing.lastSeen) {
-              // Current is newer — remove the older one
               console.log('[DeviceAuth] Dedup: removing older duplicate:', existing.id, '(' + fp + ')');
               await firebaseDb.ref('jmart-safety/devices/approved/' + existing.id).remove().catch(() => {});
               fingerprints.set(fp, { id: devId, lastSeen });
             } else {
-              // Existing is newer — remove current
               console.log('[DeviceAuth] Dedup: removing older duplicate:', devId, '(' + fp + ')');
               await firebaseDb.ref('jmart-safety/devices/approved/' + devId).remove().catch(() => {});
             }
