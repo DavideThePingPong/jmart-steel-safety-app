@@ -357,6 +357,34 @@ const DeviceAuth = {
           }
         }
       }
+
+      // DEDUPLICATION: Remove duplicate devices with same type+screen combo.
+      // When localStorage is cleared, a new device ID is generated for the same physical device.
+      // Keep only the most recently seen device for each type+screen fingerprint.
+      if (devices) {
+        const fingerprints = new Map(); // "type|screen" → { id, lastSeen }
+        for (const [devId, dev] of Object.entries(devices)) {
+          if (!dev || devId === this.deviceId) continue; // Never remove current device
+          if (dev.permanentlyApproved) continue; // Never remove permanently approved
+          const fp = (dev.type || 'unknown') + '|' + (dev.screen || 'unknown');
+          const lastSeen = dev.lastSeen ? new Date(dev.lastSeen).getTime() : 0;
+          if (fingerprints.has(fp)) {
+            const existing = fingerprints.get(fp);
+            if (lastSeen > existing.lastSeen) {
+              // Current is newer — remove the older one
+              console.log('[DeviceAuth] Dedup: removing older duplicate:', existing.id, '(' + fp + ')');
+              await firebaseDb.ref('jmart-safety/devices/approved/' + existing.id).remove().catch(() => {});
+              fingerprints.set(fp, { id: devId, lastSeen });
+            } else {
+              // Existing is newer — remove current
+              console.log('[DeviceAuth] Dedup: removing older duplicate:', devId, '(' + fp + ')');
+              await firebaseDb.ref('jmart-safety/devices/approved/' + devId).remove().catch(() => {});
+            }
+          } else {
+            fingerprints.set(fp, { id: devId, lastSeen });
+          }
+        }
+      }
     } catch (e) {
       console.warn('[DeviceAuth] Cleanup failed (non-fatal):', e.message);
     }
@@ -369,6 +397,7 @@ const DeviceAuth = {
     try {
       const deviceData = {
         ...this.deviceInfo,
+        name: this.deviceInfo?.type || 'Unknown Device',
         authUid: firebaseAuthUid || null,
         isAdmin: isAdmin,
         approvedAt: new Date().toISOString(),
@@ -860,6 +889,7 @@ const DeviceAuth = {
     try {
       await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId).set({
         id: this.deviceId,
+        name: this.deviceInfo?.type || 'Unknown Device',
         type: this.deviceInfo?.type || 'Unknown Device',
         browser: this.deviceInfo?.browser || 'Unknown Browser',
         screen: screen.width + 'x' + screen.height,

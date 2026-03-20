@@ -23,7 +23,23 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
   const [savedSignatures, setSavedSignatures] = useState(() => {
     try {
       const saved = localStorage.getItem('jmart-team-signatures');
-      return saved ? JSON.parse(saved) : {};
+      const parsed = saved ? JSON.parse(saved) : {};
+      // If localStorage is empty, try restoring from Firebase (async, updates state later)
+      if (Object.keys(parsed).length === 0 && typeof firebaseDb !== 'undefined' && firebaseDb) {
+        firebaseDb.ref('signatures').once('value').then(snap => {
+          const fbSigs = snap.val();
+          if (fbSigs && typeof fbSigs === 'object' && Object.keys(fbSigs).length > 0) {
+            console.log('[Signatures] Restored', Object.keys(fbSigs).length, 'signatures from Firebase');
+            setSavedSignatures(fbSigs);
+            if (typeof StorageQuotaManager !== 'undefined' && StorageQuotaManager.safeSignaturesWrite) {
+              StorageQuotaManager.safeSignaturesWrite(fbSigs);
+            } else {
+              localStorage.setItem('jmart-team-signatures', JSON.stringify(fbSigs));
+            }
+          }
+        }).catch(e => console.warn('[Signatures] Firebase restore failed:', e.message));
+      }
+      return parsed;
     } catch (e) {
       console.warn('Could not parse team signatures:', e);
       return {};
