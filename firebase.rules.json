@@ -74,13 +74,9 @@
       },
 
       // Jobs - managed job entries for forms and photo uploads
-      // Parent-level write for .set() operations; child-level validates structure
       "jobs": {
         ".read": "auth != null",
-        ".write": "auth != null",
-        "$jobId": {
-          ".validate": "newData.hasChildren(['name', 'status']) && newData.child('name').isString() && newData.child('name').val().length < 500 && newData.child('status').isString()"
-        }
+        ".write": "auth != null"
       },
 
       // Sites - any authenticated device can read/write (stored as flat array, must use .set())
