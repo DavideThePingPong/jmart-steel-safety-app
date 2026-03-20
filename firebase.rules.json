@@ -104,9 +104,25 @@
         }
       },
 
-      // Frank - SWMS history (authenticated devices only)
+      // Frank - SWMS history, memory, and regulation updates (authenticated devices only)
       "frank": {
         "history": {
+          ".read": "auth != null",
+          ".write": "auth != null"
+        },
+        "memory": {
+          ".read": "auth != null",
+          ".write": "auth != null"
+        },
+        "regulation-updates": {
+          ".read": "auth != null",
+          ".write": "auth != null"
+        }
+      },
+
+      // Igor - pricing data (authenticated devices only)
+      "igor": {
+        "pricing": {
           ".read": "auth != null",
           ".write": "auth != null"
         }

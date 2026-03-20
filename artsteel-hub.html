@@ -9539,6 +9539,23 @@
         // Refresh status bar every 30 seconds
         window._hubStatusInterval = setInterval(dashboardUpdateStatus, 30000);
 
+        // Update status badge based on Firebase connection state
+        if (firebaseDb) {
+            firebaseDb.ref('.info/connected').on('value', function(snap) {
+                var badge = document.getElementById('statusBadge');
+                if (!badge) return;
+                if (snap.val() === true) {
+                    badge.className = 'status-badge online';
+                    badge.querySelector('span').textContent = 'Firebase Connected';
+                } else {
+                    badge.className = 'status-badge offline';
+                    badge.querySelector('span').textContent = 'Offline Mode';
+                }
+            }, function(err) {
+                console.warn('[Hub] .info/connected error:', err.message);
+            });
+        }
+
         // Handle deep-link from manifest shortcuts (?section=igor, etc.)
         const urlParams = new URLSearchParams(window.location.search);
         const startSection = urlParams.get('section');
