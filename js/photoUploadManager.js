@@ -15,7 +15,7 @@ const PhotoUploadManager = {
   // Get or create project folder with Photos subfolder
   // Structure: 02_Projects/{JobName}/Photos/{Date}/
   getOrCreateJobFolder: async function(jobName) {
-    if (!GoogleDriveSync.isConnected()) return null;
+    if (typeof GoogleDriveSync === 'undefined' || !GoogleDriveSync.isConnected()) return null;
 
     try {
       // Ensure main folder exists
@@ -230,7 +230,7 @@ function downloadPhotoFile(photoData, filename) {
         clearTimeout(timeoutId);
         console.error('Photo download failed:', err);
         if (typeof ErrorTelemetry !== 'undefined') {
-          ErrorTelemetry.log('photo-download-fail', { url: photoData.substring(0, 80), error: err.message });
+          ErrorTelemetry.captureError(err, 'photo-download-fail');
         }
         // Fallback: open in new tab so user can right-click save
         window.open(photoData, '_blank');

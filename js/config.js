@@ -75,6 +75,7 @@ if (isFirebaseConfigured) {
 // ========================================
 async function firebaseRestRead(path) {
   if (!isFirebaseConfigured) return null;
+  if (typeof firebase === 'undefined' || typeof firebase.auth !== 'function') return null;
   var user = firebase.auth().currentUser;
   if (!user) {
     try { await firebaseAuthReady; user = firebase.auth().currentUser; } catch(e) {}

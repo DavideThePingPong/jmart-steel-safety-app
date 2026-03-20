@@ -44,9 +44,15 @@ const NetworkStatus = {
     if (this.heartbeatInterval) return; // Already running
 
     // Use IntervalRegistry for proper cleanup on page unload
-    this.heartbeatInterval = IntervalRegistry.setInterval(() => {
-      this.checkHeartbeat();
-    }, this.HEARTBEAT_INTERVAL_MS, 'NetworkHeartbeat');
+    if (typeof IntervalRegistry !== 'undefined' && IntervalRegistry.setInterval) {
+      this.heartbeatInterval = IntervalRegistry.setInterval(() => {
+        this.checkHeartbeat();
+      }, this.HEARTBEAT_INTERVAL_MS, 'NetworkHeartbeat');
+    } else {
+      this.heartbeatInterval = setInterval(() => {
+        this.checkHeartbeat();
+      }, this.HEARTBEAT_INTERVAL_MS);
+    }
 
     // Initial check
     this.checkHeartbeat();
@@ -54,7 +60,11 @@ const NetworkStatus = {
 
   stopHeartbeat: function() {
     if (this.heartbeatInterval) {
-      IntervalRegistry.clearInterval(this.heartbeatInterval);
+      if (typeof IntervalRegistry !== 'undefined' && IntervalRegistry.clearInterval) {
+        IntervalRegistry.clearInterval(this.heartbeatInterval);
+      } else {
+        clearInterval(this.heartbeatInterval);
+      }
       this.heartbeatInterval = null;
     }
   },

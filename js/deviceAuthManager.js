@@ -32,12 +32,12 @@ const DeviceAuthManager = {
 
     await DeviceAuth.loadPasswordHash();
 
-    if (!firebaseDb || !isFirebaseConfigured) {
+    if (typeof firebaseDb === 'undefined' || !firebaseDb || typeof isFirebaseConfigured === 'undefined' || !isFirebaseConfigured) {
       return { status: 'no-firebase', canAccess: true };
     }
 
     // Wait for Firebase auth before checking device status
-    try { await firebaseAuthReady; } catch(e) {}
+    try { if (typeof firebaseAuthReady !== 'undefined') await firebaseAuthReady; } catch(e) {}
 
     const result = await DeviceAuth.checkDeviceStatus();
 

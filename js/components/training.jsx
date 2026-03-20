@@ -31,10 +31,10 @@ function TrainingView() {
   };
 
   const calculateScore = () => {
-    if (!selectedCourse) return 0;
+    if (!selectedCourse || !selectedCourse.questions || selectedCourse.questions.length === 0) return 0;
     let correct = 0;
     selectedCourse.questions.forEach((q, i) => {
-      if (answers[i] === q.correct) correct++;
+      if (q && answers[i] === q.correct) correct++;
     });
     return Math.round((correct / selectedCourse.questions.length) * 100);
   };
@@ -279,7 +279,10 @@ function TrainingView() {
 
   // Quiz View
   const question = selectedCourse.questions[currentQuestion];
-  const progress = ((currentQuestion + 1) / selectedCourse.questions.length) * 100;
+  if (!question || !question.options) {
+    return <div className="p-4 text-center text-gray-500">No questions available for this course.</div>;
+  }
+  const progress = selectedCourse.questions.length > 0 ? ((currentQuestion + 1) / selectedCourse.questions.length) * 100 : 0;
 
   return (
     <div className="space-y-4">

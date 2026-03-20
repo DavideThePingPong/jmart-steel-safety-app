@@ -17,6 +17,10 @@ var DataExport = {
    * @returns {Object} Export object with metadata and data payload.
    */
   exportAll: function() {
+    if (typeof STORAGE_KEYS === 'undefined') {
+      console.error('[DataExport] STORAGE_KEYS not defined — cannot export');
+      return null;
+    }
     const data = {
       exportedAt: new Date().toISOString(),
       appVersion: '2.0.0',
@@ -73,6 +77,9 @@ var DataExport = {
    * @returns {{success: boolean, restored: number, errors: string[], exportedAt: string|undefined, error: string|undefined}}
    */
   importData: function(jsonString) {
+    if (typeof STORAGE_KEYS === 'undefined') {
+      return { success: false, error: 'STORAGE_KEYS not defined — cannot import', restored: 0, errors: [] };
+    }
     let imported;
     try {
       imported = JSON.parse(jsonString);

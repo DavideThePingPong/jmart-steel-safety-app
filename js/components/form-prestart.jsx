@@ -251,7 +251,7 @@ function PrestartView({ onSubmit, onUpdate, editingForm, previousPrestarts = [],
                 ) : (
                   <div className="space-y-3">
                     <p className="text-sm text-gray-600 mb-3">Select a previous prestart to copy. Signatures and date will be reset.</p>
-                    {previousPrestarts.slice(0, 20).map((form) => {
+                    {previousPrestarts.filter(f => f && f.data).slice(0, 20).map((form) => {
                       const formDate = new Date(form.data.date || form.createdAt);
                       const typeInfo = checklistTypes.find(t => t.id === form.data.type);
                       return (

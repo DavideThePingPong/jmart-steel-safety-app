@@ -307,7 +307,7 @@ const TrainingCertGenerator = {
       doc.setFont(undefined, 'normal');
       doc.text('Certificate ID: ' + certId, pageWidth / 2, pageHeight - 22, { align: 'center' });
       doc.text('This certificate confirms completion of safety training in accordance with Work Health & Safety requirements.', pageWidth / 2, pageHeight - 17, { align: 'center' });
-      doc.text('Valid for 12 months from date of issue.  •  J&M Artsteel Pty Ltd  •  ABN ' + COMPANY_ABN, pageWidth / 2, pageHeight - 12, { align: 'center' });
+      doc.text('Valid for 12 months from date of issue.  •  J&M Artsteel Pty Ltd  •  ABN ' + (typeof COMPANY_ABN !== 'undefined' ? COMPANY_ABN : ''), pageWidth / 2, pageHeight - 12, { align: 'center' });
 
       // Save the PDF
       const safeName = (workerName || 'Unknown').replace(/\s+/g, '-');
@@ -316,7 +316,7 @@ const TrainingCertGenerator = {
 
     } catch (error) {
       console.error('Error generating certificate PDF:', error);
-      ToastNotifier.error('Error generating certificate. Please try again.');
+      if (typeof ToastNotifier !== 'undefined') ToastNotifier.error('Error generating certificate. Please try again.');
     }
   }
 };
