@@ -88,6 +88,17 @@ class ErrorBoundary extends React.Component {
     if (typeof ErrorTelemetry !== 'undefined') {
       ErrorTelemetry.captureError(error, 'react-error-boundary');
     }
+
+    // Try automatic fix via SelfHealingAgent
+    if (typeof SelfHealingAgent !== 'undefined') {
+      var healResult = SelfHealingAgent.diagnoseAndFix(error);
+      if (healResult.fixed) {
+        this.setState({
+          autoFixApplied: healResult.fixes
+        });
+        // If agent scheduled a reload, it will happen automatically
+      }
+    }
   }
   render() {
     if (this.state.hasError) {
@@ -136,7 +147,26 @@ class ErrorBoundary extends React.Component {
           marginBottom: '12px',
           textAlign: 'center'
         }
-      }, 'The app encountered an error. Your data is safe in local storage.'), React.createElement('div', {
+      }, this.state.autoFixApplied ? 'An error was detected and auto-fixed. Reloading...' : 'The app encountered an error. Your data is safe in local storage.'), this.state.autoFixApplied && React.createElement('div', {
+        style: {
+          backgroundColor: '#d1fae5',
+          border: '1px solid #6ee7b7',
+          borderRadius: '8px',
+          padding: '12px',
+          marginBottom: '12px',
+          fontSize: '13px',
+          color: '#065f46'
+        }
+      }, React.createElement('strong', null, 'Auto-fix applied:'), React.createElement('ul', {
+        style: {
+          margin: '4px 0 0 16px',
+          padding: 0
+        }
+      }, this.state.autoFixApplied.map(function (fix, i) {
+        return React.createElement('li', {
+          key: i
+        }, fix);
+      }))), React.createElement('div', {
         style: {
           backgroundColor: '#fef3c7',
           border: '1px solid #fde68a',
@@ -2343,6 +2373,10 @@ function AppWithAuth() {
   const [isAdmin, setIsAdmin] = useState(false);
   useEffect(() => {
     checkAuth();
+    // Show notification if SelfHealingAgent fixed something before reload
+    if (typeof SelfHealingAgent !== 'undefined') {
+      SelfHealingAgent.showFixNotification();
+    }
   }, []);
   const checkAuth = async () => {
     // Check if Firebase is configured

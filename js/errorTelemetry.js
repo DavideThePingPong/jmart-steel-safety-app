@@ -135,6 +135,11 @@ const ErrorTelemetry = {
     // Queue for Firebase sync
     this._scheduleSyncToFirebase(entry);
 
+    // Try automatic fix via SelfHealingAgent
+    if (typeof SelfHealingAgent !== 'undefined' && SelfHealingAgent.diagnoseAndFix) {
+      SelfHealingAgent.diagnoseAndFix(entry);
+    }
+
     console.error('[ErrorTelemetry]', entry.context + ':', entry.message);
   },
 

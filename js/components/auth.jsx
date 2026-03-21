@@ -254,6 +254,10 @@ function AppWithAuth() {
 
   useEffect(() => {
     checkAuth();
+    // Show notification if SelfHealingAgent fixed something before reload
+    if (typeof SelfHealingAgent !== 'undefined') {
+      SelfHealingAgent.showFixNotification();
+    }
   }, []);
 
   const checkAuth = async () => {

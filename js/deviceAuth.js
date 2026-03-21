@@ -1030,5 +1030,50 @@ const DeviceAuth = {
   // Get pending device count
   getPendingCount: function() {
     return this.pendingDevices.length;
+  },
+
+  // ========================================
+  // COMPAT: initWithStatus() — returns { status, canAccess, isAdmin } format
+  // Used by AppWithAuth.checkAuth() and LoginScreen
+  // ========================================
+  initWithStatus: async function() {
+    this.generateDeviceId();
+    this.getDeviceInfo();
+
+    await this.loadPasswordHash();
+
+    if (typeof firebaseDb === 'undefined' || !firebaseDb || typeof isFirebaseConfigured === 'undefined' || !isFirebaseConfigured) {
+      return { status: 'no-firebase', canAccess: true };
+    }
+
+    try { if (typeof firebaseAuthReady !== 'undefined') await firebaseAuthReady; } catch(e) {}
+
+    const result = await this.checkDeviceStatus();
+
+    if (result.error) {
+      return { status: 'error', canAccess: true };
+    }
+    if (result.approved) {
+      return { status: 'approved', canAccess: true, isAdmin: result.admin || false };
+    }
+    if (result.pending) {
+      try {
+        const deniedResult = await firebaseRead('jmart-safety/devices/denied/' + this.deviceId);
+        if (deniedResult.exists) {
+          return { status: 'denied', canAccess: false };
+        }
+      } catch (e) { /* ignore */ }
+      try {
+        const pendingResult = await firebaseRead('jmart-safety/devices/pending/' + this.deviceId);
+        if (pendingResult.exists) {
+          return { status: 'pending', canAccess: false };
+        }
+      } catch (e) { /* ignore */ }
+      return { status: 'new', canAccess: false };
+    }
+    return { status: 'new', canAccess: false };
   }
 };
+
+// DeviceAuthManager is now a direct alias — no separate file needed
+const DeviceAuthManager = DeviceAuth;
