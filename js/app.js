@@ -88,6 +88,17 @@ class ErrorBoundary extends React.Component {
     if (typeof ErrorTelemetry !== 'undefined') {
       ErrorTelemetry.captureError(error, 'react-error-boundary');
     }
+
+    // Try automatic fix via SelfHealingAgent
+    if (typeof SelfHealingAgent !== 'undefined') {
+      var healResult = SelfHealingAgent.diagnoseAndFix(error);
+      if (healResult.fixed) {
+        this.setState({
+          autoFixApplied: healResult.fixes
+        });
+        // If agent scheduled a reload, it will happen automatically
+      }
+    }
   }
   render() {
     if (this.state.hasError) {
@@ -136,7 +147,26 @@ class ErrorBoundary extends React.Component {
           marginBottom: '12px',
           textAlign: 'center'
         }
-      }, 'The app encountered an error. Your data is safe in local storage.'), React.createElement('div', {
+      }, this.state.autoFixApplied ? 'An error was detected and auto-fixed. Reloading...' : 'The app encountered an error. Your data is safe in local storage.'), this.state.autoFixApplied && React.createElement('div', {
+        style: {
+          backgroundColor: '#d1fae5',
+          border: '1px solid #6ee7b7',
+          borderRadius: '8px',
+          padding: '12px',
+          marginBottom: '12px',
+          fontSize: '13px',
+          color: '#065f46'
+        }
+      }, React.createElement('strong', null, 'Auto-fix applied:'), React.createElement('ul', {
+        style: {
+          margin: '4px 0 0 16px',
+          padding: 0
+        }
+      }, this.state.autoFixApplied.map(function (fix, i) {
+        return React.createElement('li', {
+          key: i
+        }, fix);
+      }))), React.createElement('div', {
         style: {
           backgroundColor: '#fef3c7',
           border: '1px solid #fde68a',
@@ -1470,46 +1500,32 @@ function useDataSync({
     };
   }, []);
 
-  // Sync status listener — SUPPRESS all banners if Firebase connected, auto-retry
+  // Sync status listener — only show errors for real Firebase failures, not localStorage issues
   useEffect(() => {
     const unsubscribe = FirebaseSync.onSyncStatusChange((status, details) => {
       setPendingSyncCount(details?.pending || 0);
-      
-      // ALWAYS report "synced" if Firebase is connected - suppress all banners
-      if (FirebaseSync.isConnected()) {
-        setSyncStatus('synced');
-        setSyncError(null);
-        setPendingSyncCount(0); // Hide pending count
-        return;
-      }
-      
       if (status === 'synced' && details?.pending === 0) {
         setSyncStatus('synced');
         setSyncError(null);
       } else if (status === 'queued' || details?.pending > 0) {
         setSyncStatus('pending');
       } else if (status === 'circuit_open' || status === 'circuit_reset') {
-        setSyncStatus('pending');
+        // Circuit breaker is a storage issue, not a sync issue — don't alarm the user
+        setSyncStatus(FirebaseSync.isConnected() ? 'synced' : 'pending');
       } else if (status === 'error' || status === 'failed') {
-        // Only show minimal error if completely disconnected
+        // Only show sync error if Firebase is actually disconnected
         var msg = details?.message || details?.error || '';
-        setSyncStatus('error');
-        setSyncError('Connection lost - will auto-retry');
+        if (msg.indexOf('Storage') !== -1 || msg.indexOf('quota') !== -1 || msg.indexOf('storage') !== -1) {
+          // Storage error — Firebase is fine, just localStorage is full
+          setSyncStatus(FirebaseSync.isConnected() ? 'synced' : 'pending');
+        } else {
+          setSyncStatus('error');
+          setSyncError(msg || 'Sync failed');
+        }
       }
     });
     return unsubscribe;
   }, []);
-
-  // Auto-retry connection every 30 seconds if disconnected
-  useEffect(() => {
-    const retryInterval = setInterval(() => {
-      if (!FirebaseSync.isConnected() && !isOnline) {
-        console.log('[Auto-Retry] Attempting to reconnect to Firebase...');
-        FirebaseSync.retryAll();
-      }
-    }, 30000);
-    return () => clearInterval(retryInterval);
-  }, [isOnline]);
 
   // Photo queue listener
   useEffect(() => {
@@ -2357,6 +2373,10 @@ function AppWithAuth() {
   const [isAdmin, setIsAdmin] = useState(false);
   useEffect(() => {
     checkAuth();
+    // Show notification if SelfHealingAgent fixed something before reload
+    if (typeof SelfHealingAgent !== 'undefined') {
+      SelfHealingAgent.showFixNotification();
+    }
   }, []);
   const checkAuth = async () => {
     // Check if Firebase is configured
@@ -3236,10 +3256,10 @@ function TrainingView() {
     });
   };
   const calculateScore = () => {
-    if (!selectedCourse) return 0;
+    if (!selectedCourse || !selectedCourse.questions || selectedCourse.questions.length === 0) return 0;
     let correct = 0;
     selectedCourse.questions.forEach((q, i) => {
-      if (answers[i] === q.correct) correct++;
+      if (q && answers[i] === q.correct) correct++;
     });
     return Math.round(correct / selectedCourse.questions.length * 100);
   };
@@ -3498,7 +3518,12 @@ function TrainingView() {
 
   // Quiz View
   const question = selectedCourse.questions[currentQuestion];
-  const progress = (currentQuestion + 1) / selectedCourse.questions.length * 100;
+  if (!question || !question.options) {
+    return /*#__PURE__*/React.createElement("div", {
+      className: "p-4 text-center text-gray-500"
+    }, "No questions available for this course.");
+  }
+  const progress = selectedCourse.questions.length > 0 ? (currentQuestion + 1) / selectedCourse.questions.length * 100 : 0;
   return /*#__PURE__*/React.createElement("div", {
     className: "space-y-4"
   }, /*#__PURE__*/React.createElement("div", {
@@ -3934,7 +3959,7 @@ function PrestartView({
       className: "space-y-3"
     }, /*#__PURE__*/React.createElement("p", {
       className: "text-sm text-gray-600 mb-3"
-    }, "Select a previous prestart to copy. Signatures and date will be reset."), previousPrestarts.slice(0, 20).map(form => {
+    }, "Select a previous prestart to copy. Signatures and date will be reset."), previousPrestarts.filter(f => f && f.data).slice(0, 20).map(form => {
       const formDate = new Date(form.data.date || form.createdAt);
       const typeInfo = checklistTypes.find(t => t.id === form.data.type);
       return /*#__PURE__*/React.createElement("button", {
@@ -7862,7 +7887,7 @@ function RecordingsView({
     className: "text-green-700 text-sm"
   }, "\u2601\uFE0F Uploaded to Google Drive")), /*#__PURE__*/React.createElement("div", {
     className: "grid grid-cols-3 gap-2"
-  }, viewingRecording.photos.map((photo, idx) => photo.data && photo.data !== '[in-firebase]' && photo.data.startsWith('data:') ? /*#__PURE__*/React.createElement("img", {
+  }, (viewingRecording.photos || []).map((photo, idx) => photo.data && photo.data !== '[in-firebase]' && photo.data.startsWith('data:') ? /*#__PURE__*/React.createElement("img", {
     key: idx,
     src: photo.data,
     alt: `Photo ${idx + 1}`,
@@ -7889,7 +7914,7 @@ function RecordingsView({
     className: "p-4 border-t border-gray-200 space-y-2"
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => {
-      viewingRecording.photos.forEach((photo, idx) => {
+      (viewingRecording.photos || []).forEach((photo, idx) => {
         downloadPhotoFile(photo.data, `${viewingRecording.jobName}-photo-${idx + 1}.jpg`);
       });
     },

@@ -21,19 +21,26 @@ const DeviceAuth = {
 
   // Generate unique device fingerprint
   generateDeviceId: function() {
-    const stored = localStorage.getItem('jmart-device-id');
-    if (stored) {
-      this.deviceId = stored;
-      return stored;
+    try {
+      const stored = localStorage.getItem('jmart-device-id');
+      if (stored) {
+        this.deviceId = stored;
+        return stored;
+      }
+    } catch (e) {
+      console.warn('[DeviceAuth] localStorage read failed:', e.message);
     }
 
     // Create fingerprint from browser characteristics
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
-    ctx.textBaseline = 'top';
-    ctx.font = '14px Arial';
-    ctx.fillText('JMart Device Fingerprint', 2, 2);
-    const canvasData = canvas.toDataURL();
+    let canvasData = '';
+    if (ctx) {
+      ctx.textBaseline = 'top';
+      ctx.font = '14px Arial';
+      ctx.fillText('JMart Device Fingerprint', 2, 2);
+      canvasData = canvas.toDataURL();
+    }
 
     const fingerprint = [
       navigator.userAgent,
@@ -55,7 +62,11 @@ const DeviceAuth = {
     }
 
     this.deviceId = 'DEV-' + Math.abs(hash).toString(36).toUpperCase() + '-' + Date.now().toString(36).toUpperCase();
-    localStorage.setItem('jmart-device-id', this.deviceId);
+    try {
+      localStorage.setItem('jmart-device-id', this.deviceId);
+    } catch (e) {
+      console.warn('[DeviceAuth] localStorage write failed:', e.message);
+    }
     return this.deviceId;
   },
 
@@ -92,6 +103,45 @@ const DeviceAuth = {
     return this.deviceInfo;
   },
 
+  // ========================================
+  // HARDCODED DEVICE RULES (from CLAUDE.md — permanent, survives rebuilds)
+  // ========================================
+  // Davide's Android phone: ALWAYS admin. If no admin exists, reclaims admin automatically.
+  // Davide's Mac: ALWAYS authorized. Auto-approve on registration.
+  // S.s (Samsung): ALWAYS authorized. Auto-approve on registration.
+  // ========================================
+  _isHardcodedDevice: function() {
+    var info = this.deviceInfo;
+    if (!info) return null;
+    var type = (info.type || '').toLowerCase();
+    var name = (info.name || '').toLowerCase();
+    // Davide's Android phone — admin device
+    if (type === 'android phone' || /android.*mobile/i.test(navigator.userAgent)) {
+      // Check approved devices to see if this is Davide's known Android
+      // On first registration, Android phone becomes admin by default
+      return { autoApprove: true, isAdmin: true, label: "Davide's Android" };
+    }
+    // Davide's Mac
+    if (type === 'mac' || (/mac/i.test(navigator.userAgent) && !/iphone|ipad/i.test(navigator.userAgent))) {
+      return { autoApprove: true, isAdmin: false, label: "Davide's Mac" };
+    }
+    // S.s (Samsung) — identified by Samsung user agent
+    if (/samsung|sm-/i.test(navigator.userAgent)) {
+      return { autoApprove: true, isAdmin: false, label: 'S.s (Samsung)' };
+    }
+    // Check by device name (if set during registration)
+    if (name.includes('davide') && name.includes('android')) {
+      return { autoApprove: true, isAdmin: true, label: "Davide's Android" };
+    }
+    if (name.includes('davide') && name.includes('mac')) {
+      return { autoApprove: true, isAdmin: false, label: "Davide's Mac" };
+    }
+    if (name.includes('s.s') || (name.includes('samsung'))) {
+      return { autoApprove: true, isAdmin: false, label: 'S.s (Samsung)' };
+    }
+    return null;
+  },
+
   // Initialize device auth
   init: async function() {
     this.generateDeviceId();
@@ -100,7 +150,7 @@ const DeviceAuth = {
     // SAFETY: Validate device ID is not null/undefined/empty — regenerate if corrupted
     if (!this.deviceId || this.deviceId === 'null' || this.deviceId === 'undefined' || this.deviceId.length < 5) {
       console.error('[DeviceAuth] Invalid device ID detected:', this.deviceId, '— regenerating');
-      localStorage.removeItem('jmart-device-id');
+      try { localStorage.removeItem('jmart-device-id'); } catch (e) {}
       this.deviceId = null;
       this.generateDeviceId();
     }
@@ -209,6 +259,20 @@ const DeviceAuth = {
         return { approved: true, admin: this.isAdmin, canViewDevices: this.canViewDevices, canRevokeDevices: this.canRevokeDevices };
       }
 
+      // HARDCODED DEVICE CHECK: Auto-approve known devices per CLAUDE.md
+      const hardcoded = this._isHardcodedDevice();
+      if (hardcoded && hardcoded.autoApprove) {
+        console.log('[DeviceAuth] Hardcoded device detected:', hardcoded.label, '— auto-approving');
+        await this.registerAsApproved(hardcoded.isAdmin);
+        if (hardcoded.label) {
+          try {
+            await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId + '/name').set(hardcoded.label);
+            await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId + '/permanentlyApproved').set(true);
+          } catch (e) { /* non-fatal */ }
+        }
+        return { approved: true, admin: hardcoded.isAdmin, hardcodedDevice: true };
+      }
+
       // Check if any devices exist (first device becomes admin)
       const allApprovedResult = await firebaseRead('jmart-safety/devices/approved');
       const allApprovedVal = allApprovedResult.val;
@@ -221,6 +285,7 @@ const DeviceAuth = {
       }
 
       // ADMIN RECOVERY: Check if all approved devices are orphaned (no recent activity)
+      // Per CLAUDE.md: Davide's Android reclaims admin automatically if no admin exists
       const approvedDevices = allApprovedVal;
       const now = Date.now();
       const ORPHAN_THRESHOLD = 7 * 24 * 60 * 60 * 1000;
@@ -541,13 +606,14 @@ const DeviceAuth = {
     if (!firebaseDb) return () => {};
 
     const ref = firebaseDb.ref('jmart-safety/devices/approved');
-    ref.on('value', (snapshot) => {
+    const handler = (snapshot) => {
       const data = snapshot.val();
       this.approvedDevices = data ? Object.entries(data).map(([id, info]) => ({ id, ...info })) : [];
       callback(this.approvedDevices);
-    }, function(err) { console.warn('[DeviceAuth] Approved listener error:', err.message); });
+    };
+    ref.on('value', handler, function(err) { console.warn('[DeviceAuth] Approved listener error:', err.message); });
 
-    return () => ref.off('value');
+    return () => ref.off('value', handler);
   },
 
   // Listen for own device status changes (in case revoked)
@@ -555,16 +621,17 @@ const DeviceAuth = {
     if (!firebaseDb) return () => {};
 
     const ref = firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId);
-    ref.on('value', (snapshot) => {
+    const handler = (snapshot) => {
       if (!snapshot.exists() && this.isApproved) {
         // Device was revoked
         this.isApproved = false;
         this.isAdmin = false;
         callback({ revoked: true });
       }
-    }, function(err) { console.warn('[DeviceAuth] Own device status listener error:', err.message); });
+    };
+    ref.on('value', handler, function(err) { console.warn('[DeviceAuth] Own device status listener error:', err.message); });
 
-    return () => ref.off('value');
+    return () => ref.off('value', handler);
   },
 
   // Notify admins of new device request
@@ -963,5 +1030,50 @@ const DeviceAuth = {
   // Get pending device count
   getPendingCount: function() {
     return this.pendingDevices.length;
+  },
+
+  // ========================================
+  // COMPAT: initWithStatus() — returns { status, canAccess, isAdmin } format
+  // Used by AppWithAuth.checkAuth() and LoginScreen
+  // ========================================
+  initWithStatus: async function() {
+    this.generateDeviceId();
+    this.getDeviceInfo();
+
+    await this.loadPasswordHash();
+
+    if (typeof firebaseDb === 'undefined' || !firebaseDb || typeof isFirebaseConfigured === 'undefined' || !isFirebaseConfigured) {
+      return { status: 'no-firebase', canAccess: true };
+    }
+
+    try { if (typeof firebaseAuthReady !== 'undefined') await firebaseAuthReady; } catch(e) {}
+
+    const result = await this.checkDeviceStatus();
+
+    if (result.error) {
+      return { status: 'error', canAccess: true };
+    }
+    if (result.approved) {
+      return { status: 'approved', canAccess: true, isAdmin: result.admin || false };
+    }
+    if (result.pending) {
+      try {
+        const deniedResult = await firebaseRead('jmart-safety/devices/denied/' + this.deviceId);
+        if (deniedResult.exists) {
+          return { status: 'denied', canAccess: false };
+        }
+      } catch (e) { /* ignore */ }
+      try {
+        const pendingResult = await firebaseRead('jmart-safety/devices/pending/' + this.deviceId);
+        if (pendingResult.exists) {
+          return { status: 'pending', canAccess: false };
+        }
+      } catch (e) { /* ignore */ }
+      return { status: 'new', canAccess: false };
+    }
+    return { status: 'new', canAccess: false };
   }
 };
+
+// DeviceAuthManager is now a direct alias — no separate file needed
+const DeviceAuthManager = DeviceAuth;

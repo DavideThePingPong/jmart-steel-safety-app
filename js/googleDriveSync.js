@@ -423,7 +423,12 @@ const GoogleDriveSync = {
     const results = [];
     for (const form of todaysForms) {
       try {
-        const { doc, filename } = PDFGenerator.generate(form);
+        const pdfResult = PDFGenerator.generate(form);
+        if (!pdfResult) {
+          console.warn('PDF generation returned null for form:', form.id);
+          continue;
+        }
+        const { doc, filename } = pdfResult;
         const pdfBlob = doc.output('blob');
         const result = await this.uploadPDF(pdfBlob, filename, form.type);
         if (result) {

@@ -25,7 +25,7 @@ If the device auth system is rebuilt, these three devices must be hardcoded as a
 - Single-file React app (index.html) compiled via Babel in-browser
 - Firebase Realtime Database for sync (sites, forms, devices, jobs)
 - localStorage as primary storage, Firebase as sync layer
-- Two device auth systems: DeviceAuth (line ~105) and DeviceAuthManager (line ~1825) — both use localStorage key `jmart-device-id`
+- Single device auth system: DeviceAuth (deviceAuth.js) — DeviceAuthManager is an alias defined at the end of the same file. Both use localStorage key `jmart-device-id`
 
 ## Known Gotchas
 

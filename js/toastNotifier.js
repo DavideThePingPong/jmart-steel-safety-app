@@ -14,7 +14,15 @@ const ToastNotifier = {
     this.container = document.createElement('div');
     this.container.id = 'jmart-toast-container';
     this.container.style.cssText = 'position:fixed;top:env(safe-area-inset-top,12px);left:50%;transform:translateX(-50%);z-index:99999;display:flex;flex-direction:column;gap:8px;pointer-events:none;width:92%;max-width:420px;padding-top:12px;';
-    document.body.appendChild(this.container);
+    if (document.body) {
+      document.body.appendChild(this.container);
+    } else {
+      document.addEventListener('DOMContentLoaded', () => {
+        if (this.container && !this.container.parentNode) {
+          document.body.appendChild(this.container);
+        }
+      });
+    }
   },
 
   // Show a toast

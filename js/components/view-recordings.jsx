@@ -460,7 +460,7 @@ function RecordingsView({ forms, sites }) {
                 </div>
               )}
               <div className="grid grid-cols-3 gap-2">
-                {viewingRecording.photos.map((photo, idx) => (
+                {(viewingRecording.photos || []).map((photo, idx) => (
                   photo.data && photo.data !== '[in-firebase]' && photo.data.startsWith('data:') ? (
                     <img
                       key={idx}
@@ -494,7 +494,7 @@ function RecordingsView({ forms, sites }) {
             <div className="p-4 border-t border-gray-200 space-y-2">
               <button
                 onClick={() => {
-                  viewingRecording.photos.forEach((photo, idx) => {
+                  (viewingRecording.photos || []).forEach((photo, idx) => {
                     downloadPhotoFile(photo.data, `${viewingRecording.jobName}-photo-${idx + 1}.jpg`);
                   });
                 }}

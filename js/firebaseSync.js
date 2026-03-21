@@ -298,7 +298,11 @@ const FirebaseSync = {
           } else {
             const delay = this.retryDelays[Math.min(item.attempts - 1, this.retryDelays.length - 1)];
             console.log('[FirebaseSync] Retry ' + item.attempts + '/' + this.maxRetries + ' for ' + item.type + ' in ' + delay + 'ms');
-            IntervalRegistry.setTimeout(() => this.processQueue(), delay, 'FirebaseSync-retry');
+            if (typeof IntervalRegistry !== 'undefined' && IntervalRegistry.setTimeout) {
+              IntervalRegistry.setTimeout(() => this.processQueue(), delay, 'FirebaseSync-retry');
+            } else {
+              setTimeout(() => this.processQueue(), delay);
+            }
           }
           this.saveQueue();
         }

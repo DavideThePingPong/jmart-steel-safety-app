@@ -16,7 +16,7 @@ const OfflinePhotoQueue = {
       this.queue = saved ? JSON.parse(saved) : [];
       if (this.queue.length > 0) {
         console.log(`OfflinePhotoQueue: ${this.queue.length} photos pending`);
-        if (navigator.onLine && GoogleDriveSync.isConnected()) {
+        if (navigator.onLine && typeof GoogleDriveSync !== 'undefined' && GoogleDriveSync.isConnected()) {
           this.processQueue();
         }
       }
@@ -146,7 +146,7 @@ const OfflinePhotoQueue = {
   // Process the queue
   processQueue: async function() {
     if (this.isProcessing || this.queue.length === 0) return;
-    if (!navigator.onLine || !GoogleDriveSync.isConnected()) {
+    if (!navigator.onLine || typeof GoogleDriveSync === 'undefined' || !GoogleDriveSync.isConnected()) {
       console.log('Cannot process photo queue - offline or not connected');
       return;
     }
