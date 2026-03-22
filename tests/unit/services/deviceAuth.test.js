@@ -418,6 +418,7 @@ describe('DeviceAuth', () => {
           status: 'pending'
         })
       );
+      expect(mockDb._mockRef.push).not.toHaveBeenCalled();
     });
 
     it('does nothing when firebaseDb is null', async () => {

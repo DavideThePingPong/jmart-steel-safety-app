@@ -603,7 +603,7 @@ const DeviceAuth = {
 
   // Notify admins of new device request
   notifyAdminsOfNewDevice: async function(deviceData) {
-    if (!firebaseDb) return;
+    if (!firebaseDb || !this.isApproved) return;
 
     try {
       // Store notification in Firebase for all admins
