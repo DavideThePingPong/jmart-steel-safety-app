@@ -160,10 +160,10 @@ describe('DeviceAuthManager', () => {
       expect(result).toEqual({ status: 'no-firebase', canAccess: true });
     });
 
-    it('returns error/canAccess on DeviceAuth error', async () => {
-      DeviceAuth.checkDeviceStatus.mockResolvedValue({ error: true });
+    it('returns error without access when DeviceAuth errors', async () => {
+      DeviceAuth.checkDeviceStatus.mockResolvedValue({ error: true, networkError: true });
       const result = await DeviceAuthManager.init();
-      expect(result).toEqual({ status: 'error', canAccess: true });
+      expect(result).toEqual({ status: 'error', canAccess: false, networkError: true });
     });
 
     it('returns denied when device is in denied list', async () => {
@@ -181,6 +181,12 @@ describe('DeviceAuthManager', () => {
         .mockResolvedValueOnce({ exists: true });   // pending check
       const result = await DeviceAuthManager.init();
       expect(result).toEqual({ status: 'pending', canAccess: false });
+    });
+
+    it('returns recovery-required when manual admin recovery is needed', async () => {
+      DeviceAuth.checkDeviceStatus.mockResolvedValue({ pending: true, recoveryRequired: true });
+      const result = await DeviceAuthManager.init();
+      expect(result).toEqual({ status: 'recovery-required', canAccess: false });
     });
 
     it('returns new when device is not found anywhere', async () => {

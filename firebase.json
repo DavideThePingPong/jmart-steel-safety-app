@@ -3,28 +3,12 @@
     "rules": "firebase.rules.json"
   },
   "hosting": {
-    "public": ".",
+    "public": "dist",
     "ignore": [
       "firebase.json",
       "firebase.rules.json",
       "**/.*",
-      "**/node_modules/**",
-      "CRITICAL-SAFETY-REVIEW.md",
-      "TEST-COVERAGE-ANALYSIS.md",
-      "DOCUMENTATION.md",
-      "README.md",
-      "package.json",
-      "package-lock.json",
-      "babel.config.js",
-      "jest.config.js",
-      "JMart-Codebase-Analysis-Report.docx",
-      "**/src/**",
-      "**/src-v3/**",
-      "**/tests/**",
-      "**/.github/**",
-      "CLAUDE.md",
-      "generate-sri-hashes.sh",
-      "**/*.docx"
+      "**/node_modules/**"
     ],
     "headers": [
       {

@@ -131,7 +131,7 @@ function ITPFormView({ onSubmit, onUpdate, editingForm, sites = [] }) {
     setFutureCorrespondence(data.futureCorrespondence || '');
     setSubmitted(false);
     setValidationErrors([]);
-  }, [editingForm?.id]);
+  }, [editingForm]);
 
   const getLocation = () => {
     setIsLocating(true);

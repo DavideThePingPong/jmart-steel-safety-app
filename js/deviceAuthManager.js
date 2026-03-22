@@ -42,10 +42,13 @@ const DeviceAuthManager = {
     const result = await DeviceAuth.checkDeviceStatus();
 
     if (result.error) {
-      return { status: 'error', canAccess: true };
+      return { status: 'error', canAccess: false, networkError: !!result.networkError };
     }
     if (result.approved) {
       return { status: 'approved', canAccess: true, isAdmin: result.admin || false };
+    }
+    if (result.recoveryRequired) {
+      return { status: 'recovery-required', canAccess: false };
     }
     if (result.pending) {
       // Check if device is in denied state (uses REST fallback)

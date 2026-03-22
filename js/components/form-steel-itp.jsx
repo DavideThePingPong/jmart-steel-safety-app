@@ -143,7 +143,7 @@ function SteelITPView({ onSubmit, onUpdate, editingForm, sites = [] }) {
     setBuilderSignature(data.builderSignature || null);
     setSubmitted(false);
     setValidationErrors([]);
-  }, [editingForm?.id]);
+  }, [editingForm]);
 
   const handleSubmit = () => {
     let errors = [];

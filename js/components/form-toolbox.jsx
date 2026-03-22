@@ -58,7 +58,7 @@ function ToolboxView({ onSubmit, onUpdate, editingForm, sites = [] }) {
     setFeedbackResponses(data.feedbackResponses || '');
     setSignatures(data.signatures || FORM_CONSTANTS.emptySignatures());
     setValidationErrors([]);
-  }, [editingForm?.id]);
+  }, [editingForm]);
 
   const getLocation = () => {
     setIsLocating(true);

@@ -2,11 +2,12 @@
 // Extracted from index.html
 
 // React hooks and Lucide icons - attached to window for cross-file access
-const { useState, useRef, useEffect, useMemo } = React;
+const { useState, useRef, useEffect, useMemo, useCallback } = React;
 window.useState = useState;
 window.useRef = useRef;
 window.useEffect = useEffect;
 window.useMemo = useMemo;
+window.useCallback = useCallback;
 
 const {
   Shield, ClipboardCheck, AlertTriangle, Users, Plus, ChevronRight, ChevronLeft,
@@ -330,7 +331,7 @@ function SignaturePad({ onSave, onCancel, name }) {
         <div className="p-4">
           <p className="text-xs text-gray-500 mb-2">Or draw a new signature:</p>
           <div className="border-2 border-gray-300 rounded-lg bg-gray-50 relative">
-            <canvas ref={canvasRef} width={350} height={150} className="w-full touch-none"
+            <canvas ref={canvasRef} width={350} height={150} data-testid="signature-canvas" className="w-full touch-none"
               onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing}
               onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={stopDrawing} />
             <div className="absolute bottom-2 left-2 right-2 border-t border-gray-400"></div>
@@ -420,11 +421,11 @@ function NoteMediaBox({ label, iconName, value, notes, media, onValueChange, onA
                 }).catch(err => {
                   console.error('ImageBitmap error, falling back to Image:', err);
                   // Fallback to Image approach
-                  useImageFallback(event.target.result, maxWidth, quality, resolve);
+                  imageFallback(event.target.result, maxWidth, quality, resolve);
                 });
               } else {
                 // Fallback for browsers without createImageBitmap
-                useImageFallback(event.target.result, maxWidth, quality, resolve);
+                imageFallback(event.target.result, maxWidth, quality, resolve);
               }
             };
             reader.onerror = (err) => {
@@ -436,7 +437,7 @@ function NoteMediaBox({ label, iconName, value, notes, media, onValueChange, onA
         };
 
         // Fallback function using Image element
-        const useImageFallback = (dataUrl, maxWidth, quality, resolve) => {
+        const imageFallback = (dataUrl, maxWidth, quality, resolve) => {
           const img = new Image();
           img.onload = () => {
             console.log('Image loaded:', img.width, 'x', img.height);

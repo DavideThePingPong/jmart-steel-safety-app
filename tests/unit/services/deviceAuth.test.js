@@ -360,6 +360,31 @@ describe('DeviceAuth', () => {
       expect(DeviceAuth.isApproved).toBe(false);
     });
 
+    it('requires manual recovery instead of auto-promoting when all admins are inactive', async () => {
+      const mockDb = createMockFirebaseDb();
+      global.firebaseDb = mockDb;
+      DeviceAuth.deviceId = 'DEV-RECOVERY';
+      DeviceAuth.deviceInfo = { type: 'Mac', browser: 'Chrome' };
+
+      const staleAdmin = {
+        'DEV-ADMIN': { isAdmin: true, lastSeen: '2020-01-01T00:00:00.000Z' }
+      };
+
+      global.firebaseRead = jest.fn()
+        .mockResolvedValueOnce({ exists: false, val: null })
+        .mockResolvedValueOnce({ exists: false, val: null })
+        .mockResolvedValueOnce({ exists: true, val: staleAdmin })
+        .mockResolvedValueOnce({ exists: false, val: null });
+
+      const promoteSpy = jest.spyOn(DeviceAuth, 'registerAsApproved');
+      const result = await DeviceAuth.checkDeviceStatus();
+
+      expect(result.approved).toBe(false);
+      expect(result.recoveryRequired).toBe(true);
+      expect(promoteSpy).not.toHaveBeenCalled();
+      promoteSpy.mockRestore();
+    });
+
     it('handles errors gracefully and returns networkError', async () => {
       const mockDb = createMockFirebaseDb();
       global.firebaseDb = mockDb;
@@ -425,6 +450,7 @@ describe('DeviceAuth', () => {
       // Should have removed from pending
       expect(mockDb.ref).toHaveBeenCalledWith('jmart-safety/devices/pending/DEV-APPR');
       expect(mockDb._mockRef.remove).toHaveBeenCalled();
+      expect(mockDb.ref).toHaveBeenCalledWith('jmart-safety/authDevices/test-uid-123');
       // State flags updated
       expect(DeviceAuth.isApproved).toBe(true);
       expect(DeviceAuth.isAdmin).toBe(true);

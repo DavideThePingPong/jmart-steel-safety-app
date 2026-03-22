@@ -14,6 +14,60 @@ function sanitizeForFirebase(obj) {
   return clean;
 }
 
+// Normalize legacy form records before any Firebase write.
+// This backfills fields required by current rules so older records can sync again.
+function normalizeFormCreatedAt(value, fallbackTs) {
+  if (typeof value === 'string' && value.trim()) return value;
+  if (typeof value === 'number' && isFinite(value)) {
+    try { return new Date(value).toISOString(); } catch (e) {}
+  }
+  return new Date(fallbackTs).toISOString();
+}
+
+function normalizeFormTimestamp(value, fallbackTs) {
+  if (typeof value === 'number' && isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    var parsed = Date.parse(value);
+    if (!isNaN(parsed)) return parsed;
+  }
+  return fallbackTs;
+}
+
+function normalizeFormsPayload(forms, deviceId) {
+  var normalized = {};
+  var formsArray = Array.isArray(forms) ? forms : Object.values(forms || {});
+  formsArray.forEach(function(form, index) {
+    if (!form) return;
+    var fallbackTs = Date.now() + index;
+    var formId = form.id || ('legacy-form-' + fallbackTs + '-' + Math.random().toString(36).substr(2, 6));
+    var createdBy = form.createdBy || form._modifiedBy || deviceId || 'legacy-migration';
+    normalized[formId] = sanitizeForFirebase({
+      ...form,
+      id: formId,
+      type: form.type || 'unknown',
+      createdAt: normalizeFormCreatedAt(form.createdAt, fallbackTs),
+      createdBy: createdBy,
+      _lastModified: normalizeFormTimestamp(form._lastModified || form.updatedAt, fallbackTs),
+      _modifiedBy: form._modifiedBy || deviceId || createdBy
+    });
+  });
+  return normalized;
+}
+
+function collectFormAssetUpdates(forms) {
+  if (typeof FormAssetStore === 'undefined' || !FormAssetStore.collectAssetUpdates) {
+    return {};
+  }
+  return FormAssetStore.collectAssetUpdates(forms);
+}
+
+function stripFormAssets(forms) {
+  if (typeof FormAssetStore === 'undefined' || !FormAssetStore.stripAssetsFromForms) {
+    return Array.isArray(forms) ? forms : Object.values(forms || {});
+  }
+  return FormAssetStore.stripAssetsFromForms(forms);
+}
+
 const FirebaseSync = {
   // Retry queue stored in localStorage
   pendingQueue: [],
@@ -267,8 +321,9 @@ const FirebaseSync = {
           this.notifyListeners('synced', { pending: this.pendingQueue.length, item: item.type });
           console.log('[FirebaseSync] Sync successful for ' + item.type);
         } catch (error) {
+          var currentError = error;
           // Check if it's a PERMISSION_DENIED error — if so, try re-auth
-          if (error.message && error.message.indexOf('PERMISSION_DENIED') !== -1) {
+          if (currentError.message && currentError.message.indexOf('PERMISSION_DENIED') !== -1) {
             console.warn('[FirebaseSync] PERMISSION_DENIED — attempting re-auth');
             this._authReady = false;
             var reAuthOk = await this._ensureAuth();
@@ -286,7 +341,7 @@ const FirebaseSync = {
               continue;
             } catch (e2) {
               // Still failing after re-auth — fall through to retry logic
-              error = e2;
+              currentError = e2;
             }
           }
 
@@ -294,7 +349,7 @@ const FirebaseSync = {
           if (item.attempts >= this.maxRetries) {
             console.error('[FirebaseSync] Max retries reached for ' + item.type + ', removing from queue');
             this.pendingQueue = this.pendingQueue.filter(i => i.id !== item.id);
-            this.notifyListeners('failed', { pending: this.pendingQueue.length, error: error.message });
+            this.notifyListeners('failed', { pending: this.pendingQueue.length, error: currentError.message });
           } else {
             const delay = this.retryDelays[Math.min(item.attempts - 1, this.retryDelays.length - 1)];
             console.log('[FirebaseSync] Retry ' + item.attempts + '/' + this.maxRetries + ' for ' + item.type + ' in ' + delay + 'ms');
@@ -331,9 +386,16 @@ const FirebaseSync = {
 
     // Legacy bulk operations (fallback)
     switch (item.type) {
-      case 'forms':
-        await firebaseDb.ref('jmart-safety/forms').set(sanitizeForFirebase(item.data));
+      case 'forms': {
+        var deviceId = localStorage.getItem('jmart-device-id') || 'unknown';
+        var formsArray = Array.isArray(item.data) ? item.data : Object.values(item.data || {});
+        var strippedForms = stripFormAssets(formsArray);
+        var formUpdates = normalizeFormsPayload(strippedForms, deviceId);
+        var assetUpdates = collectFormAssetUpdates(formsArray);
+        await firebaseDb.ref('jmart-safety/forms').set(formUpdates);
+        await firebaseDb.ref('jmart-safety/formAssets').set(sanitizeForFirebase(assetUpdates));
         break;
+      }
       case 'sites': {
         // Sanitize queued sites data — old queue entries may contain corrupted objects
         const raw = Array.isArray(item.data) ? item.data : Object.values(item.data || {});
@@ -354,6 +416,12 @@ const FirebaseSync = {
       case 'signatures':
         await firebaseDb.ref('signatures').set(sanitizeForFirebase(item.data));
         break;
+      case 'delete-form':
+        await firebaseDb.ref('jmart-safety/forms/' + item.data.formId).remove();
+        break;
+      case 'delete-form-assets':
+        await firebaseDb.ref('jmart-safety/formAssets/' + item.data.formId).remove();
+        break;
       default:
         throw new Error('Unknown sync type: ' + item.type);
     }
@@ -373,25 +441,46 @@ const FirebaseSync = {
     }
     try {
       const deviceId = localStorage.getItem('jmart-device-id') || 'unknown';
-      const updates = {};
       const formsArray = Array.isArray(forms) ? forms : Object.values(forms || {});
-      formsArray.forEach(form => {
-        if (!form || !form.id) return; // Skip invalid forms
-        const key = form.id || ('form-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6));
-        updates[key] = sanitizeForFirebase({
-          ...form,
-          _lastModified: Date.now(),
-          _modifiedBy: deviceId
-        });
-      });
+      const assetUpdates = collectFormAssetUpdates(formsArray);
+      const strippedForms = stripFormAssets(formsArray);
+      const updates = normalizeFormsPayload(strippedForms, deviceId);
       // Single atomic update of all forms (granular keys, no full overwrite)
       await firebaseDb.ref('jmart-safety/forms').update(updates);
-      console.log('Forms synced to Firebase (granular):', formsArray.length, 'forms');
+      await firebaseDb.ref('jmart-safety/formAssets').update(sanitizeForFirebase(assetUpdates));
+      console.log('Forms synced to Firebase (granular):', Object.keys(updates).length, 'forms');
       return { success: true };
     } catch (error) {
       console.error('Error syncing forms, adding to retry queue:', error);
       this.addToQueue('forms', forms);
       this.notifyListeners('error', { message: 'Sync failed - will retry automatically' });
+      return { success: false, queued: true, error: error.message };
+    }
+  },
+
+  deleteForm: async function(formId) {
+    if (!formId) return { success: false, error: 'Missing form ID' };
+
+    if (!firebaseDb || !isFirebaseConfigured) {
+      this.addToQueue('delete-form', { formId: formId });
+      this.addToQueue('delete-form-assets', { formId: formId });
+      return { success: false, queued: true };
+    }
+
+    var authOk = await this._ensureAuth();
+    if (!authOk) {
+      this.addToQueue('delete-form', { formId: formId });
+      this.addToQueue('delete-form-assets', { formId: formId });
+      return { success: false, queued: true, error: 'Auth not ready' };
+    }
+
+    try {
+      await firebaseDb.ref('jmart-safety/forms/' + formId).remove();
+      await firebaseDb.ref('jmart-safety/formAssets/' + formId).remove();
+      return { success: true };
+    } catch (error) {
+      this.addToQueue('delete-form', { formId: formId });
+      this.addToQueue('delete-form-assets', { formId: formId });
       return { success: false, queued: true, error: error.message };
     }
   },
@@ -497,6 +586,20 @@ const FirebaseSync = {
       console.error('Firebase listener error:', error);
       if (typeof ToastNotifier !== 'undefined') ToastNotifier.error('Lost connection to form updates');
       if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(error, 'firebase-listener');
+    };
+    ref.on('value', handler, errorHandler);
+    return () => ref.off('value', handler);
+  },
+
+  onFormAssetsChange: (callback) => {
+    if (!firebaseDb || !isFirebaseConfigured) return () => {};
+    const ref = firebaseDb.ref('jmart-safety/formAssets');
+    const handler = (snapshot) => {
+      callback(snapshot.val());
+    };
+    const errorHandler = (error) => {
+      console.error('Firebase form assets listener error:', error);
+      if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(error, 'firebase-form-assets-listener');
     };
     ref.on('value', handler, errorHandler);
     return () => ref.off('value', handler);

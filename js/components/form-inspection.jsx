@@ -1,22 +1,22 @@
 // SubcontractorInspectionView Component
 // Extracted from forms.jsx
 
+const DEFAULT_INSPECTION_ITEMS = {
+  siteBoxes: null,
+  electricalLeads: null,
+  toolsRetagging: null,
+  exclusionZones: null,
+  permitsCompleted: null,
+  permitsActive: null,
+  penetrationsCovered: null,
+  equipmentInspection: null,
+  workerSafetyConcerns: null,
+  builderRequests: null,
+};
+
 function SubcontractorInspectionView({ onSubmit, onUpdate, editingForm, sites = [] }) {
   const isEditing = !!editingForm;
   const editData = editingForm?.data || {};
-
-  const defaultInspectionItems = {
-    siteBoxes: null,
-    electricalLeads: null,
-    toolsRetagging: null,
-    exclusionZones: null,
-    permitsCompleted: null,
-    permitsActive: null,
-    penetrationsCovered: null,
-    equipmentInspection: null,
-    workerSafetyConcerns: null,
-    builderRequests: null,
-  };
 
   const [step, setStep] = useState(1);
   const [submitted, setSubmitted] = useState(false);
@@ -30,7 +30,7 @@ function SubcontractorInspectionView({ onSubmit, onUpdate, editingForm, sites = 
   const [validationErrors, setValidationErrors] = useState([]);
 
   // Inspection items with Yes/No/N/A
-  const [inspectionItems, setInspectionItems] = useState(editData.inspectionItems || defaultInspectionItems);
+  const [inspectionItems, setInspectionItems] = useState(editData.inspectionItems || DEFAULT_INSPECTION_ITEMS);
 
   const todayDate = new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const preparers = FORM_CONSTANTS.supervisors;
@@ -44,10 +44,10 @@ function SubcontractorInspectionView({ onSubmit, onUpdate, editingForm, sites = 
     setLocation(data.location || '');
     setCompletedBy(data.completedBy || '');
     setCompletedBySignature(data.completedBySignature || null);
-    setInspectionItems(data.inspectionItems || defaultInspectionItems);
+    setInspectionItems(data.inspectionItems || DEFAULT_INSPECTION_ITEMS);
     setSubmitted(false);
     setValidationErrors([]);
-  }, [editingForm?.id]);
+  }, [editingForm]);
 
   const inspectionQuestions = [
     { id: 'siteBoxes', text: 'Site boxes in good condition and lockable' },

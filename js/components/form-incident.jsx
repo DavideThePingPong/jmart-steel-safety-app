@@ -31,7 +31,7 @@ function IncidentView({ onSubmit, onUpdate, editingForm }) {
     setReporterSignature(data.reporterSignature || null);
     setSigningReporter(false);
     setValidationError('');
-  }, [editingForm?.id]);
+  }, [editingForm]);
 
   const handleIncidentSubmit = () => {
     // Use centralized validator for comprehensive WHS-compliant checks

@@ -9,12 +9,14 @@ const {
   useState,
   useRef,
   useEffect,
-  useMemo
+  useMemo,
+  useCallback
 } = React;
 window.useState = useState;
 window.useRef = useRef;
 window.useEffect = useEffect;
 window.useMemo = useMemo;
+window.useCallback = useCallback;
 const {
   Shield,
   ClipboardCheck,
@@ -454,6 +456,7 @@ function SignaturePad({
     ref: canvasRef,
     width: 350,
     height: 150,
+    "data-testid": "signature-canvas",
     className: "w-full touch-none",
     onMouseDown: startDrawing,
     onMouseMove: draw,
@@ -562,11 +565,11 @@ function NoteMediaBox({
                 }).catch(err => {
                   console.error('ImageBitmap error, falling back to Image:', err);
                   // Fallback to Image approach
-                  useImageFallback(event.target.result, maxWidth, quality, resolve);
+                  imageFallback(event.target.result, maxWidth, quality, resolve);
                 });
               } else {
                 // Fallback for browsers without createImageBitmap
-                useImageFallback(event.target.result, maxWidth, quality, resolve);
+                imageFallback(event.target.result, maxWidth, quality, resolve);
               }
             };
             reader.onerror = err => {
@@ -578,7 +581,7 @@ function NoteMediaBox({
         };
 
         // Fallback function using Image element
-        const useImageFallback = (dataUrl, maxWidth, quality, resolve) => {
+        const imageFallback = (dataUrl, maxWidth, quality, resolve) => {
           const img = new Image();
           img.onload = () => {
             console.log('Image loaded:', img.width, 'x', img.height);
@@ -890,6 +893,10 @@ function useFormManager({
 
       // Auto-download PDF + upload to Drive
       setTimeout(() => {
+        if (window.__JMART_E2E__) {
+          markAsBackedUp(newForm.id);
+          return;
+        }
         try {
           const filename = PDFGenerator.download(newForm);
           markAsBackedUp(newForm.id);
@@ -1063,6 +1070,10 @@ function useFormManager({
         return updatedForms;
       });
       try {
+        if (window.__JMART_E2E__) {
+          markAsBackedUp(form.id);
+          return;
+        }
         const filename = PDFGenerator.download(form);
         if (filename) {
           markAsBackedUp(form.id);
@@ -1155,7 +1166,7 @@ function useFormManager({
       console.log('Form deleted, saved to localStorage:', updatedForms.length, 'forms remaining');
       deletingFormRef.current = true;
       if (FirebaseSync.isConnected()) {
-        FirebaseSync.syncForms(updatedForms).then(() => {
+        FirebaseSync.deleteForm(formId).then(() => {
           console.log('Deletion synced to Firebase');
           deletingFormRef.current = false;
           // Clean up the persisted deleted ID since Firebase is now in sync
@@ -1224,6 +1235,8 @@ function useDataSync({
   const formsFromFirebaseRef = useRef(false); // Anti-loop: skip syncing back to Firebase when data came FROM Firebase
   const sitesFromFirebaseRef = useRef(false);
   const lastFormsWriteRef = useRef(0); // throttle forms listener writes
+  const latestRemoteFormsRef = useRef([]);
+  const formAssetsRef = useRef({});
 
   // Load saved data from localStorage first, then listen to Firebase
   useEffect(() => {
@@ -1270,23 +1283,28 @@ function useDataSync({
     const lastSync = localStorage.getItem('jmart-last-sync');
     if (lastSync) setLastSynced(lastSync);
     if (FirebaseSync.isConnected()) {
-      const unsubForms = FirebaseSync.onFormsChange(firebaseForms => {
+      const applyRemoteForms = (firebaseForms, options) => {
         const formsArray = Array.isArray(firebaseForms) ? firebaseForms : Object.values(firebaseForms || {});
+        const mergedAssetForms = typeof FormAssetStore !== 'undefined' && FormAssetStore.mergeAssetMapIntoForms ? FormAssetStore.mergeAssetMapIntoForms(formsArray, formAssetsRef.current) : formsArray;
+        const previousRemoteIds = new Set((latestRemoteFormsRef.current || []).map(form => form?.id).filter(Boolean));
+        const hasRemoteDeletion = previousRemoteIds.size > 0 && [...previousRemoteIds].some(formId => !formsArray.some(form => form?.id === formId));
+        latestRemoteFormsRef.current = formsArray;
+        options = options || {};
 
-        // Throttle: skip if last write was <5s ago (prevents rapid-fire listener loop)
+        // Throttle rapid-fire listener churn, but never suppress remote deletions.
         var now = Date.now();
-        if (now - lastFormsWriteRef.current < 5000) return;
+        if (!options.skipThrottle && !hasRemoteDeletion && now - lastFormsWriteRef.current < 5000) return;
         lastFormsWriteRef.current = now;
-        console.log('Firebase forms received:', formsArray.length, 'forms');
+        console.log('Firebase forms received:', mergedAssetForms.length, 'forms');
         if (deletingFormRef.current) {
           deletingFormRef.current = false;
         }
-        if (formsArray.length > 0) {
+        if (mergedAssetForms.length > 0) {
           const formMap = new Map();
 
           // Filter out forms that were deleted offline but haven't been purged from Firebase yet
           const deletedIds = deletedFormIdsRef ? deletedFormIdsRef.current : new Set();
-          formsArray.forEach(form => {
+          mergedAssetForms.forEach(form => {
             if (deletedIds.has(form.id)) return; // Skip forms deleted offline
             formMap.set(form.id, {
               ...form,
@@ -1320,21 +1338,45 @@ function useDataSync({
           StorageQuotaManager.safeFormsWrite(mergedForms);
           console.log('Forms synced:', mergedForms.length, 'total');
         } else {
-          // Firebase returned empty — check if we have local forms to push
-          // Read fresh from localStorage to avoid stale closure over initial localForms
+          // Firebase returned empty. Only republish local forms if there is an actual
+          // queued local form write waiting to sync; otherwise treat Firebase as the
+          // source of truth so remote deletes clear stale local cache instead of
+          // resurrecting forms on other devices.
           let freshLocalForms = [];
           try {
             const freshLocal = localStorage.getItem('jmart-safety-forms');
             if (freshLocal) freshLocalForms = JSON.parse(freshLocal);
           } catch (e) {/* ignore */}
-          if (freshLocalForms.length > 0) {
+          const hasQueuedFormSync = Array.isArray(FirebaseSync.pendingQueue) && FirebaseSync.pendingQueue.some(item => {
+            if (!item) return false;
+            if (item.type === 'forms') return true;
+            if (typeof item.path === 'string' && item.path.indexOf('jmart-safety/forms') === 0) return true;
+            return false;
+          });
+          if (freshLocalForms.length > 0 && hasQueuedFormSync) {
             console.log('Firebase empty, pushing local forms to Firebase');
             FirebaseSync.syncForms(freshLocalForms);
+          } else {
+            formsFromFirebaseRef.current = true;
+            setForms([]);
+            StorageQuotaManager.safeFormsWrite([]);
+            console.log('Firebase empty, clearing local forms cache');
           }
         }
         setSyncStatus('synced');
         setLastSynced(new Date().toISOString());
         setSyncError(null);
+      };
+      const unsubForms = FirebaseSync.onFormsChange(firebaseForms => {
+        applyRemoteForms(firebaseForms);
+      });
+      const unsubFormAssets = FirebaseSync.onFormAssetsChange(firebaseAssets => {
+        formAssetsRef.current = firebaseAssets || {};
+        if (latestRemoteFormsRef.current.length > 0) {
+          applyRemoteForms(latestRemoteFormsRef.current, {
+            skipThrottle: true
+          });
+        }
       });
       const unsubSites = FirebaseSync.onSitesChange(firebaseSites => {
         const rawArray = Array.isArray(firebaseSites) ? firebaseSites : Object.values(firebaseSites || {});
@@ -1392,15 +1434,16 @@ function useDataSync({
       }, 1000);
       return () => {
         unsubForms();
+        unsubFormAssets();
         unsubSites();
       };
     } else {
       isInitialLoad.current = false;
     }
-  }, []);
+  }, [deletedFormIdsRef, deletingFormRef, setForms, setSites]);
 
   // Save forms to localStorage and sync to Firebase
-  const syncFormsEffect = forms => {
+  const syncFormsEffect = useCallback(forms => {
     if (!isInitialLoad.current) {
       try {
         // FIXED: Use safeFormsWrite instead of raw setItem.
@@ -1436,10 +1479,10 @@ function useDataSync({
         });
       }
     }
-  };
+  }, []);
 
   // Save sites to localStorage and sync to Firebase
-  const syncSitesEffect = sites => {
+  const syncSitesEffect = useCallback(sites => {
     if (sites.length > 0 && !isInitialLoad.current) {
       localStorage.setItem('jmart-safety-sites', JSON.stringify(sites));
       if (sitesFromFirebaseRef.current) {
@@ -1450,7 +1493,7 @@ function useDataSync({
         FirebaseSync.syncSites(sites);
       }
     }
-  };
+  }, []);
 
   // Online/Offline detection
   useEffect(() => {
@@ -1470,46 +1513,32 @@ function useDataSync({
     };
   }, []);
 
-  // Sync status listener — SUPPRESS all banners if Firebase connected, auto-retry
+  // Sync status listener — only show errors for real Firebase failures, not localStorage issues
   useEffect(() => {
     const unsubscribe = FirebaseSync.onSyncStatusChange((status, details) => {
       setPendingSyncCount(details?.pending || 0);
-      
-      // ALWAYS report "synced" if Firebase is connected - suppress all banners
-      if (FirebaseSync.isConnected()) {
-        setSyncStatus('synced');
-        setSyncError(null);
-        setPendingSyncCount(0); // Hide pending count
-        return;
-      }
-      
       if (status === 'synced' && details?.pending === 0) {
         setSyncStatus('synced');
         setSyncError(null);
       } else if (status === 'queued' || details?.pending > 0) {
         setSyncStatus('pending');
       } else if (status === 'circuit_open' || status === 'circuit_reset') {
-        setSyncStatus('pending');
+        // Circuit breaker is a storage issue, not a sync issue — don't alarm the user
+        setSyncStatus(FirebaseSync.isConnected() ? 'synced' : 'pending');
       } else if (status === 'error' || status === 'failed') {
-        // Only show minimal error if completely disconnected
+        // Only show sync error if Firebase is actually disconnected
         var msg = details?.message || details?.error || '';
-        setSyncStatus('error');
-        setSyncError('Connection lost - will auto-retry');
+        if (msg.indexOf('Storage') !== -1 || msg.indexOf('quota') !== -1 || msg.indexOf('storage') !== -1) {
+          // Storage error — Firebase is fine, just localStorage is full
+          setSyncStatus(FirebaseSync.isConnected() ? 'synced' : 'pending');
+        } else {
+          setSyncStatus('error');
+          setSyncError(msg || 'Sync failed');
+        }
       }
     });
     return unsubscribe;
   }, []);
-
-  // Auto-retry connection every 30 seconds if disconnected
-  useEffect(() => {
-    const retryInterval = setInterval(() => {
-      if (!FirebaseSync.isConnected() && !isOnline) {
-        console.log('[Auto-Retry] Attempting to reconnect to Firebase...');
-        FirebaseSync.retryAll();
-      }
-    }, 30000);
-    return () => clearInterval(retryInterval);
-  }, [isOnline]);
 
   // Photo queue listener
   useEffect(() => {
@@ -1622,7 +1651,7 @@ function useDeviceAuth() {
             if (snapshot.exists()) {
               const data = snapshot.val();
               setDeviceAuthStatus('approved');
-              setIsDeviceAdmin(data.role === 'admin');
+              setIsDeviceAdmin(!!data.isAdmin || data.role === 'admin');
               approvalRef.off('value');
               window.location.reload();
             }
@@ -1725,7 +1754,7 @@ function useAutoSave(formKey, formData, intervalMs) {
       }
     }, saveInterval, 'useAutoSave-' + formKey);
     return () => IntervalRegistry.clearInterval(timer);
-  }, [formDataStr, formKey]);
+  }, [draftKey, formDataStr, formKey, saveInterval]);
 
   // Load existing draft
   const loadDraft = () => {
@@ -2143,6 +2172,23 @@ window.InstallPromptBanner = InstallPromptBanner;
 // Auth: LoginScreen, AppWithAuth
 // Extracted from index.html
 
+function isE2EAuthRuntime() {
+  return window.__JMART_E2E__ === true;
+}
+function hasE2EAuthenticatedSession() {
+  if (!isE2EAuthRuntime()) return true;
+  try {
+    return sessionStorage.getItem('jmart-e2e-authenticated') === 'true';
+  } catch (e) {
+    return false;
+  }
+}
+function markE2EAuthenticated() {
+  if (!isE2EAuthRuntime()) return;
+  try {
+    sessionStorage.setItem('jmart-e2e-authenticated', 'true');
+  } catch (e) {}
+}
 function LoginScreen({
   onAuthenticated,
   authStatus
@@ -2179,9 +2225,12 @@ function LoginScreen({
     setError('');
     try {
       await Promise.race([(async () => {
-        await DeviceAuthManager.setPassword(newPassword);
-        await DeviceAuthManager.registerDevice(deviceName || 'Admin Device');
-        await DeviceAuthManager.approveAsAdmin();
+        const passwordSaved = await DeviceAuthManager.setPassword(newPassword);
+        if (!passwordSaved) throw new Error('setup-password-failed');
+        const deviceRegistered = await DeviceAuthManager.registerDevice(deviceName || 'Admin Device');
+        if (!deviceRegistered) throw new Error('setup-device-registration-failed');
+        const adminApproved = await DeviceAuthManager.approveAsAdmin();
+        if (!adminApproved) throw new Error('setup-admin-approval-failed');
       })(), new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000))]);
       // Save device name locally so it's remembered forever
       if (deviceName) {
@@ -2192,8 +2241,8 @@ function LoginScreen({
       onAuthenticated(true);
     } catch (err) {
       if (err.message === 'timeout') {
-        console.warn('Setup timed out waiting for Firebase, proceeding anyway');
-        onAuthenticated(true);
+        console.warn('Setup timed out waiting for Firebase confirmation');
+        setError('Setup could not be confirmed within 8 seconds. Check Firebase connectivity and try again.');
       } else {
         setError('Setup failed. Please try again.');
       }
@@ -2208,20 +2257,33 @@ function LoginScreen({
     setIsLoading(true);
     setError('');
     if (await DeviceAuthManager.verifyPassword(password)) {
-      // Password correct - grant access IMMEDIATELY
-      onAuthenticated(true);
       // Save device name locally so it's remembered next time
       if (deviceName) {
         try {
           localStorage.setItem('jmart-device-name', deviceName);
         } catch (e) {}
       }
-      // Fire-and-forget device registration
-      Promise.race([DeviceAuthManager.init(), new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))]).then(status => {
-        if (status.status === 'new') {
-          DeviceAuthManager.registerDevice(deviceName || 'Unknown Device').catch(() => {});
+      try {
+        const status = await Promise.race([DeviceAuthManager.init(), new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))]);
+        if (status.canAccess) {
+          onAuthenticated(true);
+        } else if (status.status === 'new') {
+          await DeviceAuthManager.registerDevice(deviceName || 'Unknown Device');
+          onAuthenticated(false, 'pending');
+        } else if (status.status === 'pending') {
+          onAuthenticated(false, 'pending');
+        } else if (status.status === 'recovery-required') {
+          onAuthenticated(false, 'recovery-required');
+        } else if (status.status === 'error') {
+          setError('Could not verify device approval right now. Access stays locked until Firebase responds.');
+        } else if (status.status === 'denied') {
+          setError('This device has been denied access. Please contact an administrator.');
+        } else {
+          setError('Could not verify device approval. Please try again.');
         }
-      }).catch(() => {});
+      } catch (err) {
+        setError('Could not verify device approval right now. Please try again.');
+      }
     } else {
       setError('Incorrect password');
     }
@@ -2253,6 +2315,7 @@ function LoginScreen({
       value: deviceName,
       onChange: e => setDeviceName(e.target.value),
       placeholder: "e.g. Jeff's iPhone",
+      "aria-label": "Device Name",
       className: "w-full border border-gray-300 rounded-lg p-3 text-lg"
     })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
       className: "block text-sm font-medium text-gray-700 mb-1"
@@ -2261,6 +2324,7 @@ function LoginScreen({
       value: newPassword,
       onChange: e => setNewPassword(e.target.value),
       placeholder: "Create a password",
+      "aria-label": "Set App Password",
       className: "w-full border border-gray-300 rounded-lg p-3 text-lg"
     })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
       className: "block text-sm font-medium text-gray-700 mb-1"
@@ -2269,6 +2333,7 @@ function LoginScreen({
       value: confirmPassword,
       onChange: e => setConfirmPassword(e.target.value),
       placeholder: "Confirm password",
+      "aria-label": "Confirm Password",
       className: "w-full border border-gray-300 rounded-lg p-3 text-lg",
       onKeyPress: e => e.key === 'Enter' && handleFirstSetup()
     })), error && /*#__PURE__*/React.createElement("div", {
@@ -2307,6 +2372,32 @@ function LoginScreen({
       className: "w-full bg-orange-600 text-white py-3 rounded-lg font-semibold"
     }, "\uD83D\uDD04 Check Again")));
   }
+  if (authStatus === 'recovery-required') {
+    return /*#__PURE__*/React.createElement("div", {
+      className: "min-h-screen bg-gray-100 flex items-center justify-center p-4"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "bg-white rounded-2xl shadow-xl p-6 w-full max-w-md text-center"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "w-20 h-20 bg-red-500 rounded-2xl flex items-center justify-center mx-auto mb-4"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "text-4xl"
+    }, "\uD83D\uDD12")), /*#__PURE__*/React.createElement("h1", {
+      className: "text-2xl font-bold text-gray-800"
+    }, "Manual Admin Recovery Required"), /*#__PURE__*/React.createElement("p", {
+      className: "text-gray-500 mt-2 mb-6"
+    }, "No active admin device is available. Automatic browser-based admin recovery has been disabled for security."), /*#__PURE__*/React.createElement("div", {
+      className: "bg-gray-50 rounded-lg p-4 mb-4 text-left"
+    }, /*#__PURE__*/React.createElement("p", {
+      className: "text-sm text-gray-600 mb-2"
+    }, "Device ID"), /*#__PURE__*/React.createElement("p", {
+      className: "font-mono text-xs text-gray-800 break-all mb-3"
+    }, DeviceAuthManager.deviceId), /*#__PURE__*/React.createElement("p", {
+      className: "text-xs text-gray-600"
+    }, "Run ", /*#__PURE__*/React.createElement("code", null, "npm run recover:admin -- --device-id=<Device ID>"), " from the project folder on an authorized machine, then reload this app.")), /*#__PURE__*/React.createElement("button", {
+      onClick: () => window.location.reload(),
+      className: "w-full bg-orange-600 text-white py-3 rounded-lg font-semibold"
+    }, "Check Again")));
+  }
 
   // Normal login screen
   return /*#__PURE__*/React.createElement("div", {
@@ -2332,6 +2423,7 @@ function LoginScreen({
     value: deviceName,
     onChange: e => setDeviceName(e.target.value),
     placeholder: "e.g. Scott's iPad",
+    "aria-label": "Device Name (optional)",
     className: "w-full border border-gray-300 rounded-lg p-3"
   })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
     className: "block text-sm font-medium text-gray-700 mb-1"
@@ -2340,6 +2432,7 @@ function LoginScreen({
     value: password,
     onChange: e => setPassword(e.target.value),
     placeholder: "Enter app password",
+    "aria-label": "Password",
     className: "w-full border border-gray-300 rounded-lg p-3 text-lg",
     onKeyPress: e => e.key === 'Enter' && handleLogin()
   })), error && /*#__PURE__*/React.createElement("div", {
@@ -2353,7 +2446,7 @@ function LoginScreen({
 
 // App Wrapper with Authentication
 function AppWithAuth() {
-  const [authState, setAuthState] = useState('loading'); // 'loading', 'authenticated', 'unauthenticated', 'pending'
+  const [authState, setAuthState] = useState('loading'); // 'loading', 'authenticated', 'unauthenticated', 'pending', 'recovery-required'
   const [isAdmin, setIsAdmin] = useState(false);
   useEffect(() => {
     checkAuth();
@@ -2374,14 +2467,22 @@ function AppWithAuth() {
       return;
     }
     console.log('Device auth status:', status);
-    if (status.canAccess) {
+    const requiresE2ELogin = isE2EAuthRuntime() && !!DeviceAuthManager.APP_PASSWORD_HASH && !hasE2EAuthenticatedSession();
+    const requiresE2EFirstSetup = isE2EAuthRuntime() && !DeviceAuthManager.APP_PASSWORD_HASH;
+    if (status.canAccess && requiresE2EFirstSetup) {
+      setAuthState('unauthenticated');
+    } else if (status.canAccess && !requiresE2ELogin) {
       setIsAdmin(DeviceAuthManager.isAdmin);
       setAuthState('authenticated');
 
       // Update last seen
       DeviceAuthManager.updateLastSeen();
+    } else if (status.canAccess && requiresE2ELogin) {
+      setAuthState('unauthenticated');
     } else if (status.status === 'pending') {
       setAuthState('pending');
+    } else if (status.status === 'recovery-required') {
+      setAuthState('recovery-required');
     } else if (status.status === 'new' && !DeviceAuthManager.APP_PASSWORD_HASH) {
       // First time setup
       setAuthState('unauthenticated');
@@ -2391,8 +2492,11 @@ function AppWithAuth() {
   };
   const handleAuthenticated = (success, newStatus) => {
     if (success) {
+      markE2EAuthenticated();
       setIsAdmin(DeviceAuthManager.isAdmin);
       setAuthState('authenticated');
+    } else if (newStatus === 'recovery-required') {
+      setAuthState('recovery-required');
     } else if (newStatus === 'pending') {
       setAuthState('pending');
     }
@@ -2410,7 +2514,7 @@ function AppWithAuth() {
       className: "text-gray-600"
     }, "Loading...")));
   }
-  if (authState === 'unauthenticated' || authState === 'pending') {
+  if (authState === 'unauthenticated' || authState === 'pending' || authState === 'recovery-required') {
     return /*#__PURE__*/React.createElement(LoginScreen, {
       onAuthenticated: handleAuthenticated,
       authStatus: authState
@@ -2513,12 +2617,12 @@ function JMartSteelSafetyApp({
   // Sync forms when they change
   useEffect(() => {
     syncFormsEffect(forms);
-  }, [forms, isOnline]);
+  }, [forms, isOnline, syncFormsEffect]);
 
   // Sync sites when they change
   useEffect(() => {
     syncSitesEffect(sites);
-  }, [sites, isOnline]);
+  }, [sites, isOnline, syncSitesEffect]);
   const previousPrestarts = forms.filter(f => f.type === 'prestart');
   const navItems = [{
     id: 'dashboard',
@@ -3690,7 +3794,7 @@ function PrestartView({
     setSignatures(data.signatures || FORM_CONSTANTS.emptySignatures());
     setSubmitted(false);
     setValidationErrors([]);
-  }, [editingForm?.id]);
+  }, [editingForm]);
   const displayDate = formDate.toLocaleDateString('en-AU', {
     weekday: 'long',
     day: 'numeric',
@@ -4063,6 +4167,7 @@ function PrestartView({
     }, "\uD83D\uDC64 Supervisor Name *"), /*#__PURE__*/React.createElement("select", {
       value: supervisorName,
       onChange: e => setSupervisorName(e.target.value),
+      "aria-label": "Supervisor Name",
       className: "w-full border border-gray-300 rounded-lg p-3 bg-white"
     }, /*#__PURE__*/React.createElement("option", {
       value: ""
@@ -4074,6 +4179,7 @@ function PrestartView({
     }, "Site Conducted *"), /*#__PURE__*/React.createElement("select", {
       value: siteConducted,
       onChange: e => setSiteConducted(e.target.value),
+      "aria-label": "Site Conducted",
       className: "w-full border border-gray-300 rounded-lg p-3 bg-white"
     }, /*#__PURE__*/React.createElement("option", {
       value: ""
@@ -4085,6 +4191,7 @@ function PrestartView({
     }, "Builder *"), /*#__PURE__*/React.createElement("select", {
       value: builder,
       onChange: e => setBuilder(e.target.value),
+      "aria-label": "Builder",
       className: "w-full border border-gray-300 rounded-lg p-3 bg-white"
     }, /*#__PURE__*/React.createElement("option", {
       value: ""
@@ -4099,6 +4206,7 @@ function PrestartView({
       type: "text",
       value: address,
       onChange: e => setAddress(e.target.value),
+      "aria-label": "Address",
       className: "flex-1 border border-gray-300 rounded-lg p-3",
       placeholder: "Enter site address"
     }), /*#__PURE__*/React.createElement("button", {
@@ -4171,9 +4279,11 @@ function PrestartView({
       className: "flex gap-3"
     }, /*#__PURE__*/React.createElement("button", {
       onClick: () => setIsPlantEquipmentUsed(true),
+      "aria-label": "Plant Equipment Yes",
       className: `flex-1 py-3 rounded-lg font-medium border-2 ${isPlantEquipmentUsed === true ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 text-gray-700'}`
     }, "Yes"), /*#__PURE__*/React.createElement("button", {
       onClick: () => setIsPlantEquipmentUsed(false),
+      "aria-label": "Plant Equipment No",
       className: `flex-1 py-3 rounded-lg font-medium border-2 ${isPlantEquipmentUsed === false ? 'bg-red-500 border-red-500 text-white' : 'border-gray-300 text-gray-700'}`
     }, "No"))), isPlantEquipmentUsed === true && /*#__PURE__*/React.createElement(NoteMediaBox, {
       label: "Controls Required for Machinery / Plants",
@@ -4214,6 +4324,7 @@ function PrestartView({
         ...prev,
         value: e.target.value
       })),
+      "aria-label": "Site Specific Hazards",
       className: "w-full border border-gray-300 rounded-lg p-3 text-sm min-h-[80px]",
       placeholder: "Enter site specific hazards..."
     })), /*#__PURE__*/React.createElement("div", {
@@ -4226,6 +4337,7 @@ function PrestartView({
         ...prev,
         value: e.target.value
       })),
+      "aria-label": "Site Specific Permits Required",
       className: "w-full border border-gray-300 rounded-lg p-3 text-sm min-h-[80px]",
       placeholder: "Enter permits required..."
     })), /*#__PURE__*/React.createElement("div", {
@@ -4236,12 +4348,15 @@ function PrestartView({
       className: "flex gap-3"
     }, /*#__PURE__*/React.createElement("button", {
       onClick: () => setHighRiskWorks('yes'),
+      "aria-label": "High Risk Works Yes",
       className: `flex-1 py-3 rounded-lg font-medium border-2 ${highRiskWorks === 'yes' ? 'bg-red-500 border-red-500 text-white' : 'border-gray-300 text-gray-700'}`
     }, "Yes"), /*#__PURE__*/React.createElement("button", {
       onClick: () => setHighRiskWorks('no'),
+      "aria-label": "High Risk Works No",
       className: `flex-1 py-3 rounded-lg font-medium border-2 ${highRiskWorks === 'no' ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 text-gray-700'}`
     }, "No"), /*#__PURE__*/React.createElement("button", {
       onClick: () => setHighRiskWorks('na'),
+      "aria-label": "High Risk Works N/A",
       className: `flex-1 py-3 rounded-lg font-medium border-2 ${highRiskWorks === 'na' ? 'bg-gray-500 border-gray-500 text-white' : 'border-gray-300 text-gray-700'}`
     }, "N/A"))), /*#__PURE__*/React.createElement("div", {
       className: "bg-white rounded-xl p-4 shadow-sm"
@@ -4251,12 +4366,15 @@ function PrestartView({
       className: "flex gap-3"
     }, /*#__PURE__*/React.createElement("button", {
       onClick: () => setWorksCoveredBySWMS('yes'),
+      "aria-label": "SWMS Covered Yes",
       className: `flex-1 py-3 rounded-lg font-medium border-2 ${worksCoveredBySWMS === 'yes' ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 text-gray-700'}`
     }, "Yes"), /*#__PURE__*/React.createElement("button", {
       onClick: () => setWorksCoveredBySWMS('no'),
+      "aria-label": "SWMS Covered No",
       className: `flex-1 py-3 rounded-lg font-medium border-2 ${worksCoveredBySWMS === 'no' ? 'bg-red-500 border-red-500 text-white' : 'border-gray-300 text-gray-700'}`
     }, "No"), /*#__PURE__*/React.createElement("button", {
       onClick: () => setWorksCoveredBySWMS('na'),
+      "aria-label": "SWMS Covered N/A",
       className: `flex-1 py-3 rounded-lg font-medium border-2 ${worksCoveredBySWMS === 'na' ? 'bg-gray-500 border-gray-500 text-white' : 'border-gray-300 text-gray-700'}`
     }, "N/A"))), /*#__PURE__*/React.createElement("div", {
       className: "bg-white rounded-xl p-4 shadow-sm"
@@ -4322,12 +4440,14 @@ function PrestartView({
         ...checks,
         [item.id]: true
       }),
+      "aria-label": item.text + ' pass',
       className: `w-10 h-10 rounded-lg flex items-center justify-center border-2 ${checks[item.id] === true ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300'}`
     }, "\u2713"), /*#__PURE__*/React.createElement("button", {
       onClick: () => setChecks({
         ...checks,
         [item.id]: false
       }),
+      "aria-label": item.text + ' fail',
       className: `w-10 h-10 rounded-lg flex items-center justify-center border-2 ${checks[item.id] === false ? 'bg-red-500 border-red-500 text-white' : 'border-gray-300'}`
     }, "\u2715")))))), /*#__PURE__*/React.createElement("div", {
       className: "bg-white rounded-xl p-4 shadow-sm"
@@ -4441,6 +4561,7 @@ function PrestartView({
       className: "absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-sm"
     }, "\u2715")) : /*#__PURE__*/React.createElement("button", {
       onClick: () => setSigningWorker(name),
+      "aria-label": `Sign ${name}`,
       className: "h-16 w-32 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-orange-500"
     }, "Tap to sign")))), /*#__PURE__*/React.createElement("div", {
       className: "bg-blue-50 border border-blue-200 rounded-xl p-4"
@@ -4539,7 +4660,7 @@ function IncidentView({
     setReporterSignature(data.reporterSignature || null);
     setSigningReporter(false);
     setValidationError('');
-  }, [editingForm?.id]);
+  }, [editingForm]);
   const handleIncidentSubmit = () => {
     // Use centralized validator for comprehensive WHS-compliant checks
     const validationData = {
@@ -4849,7 +4970,7 @@ function ToolboxView({
     setFeedbackResponses(data.feedbackResponses || '');
     setSignatures(data.signatures || FORM_CONSTANTS.emptySignatures());
     setValidationErrors([]);
-  }, [editingForm?.id]);
+  }, [editingForm]);
   const getLocation = () => {
     setIsLocating(true);
     if (navigator.geolocation) {
@@ -5138,6 +5259,18 @@ window.ToolboxView = ToolboxView;
 // SubcontractorInspectionView Component
 // Extracted from forms.jsx
 
+const DEFAULT_INSPECTION_ITEMS = {
+  siteBoxes: null,
+  electricalLeads: null,
+  toolsRetagging: null,
+  exclusionZones: null,
+  permitsCompleted: null,
+  permitsActive: null,
+  penetrationsCovered: null,
+  equipmentInspection: null,
+  workerSafetyConcerns: null,
+  builderRequests: null
+};
 function SubcontractorInspectionView({
   onSubmit,
   onUpdate,
@@ -5146,18 +5279,6 @@ function SubcontractorInspectionView({
 }) {
   const isEditing = !!editingForm;
   const editData = editingForm?.data || {};
-  const defaultInspectionItems = {
-    siteBoxes: null,
-    electricalLeads: null,
-    toolsRetagging: null,
-    exclusionZones: null,
-    permitsCompleted: null,
-    permitsActive: null,
-    penetrationsCovered: null,
-    equipmentInspection: null,
-    workerSafetyConcerns: null,
-    builderRequests: null
-  };
   const [step, setStep] = useState(1);
   const [submitted, setSubmitted] = useState(false);
   const [siteConducted, setSiteConducted] = useState(editData.siteConducted || '');
@@ -5170,7 +5291,7 @@ function SubcontractorInspectionView({
   const [validationErrors, setValidationErrors] = useState([]);
 
   // Inspection items with Yes/No/N/A
-  const [inspectionItems, setInspectionItems] = useState(editData.inspectionItems || defaultInspectionItems);
+  const [inspectionItems, setInspectionItems] = useState(editData.inspectionItems || DEFAULT_INSPECTION_ITEMS);
   const todayDate = new Date().toLocaleDateString('en-AU', {
     weekday: 'long',
     day: 'numeric',
@@ -5187,10 +5308,10 @@ function SubcontractorInspectionView({
     setLocation(data.location || '');
     setCompletedBy(data.completedBy || '');
     setCompletedBySignature(data.completedBySignature || null);
-    setInspectionItems(data.inspectionItems || defaultInspectionItems);
+    setInspectionItems(data.inspectionItems || DEFAULT_INSPECTION_ITEMS);
     setSubmitted(false);
     setValidationErrors([]);
-  }, [editingForm?.id]);
+  }, [editingForm]);
   const inspectionQuestions = [{
     id: 'siteBoxes',
     text: 'Site boxes in good condition and lockable'
@@ -5617,7 +5738,7 @@ function ITPFormView({
     setFutureCorrespondence(data.futureCorrespondence || '');
     setSubmitted(false);
     setValidationErrors([]);
-  }, [editingForm?.id]);
+  }, [editingForm]);
   const getLocation = () => {
     setIsLocating(true);
     if (navigator.geolocation) {
@@ -6166,7 +6287,7 @@ function SteelITPView({
     setBuilderSignature(data.builderSignature || null);
     setSubmitted(false);
     setValidationErrors([]);
-  }, [editingForm?.id]);
+  }, [editingForm]);
   const handleSubmit = () => {
     let errors = [];
     if (window.formValidator) {

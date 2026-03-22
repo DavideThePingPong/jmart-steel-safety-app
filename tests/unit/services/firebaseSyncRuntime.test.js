@@ -361,9 +361,17 @@ describe('FirebaseSync (runtime)', () => {
     });
 
     it('handles legacy forms type', async () => {
-      await FirebaseSync.executeSync({ type: 'forms', data: [{ id: 1 }] });
+      store['jmart-device-id'] = 'dev-legacy';
+      await FirebaseSync.executeSync({ type: 'forms', data: [{ id: 1, type: 'prestart' }] });
       expect(firebaseDb.ref).toHaveBeenCalledWith('jmart-safety/forms');
-      expect(mockRef.set).toHaveBeenCalled();
+      expect(mockRef.set).toHaveBeenCalledWith({
+        1: expect.objectContaining({
+          id: 1,
+          type: 'prestart',
+          createdBy: 'dev-legacy',
+          _modifiedBy: 'dev-legacy'
+        })
+      });
     });
 
     it('handles legacy training type', async () => {
@@ -395,6 +403,26 @@ describe('FirebaseSync (runtime)', () => {
       const result = await FirebaseSync.syncForms([{ id: 'f1', title: 'Test' }]);
       expect(result.success).toBe(true);
       expect(mockRef.update).toHaveBeenCalled();
+    });
+
+    it('backfills required legacy metadata before syncing', async () => {
+      store['jmart-device-id'] = 'dev-legacy';
+      const result = await FirebaseSync.syncForms([{
+        id: 'legacy-1',
+        type: 'prestart',
+        createdAt: '2026-01-28T09:03:11.671Z',
+        data: { site: 'Number 1 Martin Place' }
+      }]);
+      expect(result.success).toBe(true);
+      expect(mockRef.update).toHaveBeenCalledWith({
+        'legacy-1': expect.objectContaining({
+          id: 'legacy-1',
+          type: 'prestart',
+          createdAt: '2026-01-28T09:03:11.671Z',
+          createdBy: 'dev-legacy',
+          _modifiedBy: 'dev-legacy'
+        })
+      });
     });
 
     it('queues when Firebase not configured', async () => {

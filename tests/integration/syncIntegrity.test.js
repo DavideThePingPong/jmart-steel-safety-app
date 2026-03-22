@@ -373,7 +373,7 @@ describe('Sync Integrity', () => {
       expect(formsRef.value.set).not.toHaveBeenCalled();
     });
 
-    it('skips forms with missing id', async () => {
+    it('backfills missing form ids instead of dropping legacy records', async () => {
       FirebaseSync._authReady = true;
       const forms = [
         { id: 'form-1', type: 'prestart' },
@@ -388,10 +388,11 @@ describe('Sync Integrity', () => {
       const formsRef = ref.mock.results.find(r => r.value.path === 'jmart-safety/forms');
       const updateCall = formsRef.value.update.mock.calls[0][0];
 
-      // Should only have form-1 and form-3
+      // Should keep the two known IDs and generate one legacy ID
       expect(updateCall['form-1']).toBeDefined();
       expect(updateCall['form-3']).toBeDefined();
-      expect(Object.keys(updateCall)).toHaveLength(2);
+      expect(Object.keys(updateCall)).toHaveLength(3);
+      expect(Object.keys(updateCall).some(key => key.indexOf('legacy-form-') === 0)).toBe(true);
     });
 
     it('queues forms when Firebase is not configured', async () => {
@@ -483,10 +484,10 @@ describe('Sync Integrity', () => {
       // Verify the anti-loop ref exists
       expect(source).toContain('formsFromFirebaseRef');
 
-      // Verify it's set to true BEFORE setForms in the Firebase listener
+      // Verify it's set to true BEFORE setForms in the Firebase merge helper
       const listenerSection = source.substring(
-        source.indexOf('onFormsChange'),
-        source.indexOf('onFormsChange') + 2000
+        source.indexOf('const applyRemoteForms'),
+        source.indexOf('const unsubForms')
       );
       const setTrueIdx = listenerSection.indexOf('formsFromFirebaseRef.current = true');
       const setFormsIdx = listenerSection.indexOf('setForms(');
@@ -523,8 +524,8 @@ describe('Sync Integrity', () => {
 
       // The merge logic must check deletedFormIdsRef before adding forms
       const mergeSection = source.substring(
-        source.indexOf('onFormsChange'),
-        source.indexOf('onFormsChange') + 3000
+        source.indexOf('const applyRemoteForms'),
+        source.indexOf('const unsubForms')
       );
       expect(mergeSection).toContain('deletedIds.has(form.id)');
       expect(mergeSection).toContain('return'); // the skip

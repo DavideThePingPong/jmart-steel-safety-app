@@ -59,10 +59,10 @@ function JMartSteelSafetyApp({ isAdmin = false }) {
   const { showInstallPrompt, handleInstall, dismissInstall } = usePWAInstall();
 
   // Sync forms when they change
-  useEffect(() => { syncFormsEffect(forms); }, [forms, isOnline]);
+  useEffect(() => { syncFormsEffect(forms); }, [forms, isOnline, syncFormsEffect]);
 
   // Sync sites when they change
-  useEffect(() => { syncSitesEffect(sites); }, [sites, isOnline]);
+  useEffect(() => { syncSitesEffect(sites); }, [sites, isOnline, syncSitesEffect]);
 
   const previousPrestarts = forms.filter(f => f.type === 'prestart');
 

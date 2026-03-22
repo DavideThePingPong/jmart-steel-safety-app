@@ -94,6 +94,10 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
 
       // Auto-download PDF + upload to Drive
       setTimeout(() => {
+        if (window.__JMART_E2E__) {
+          markAsBackedUp(newForm.id);
+          return;
+        }
         try {
           const filename = PDFGenerator.download(newForm);
           markAsBackedUp(newForm.id);
@@ -242,6 +246,10 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
       });
 
       try {
+        if (window.__JMART_E2E__) {
+          markAsBackedUp(form.id);
+          return;
+        }
         const filename = PDFGenerator.download(form);
         if (filename) {
           markAsBackedUp(form.id);
@@ -339,7 +347,7 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
       deletingFormRef.current = true;
 
       if (FirebaseSync.isConnected()) {
-        FirebaseSync.syncForms(updatedForms).then(() => {
+        FirebaseSync.deleteForm(formId).then(() => {
           console.log('Deletion synced to Firebase');
           deletingFormRef.current = false;
           // Clean up the persisted deleted ID since Firebase is now in sync
@@ -402,6 +410,8 @@ function useDataSync({ setForms, setSites, deletingFormRef, deletedFormIdsRef })
   const formsFromFirebaseRef = useRef(false);  // Anti-loop: skip syncing back to Firebase when data came FROM Firebase
   const sitesFromFirebaseRef = useRef(false);
   const lastFormsWriteRef = useRef(0); // throttle forms listener writes
+  const latestRemoteFormsRef = useRef([]);
+  const formAssetsRef = useRef({});
 
   // Load saved data from localStorage first, then listen to Firebase
   useEffect(() => {
@@ -451,27 +461,35 @@ function useDataSync({ setForms, setSites, deletingFormRef, deletedFormIdsRef })
     if (lastSync) setLastSynced(lastSync);
 
     if (FirebaseSync.isConnected()) {
-      const unsubForms = FirebaseSync.onFormsChange((firebaseForms) => {
+      const applyRemoteForms = (firebaseForms, options) => {
         const formsArray = Array.isArray(firebaseForms) ? firebaseForms : Object.values(firebaseForms || {});
+        const mergedAssetForms = (typeof FormAssetStore !== 'undefined' && FormAssetStore.mergeAssetMapIntoForms)
+          ? FormAssetStore.mergeAssetMapIntoForms(formsArray, formAssetsRef.current)
+          : formsArray;
+        const previousRemoteIds = new Set((latestRemoteFormsRef.current || []).map((form) => form?.id).filter(Boolean));
+        const hasRemoteDeletion = previousRemoteIds.size > 0 && [...previousRemoteIds].some((formId) => !formsArray.some((form) => form?.id === formId));
 
-        // Throttle: skip if last write was <5s ago (prevents rapid-fire listener loop)
+        latestRemoteFormsRef.current = formsArray;
+        options = options || {};
+
+        // Throttle rapid-fire listener churn, but never suppress remote deletions.
         var now = Date.now();
-        if (now - lastFormsWriteRef.current < 5000) return;
+        if (!options.skipThrottle && !hasRemoteDeletion && (now - lastFormsWriteRef.current < 5000)) return;
         lastFormsWriteRef.current = now;
 
-        console.log('Firebase forms received:', formsArray.length, 'forms');
+        console.log('Firebase forms received:', mergedAssetForms.length, 'forms');
 
         if (deletingFormRef.current) {
           deletingFormRef.current = false;
         }
 
-        if (formsArray.length > 0) {
+        if (mergedAssetForms.length > 0) {
           const formMap = new Map();
 
           // Filter out forms that were deleted offline but haven't been purged from Firebase yet
           const deletedIds = deletedFormIdsRef ? deletedFormIdsRef.current : new Set();
 
-          formsArray.forEach(form => {
+          mergedAssetForms.forEach(form => {
             if (deletedIds.has(form.id)) return; // Skip forms deleted offline
             formMap.set(form.id, { ...form, source: 'firebase' });
           });
@@ -501,22 +519,48 @@ function useDataSync({ setForms, setSites, deletingFormRef, deletedFormIdsRef })
           StorageQuotaManager.safeFormsWrite(mergedForms);
           console.log('Forms synced:', mergedForms.length, 'total');
         } else {
-          // Firebase returned empty — check if we have local forms to push
-          // Read fresh from localStorage to avoid stale closure over initial localForms
+          // Firebase returned empty. Only republish local forms if there is an actual
+          // queued local form write waiting to sync; otherwise treat Firebase as the
+          // source of truth so remote deletes clear stale local cache instead of
+          // resurrecting forms on other devices.
           let freshLocalForms = [];
           try {
             const freshLocal = localStorage.getItem('jmart-safety-forms');
             if (freshLocal) freshLocalForms = JSON.parse(freshLocal);
           } catch (e) { /* ignore */ }
-          if (freshLocalForms.length > 0) {
+
+          const hasQueuedFormSync = Array.isArray(FirebaseSync.pendingQueue) && FirebaseSync.pendingQueue.some((item) => {
+            if (!item) return false;
+            if (item.type === 'forms') return true;
+            if (typeof item.path === 'string' && item.path.indexOf('jmart-safety/forms') === 0) return true;
+            return false;
+          });
+
+          if (freshLocalForms.length > 0 && hasQueuedFormSync) {
             console.log('Firebase empty, pushing local forms to Firebase');
             FirebaseSync.syncForms(freshLocalForms);
+          } else {
+            formsFromFirebaseRef.current = true;
+            setForms([]);
+            StorageQuotaManager.safeFormsWrite([]);
+            console.log('Firebase empty, clearing local forms cache');
           }
         }
 
         setSyncStatus('synced');
         setLastSynced(new Date().toISOString());
         setSyncError(null);
+      };
+
+      const unsubForms = FirebaseSync.onFormsChange((firebaseForms) => {
+        applyRemoteForms(firebaseForms);
+      });
+
+      const unsubFormAssets = FirebaseSync.onFormAssetsChange((firebaseAssets) => {
+        formAssetsRef.current = firebaseAssets || {};
+        if (latestRemoteFormsRef.current.length > 0) {
+          applyRemoteForms(latestRemoteFormsRef.current, { skipThrottle: true });
+        }
       });
 
       const unsubSites = FirebaseSync.onSitesChange((firebaseSites) => {
@@ -575,15 +619,16 @@ function useDataSync({ setForms, setSites, deletingFormRef, deletedFormIdsRef })
 
       return () => {
         unsubForms();
+        unsubFormAssets();
         unsubSites();
       };
     } else {
       isInitialLoad.current = false;
     }
-  }, []);
+  }, [deletedFormIdsRef, deletingFormRef, setForms, setSites]);
 
   // Save forms to localStorage and sync to Firebase
-  const syncFormsEffect = (forms) => {
+  const syncFormsEffect = useCallback((forms) => {
     if (!isInitialLoad.current) {
       try {
         // FIXED: Use safeFormsWrite instead of raw setItem.
@@ -620,10 +665,10 @@ function useDataSync({ setForms, setSites, deletingFormRef, deletedFormIdsRef })
         });
       }
     }
-  };
+  }, []);
 
   // Save sites to localStorage and sync to Firebase
-  const syncSitesEffect = (sites) => {
+  const syncSitesEffect = useCallback((sites) => {
     if (sites.length > 0 && !isInitialLoad.current) {
       localStorage.setItem('jmart-safety-sites', JSON.stringify(sites));
 
@@ -636,7 +681,7 @@ function useDataSync({ setForms, setSites, deletingFormRef, deletedFormIdsRef })
         FirebaseSync.syncSites(sites);
       }
     }
-  };
+  }, []);
 
   // Online/Offline detection
   useEffect(() => {
@@ -797,7 +842,7 @@ function useDeviceAuth() {
             if (snapshot.exists()) {
               const data = snapshot.val();
               setDeviceAuthStatus('approved');
-              setIsDeviceAdmin(data.role === 'admin');
+              setIsDeviceAdmin(!!data.isAdmin || data.role === 'admin');
               approvalRef.off('value');
               window.location.reload();
             }
@@ -889,7 +934,7 @@ function useAutoSave(formKey, formData, intervalMs) {
       }
     }, saveInterval, 'useAutoSave-' + formKey);
     return () => IntervalRegistry.clearInterval(timer);
-  }, [formDataStr, formKey]);
+  }, [draftKey, formDataStr, formKey, saveInterval]);
 
   // Load existing draft
   const loadDraft = () => {

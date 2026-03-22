@@ -92,6 +92,24 @@ const DeviceAuth = {
     return this.deviceInfo;
   },
 
+  upsertAuthDeviceRecord: async function(deviceId, authUid, isAdmin, deviceInfo) {
+    if (!firebaseDb || !authUid || !deviceId) return;
+    var payload = {
+      deviceId: deviceId,
+      isAdmin: !!isAdmin,
+      approvedAt: new Date().toISOString(),
+      lastSeen: new Date().toISOString(),
+      deviceType: deviceInfo && deviceInfo.type ? deviceInfo.type : (this.deviceInfo && this.deviceInfo.type) || 'Unknown Device',
+      deviceName: localStorage.getItem('jmart-device-name') || null
+    };
+    await firebaseDb.ref('jmart-safety/authDevices/' + authUid).set(typeof sanitizeForFirebase === 'function' ? sanitizeForFirebase(payload) : payload);
+  },
+
+  removeAuthDeviceRecord: async function(authUid) {
+    if (!firebaseDb || !authUid) return;
+    await firebaseDb.ref('jmart-safety/authDevices/' + authUid).remove().catch(function() {});
+  },
+
   // Initialize device auth
   init: async function() {
     this.generateDeviceId();
@@ -195,9 +213,18 @@ const DeviceAuth = {
         // Now update last seen and auth UID (succeeds because adminAuthUids is current)
         const updates = { lastSeen: new Date().toISOString() };
         if (firebaseAuthUid) updates.authUid = firebaseAuthUid;
-        firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId).update(updates).catch(function(e) {
-          console.warn('lastSeen update failed (non-fatal):', e.message);
-        });
+        try {
+          await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId).update(updates);
+        } catch (e) {
+          console.warn('lastSeen/authUid update failed (non-fatal):', e.message);
+        }
+        if (firebaseAuthUid) {
+          try {
+            await this.upsertAuthDeviceRecord(this.deviceId, firebaseAuthUid, this.isAdmin, data);
+          } catch (e) {
+            console.warn('Auth device registration failed:', e.message);
+          }
+        }
 
         // SELF-HEALING: If this device is admin, clean up invalid entries
         if (this.isAdmin) {
@@ -220,7 +247,7 @@ const DeviceAuth = {
         return { approved: true, admin: true, firstDevice: true };
       }
 
-      // ADMIN RECOVERY: Check if all approved devices are orphaned (no recent activity)
+      // SAFER RECOVERY: detect orphaned admins, but require explicit manual recovery.
       const approvedDevices = allApprovedVal;
       const now = Date.now();
       const ORPHAN_THRESHOLD = 7 * 24 * 60 * 60 * 1000;
@@ -238,38 +265,24 @@ const DeviceAuth = {
       }
 
       if (!hasActiveAdmin) {
-        console.log('ADMIN RECOVERY: No active admin devices found. Reclaiming admin for this device.');
-
-        const CLEANUP_THRESHOLD = 7 * 24 * 60 * 60 * 1000;
-        if (approvedDevices) {
-          for (const [devId, dev] of Object.entries(approvedDevices)) {
-            if (dev && dev.permanentlyApproved) {
-              console.log('Skipping cleanup of permanently approved device:', devId, dev.name || 'unknown');
-              continue;
-            }
-            const lastSeen = dev && dev.lastSeen ? new Date(dev.lastSeen).getTime() : 0;
-            if ((now - lastSeen) > CLEANUP_THRESHOLD) {
-              console.log('Cleaning up orphaned device:', devId, dev.name || dev.type || 'unknown');
-              await firebaseDb.ref('jmart-safety/devices/approved/' + devId).remove().catch(() => {});
-            }
-          }
+        console.warn('ADMIN RECOVERY REQUIRED: No active admin devices found. Automatic browser-based recovery is disabled.');
+        const pendingResult = await firebaseRead('jmart-safety/devices/pending/' + this.deviceId);
+        if (!pendingResult.exists) {
+          await this.registerAsPending();
         }
-
-        await this.registerAsApproved(true);
-
         if (typeof AuditLogManager !== 'undefined') {
           try {
-            AuditLogManager.log('admin_recovery', {
+            AuditLogManager.log('admin_recovery_required', {
               deviceId: this.deviceId,
-              deviceType: this.deviceInfo?.type || 'Unknown',
-              reason: 'All admin devices inactive for 7+ days',
-              orphanedAdminCount: approvedDevices ? Object.values(approvedDevices).filter(d => d && d.isAdmin).length : 0,
-              action: 'Admin access recovered by new device'
+              deviceType: this.deviceInfo && this.deviceInfo.type ? this.deviceInfo.type : 'Unknown',
+              orphanedAdminCount: approvedDevices ? Object.values(approvedDevices).filter(function(d) { return d && d.isAdmin; }).length : 0,
+              action: 'Manual admin recovery required'
             });
           } catch (e) { /* non-fatal */ }
         }
-
-        return { approved: true, admin: true, adminRecovery: true };
+        this.isApproved = false;
+        this.notifyStatusListeners();
+        return { approved: false, pending: true, recoveryRequired: true };
       }
 
       // Check if already pending
@@ -333,6 +346,7 @@ const DeviceAuth = {
           const invalidDev = devices[key];
           if (invalidDev.authUid) {
             await firebaseDb.ref('jmart-safety/adminAuthUids/' + invalidDev.authUid).remove();
+            await this.removeAuthDeviceRecord(invalidDev.authUid);
             console.warn('[DeviceAuth] Removed orphaned admin UID for invalid device:', invalidDev.authUid);
           }
 
@@ -387,6 +401,13 @@ const DeviceAuth = {
           console.warn('Could not register admin auth UID (non-fatal):', e.message);
         }
       }
+      if (firebaseAuthUid) {
+        try {
+          await this.upsertAuthDeviceRecord(this.deviceId, firebaseAuthUid, isAdmin, deviceData);
+        } catch (e) {
+          console.warn('Could not register auth device mapping (non-fatal):', e.message);
+        }
+      }
 
       // Remove from pending if exists
       await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).remove();
@@ -437,6 +458,13 @@ const DeviceAuth = {
           console.warn('Could not register admin auth UID for approved device:', e.message);
         }
       }
+      if (approvedData.authUid) {
+        try {
+          await this.upsertAuthDeviceRecord(deviceId, approvedData.authUid, makeAdmin, approvedData);
+        } catch (e) {
+          console.warn('Could not register auth device for approved device:', e.message);
+        }
+      }
 
       console.log('Device approved:', deviceId);
       return true;
@@ -465,6 +493,9 @@ const DeviceAuth = {
         };
         await firebaseDb.ref('jmart-safety/devices/denied/' + deviceId).set(typeof sanitizeForFirebase === 'function' ? sanitizeForFirebase(deniedData) : deniedData);
         await firebaseDb.ref('jmart-safety/devices/pending/' + deviceId).remove();
+        if (deviceData.authUid) {
+          await this.removeAuthDeviceRecord(deviceData.authUid);
+        }
       }
 
       console.log('Device denied:', deviceId);
@@ -495,6 +526,9 @@ const DeviceAuth = {
         const revokedData = revokedResult.val;
         if (revokedData.isAdmin && revokedData.authUid) {
           await firebaseDb.ref('jmart-safety/adminAuthUids/' + revokedData.authUid).remove().catch(() => {});
+        }
+        if (revokedData.authUid) {
+          await this.removeAuthDeviceRecord(revokedData.authUid);
         }
       }
       await firebaseDb.ref('jmart-safety/devices/approved/' + deviceId).remove();
@@ -872,6 +906,7 @@ const DeviceAuth = {
       // Register admin auth UID for Firebase rules enforcement
       if (firebaseAuthUid) {
         await firebaseDb.ref('jmart-safety/adminAuthUids/' + firebaseAuthUid).set(true);
+        await this.upsertAuthDeviceRecord(this.deviceId, firebaseAuthUid, true, this.deviceInfo || {});
       }
       await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).remove();
       this.isAdmin = true;

@@ -1,6 +1,26 @@
 // Auth: LoginScreen, AppWithAuth
 // Extracted from index.html
 
+function isE2EAuthRuntime() {
+  return window.__JMART_E2E__ === true;
+}
+
+function hasE2EAuthenticatedSession() {
+  if (!isE2EAuthRuntime()) return true;
+  try {
+    return sessionStorage.getItem('jmart-e2e-authenticated') === 'true';
+  } catch (e) {
+    return false;
+  }
+}
+
+function markE2EAuthenticated() {
+  if (!isE2EAuthRuntime()) return;
+  try {
+    sessionStorage.setItem('jmart-e2e-authenticated', 'true');
+  } catch (e) {}
+}
+
 function LoginScreen({ onAuthenticated, authStatus }) {
   const [password, setPassword] = useState('');
   const [deviceName, setDeviceName] = useState(() => {
@@ -35,9 +55,14 @@ function LoginScreen({ onAuthenticated, authStatus }) {
     try {
       await Promise.race([
         (async () => {
-          await DeviceAuthManager.setPassword(newPassword);
-          await DeviceAuthManager.registerDevice(deviceName || 'Admin Device');
-          await DeviceAuthManager.approveAsAdmin();
+          const passwordSaved = await DeviceAuthManager.setPassword(newPassword);
+          if (!passwordSaved) throw new Error('setup-password-failed');
+
+          const deviceRegistered = await DeviceAuthManager.registerDevice(deviceName || 'Admin Device');
+          if (!deviceRegistered) throw new Error('setup-device-registration-failed');
+
+          const adminApproved = await DeviceAuthManager.approveAsAdmin();
+          if (!adminApproved) throw new Error('setup-admin-approval-failed');
         })(),
         new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000))
       ]);
@@ -48,8 +73,8 @@ function LoginScreen({ onAuthenticated, authStatus }) {
       onAuthenticated(true);
     } catch (err) {
       if (err.message === 'timeout') {
-        console.warn('Setup timed out waiting for Firebase, proceeding anyway');
-        onAuthenticated(true);
+        console.warn('Setup timed out waiting for Firebase confirmation');
+        setError('Setup could not be confirmed within 8 seconds. Check Firebase connectivity and try again.');
       } else {
         setError('Setup failed. Please try again.');
       }
@@ -68,21 +93,35 @@ function LoginScreen({ onAuthenticated, authStatus }) {
     setError('');
 
     if (await DeviceAuthManager.verifyPassword(password)) {
-      // Password correct - grant access IMMEDIATELY
-      onAuthenticated(true);
       // Save device name locally so it's remembered next time
       if (deviceName) {
         try { localStorage.setItem('jmart-device-name', deviceName); } catch(e) {}
       }
-      // Fire-and-forget device registration
-      Promise.race([
-        DeviceAuthManager.init(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))
-      ]).then(status => {
-        if (status.status === 'new') {
-          DeviceAuthManager.registerDevice(deviceName || 'Unknown Device').catch(() => {});
+      try {
+        const status = await Promise.race([
+          DeviceAuthManager.init(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))
+        ]);
+
+        if (status.canAccess) {
+          onAuthenticated(true);
+        } else if (status.status === 'new') {
+          await DeviceAuthManager.registerDevice(deviceName || 'Unknown Device');
+          onAuthenticated(false, 'pending');
+        } else if (status.status === 'pending') {
+          onAuthenticated(false, 'pending');
+        } else if (status.status === 'recovery-required') {
+          onAuthenticated(false, 'recovery-required');
+        } else if (status.status === 'error') {
+          setError('Could not verify device approval right now. Access stays locked until Firebase responds.');
+        } else if (status.status === 'denied') {
+          setError('This device has been denied access. Please contact an administrator.');
+        } else {
+          setError('Could not verify device approval. Please try again.');
         }
-      }).catch(() => {});
+      } catch (err) {
+        setError('Could not verify device approval right now. Please try again.');
+      }
     } else {
       setError('Incorrect password');
     }
@@ -111,6 +150,7 @@ function LoginScreen({ onAuthenticated, authStatus }) {
                 value={deviceName}
                 onChange={(e) => setDeviceName(e.target.value)}
                 placeholder="e.g. Jeff's iPhone"
+                aria-label="Device Name"
                 className="w-full border border-gray-300 rounded-lg p-3 text-lg"
               />
             </div>
@@ -122,6 +162,7 @@ function LoginScreen({ onAuthenticated, authStatus }) {
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 placeholder="Create a password"
+                aria-label="Set App Password"
                 className="w-full border border-gray-300 rounded-lg p-3 text-lg"
               />
             </div>
@@ -133,6 +174,7 @@ function LoginScreen({ onAuthenticated, authStatus }) {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Confirm password"
+                aria-label="Confirm Password"
                 className="w-full border border-gray-300 rounded-lg p-3 text-lg"
                 onKeyPress={(e) => e.key === 'Enter' && handleFirstSetup()}
               />
@@ -192,6 +234,35 @@ function LoginScreen({ onAuthenticated, authStatus }) {
     );
   }
 
+  if (authStatus === 'recovery-required') {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md text-center">
+          <div className="w-20 h-20 bg-red-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <span className="text-4xl">🔒</span>
+          </div>
+          <h1 className="text-2xl font-bold text-gray-800">Manual Admin Recovery Required</h1>
+          <p className="text-gray-500 mt-2 mb-6">
+            No active admin device is available. Automatic browser-based admin recovery has been disabled for security.
+          </p>
+          <div className="bg-gray-50 rounded-lg p-4 mb-4 text-left">
+            <p className="text-sm text-gray-600 mb-2">Device ID</p>
+            <p className="font-mono text-xs text-gray-800 break-all mb-3">{DeviceAuthManager.deviceId}</p>
+            <p className="text-xs text-gray-600">
+              Run <code>npm run recover:admin -- --device-id=&lt;Device ID&gt;</code> from the project folder on an authorized machine, then reload this app.
+            </p>
+          </div>
+          <button
+            onClick={() => window.location.reload()}
+            className="w-full bg-orange-600 text-white py-3 rounded-lg font-semibold"
+          >
+            Check Again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // Normal login screen
   return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
@@ -212,6 +283,7 @@ function LoginScreen({ onAuthenticated, authStatus }) {
               value={deviceName}
               onChange={(e) => setDeviceName(e.target.value)}
               placeholder="e.g. Scott's iPad"
+              aria-label="Device Name (optional)"
               className="w-full border border-gray-300 rounded-lg p-3"
             />
           </div>
@@ -223,6 +295,7 @@ function LoginScreen({ onAuthenticated, authStatus }) {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Enter app password"
+              aria-label="Password"
               className="w-full border border-gray-300 rounded-lg p-3 text-lg"
               onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
             />
@@ -249,7 +322,7 @@ function LoginScreen({ onAuthenticated, authStatus }) {
 
 // App Wrapper with Authentication
 function AppWithAuth() {
-  const [authState, setAuthState] = useState('loading'); // 'loading', 'authenticated', 'unauthenticated', 'pending'
+  const [authState, setAuthState] = useState('loading'); // 'loading', 'authenticated', 'unauthenticated', 'pending', 'recovery-required'
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
@@ -277,14 +350,26 @@ function AppWithAuth() {
     }
     console.log('Device auth status:', status);
 
-    if (status.canAccess) {
+    const requiresE2ELogin = isE2EAuthRuntime() &&
+      !!DeviceAuthManager.APP_PASSWORD_HASH &&
+      !hasE2EAuthenticatedSession();
+    const requiresE2EFirstSetup = isE2EAuthRuntime() &&
+      !DeviceAuthManager.APP_PASSWORD_HASH;
+
+    if (status.canAccess && requiresE2EFirstSetup) {
+      setAuthState('unauthenticated');
+    } else if (status.canAccess && !requiresE2ELogin) {
       setIsAdmin(DeviceAuthManager.isAdmin);
       setAuthState('authenticated');
 
       // Update last seen
       DeviceAuthManager.updateLastSeen();
+    } else if (status.canAccess && requiresE2ELogin) {
+      setAuthState('unauthenticated');
     } else if (status.status === 'pending') {
       setAuthState('pending');
+    } else if (status.status === 'recovery-required') {
+      setAuthState('recovery-required');
     } else if (status.status === 'new' && !DeviceAuthManager.APP_PASSWORD_HASH) {
       // First time setup
       setAuthState('unauthenticated');
@@ -295,8 +380,11 @@ function AppWithAuth() {
 
   const handleAuthenticated = (success, newStatus) => {
     if (success) {
+      markE2EAuthenticated();
       setIsAdmin(DeviceAuthManager.isAdmin);
       setAuthState('authenticated');
+    } else if (newStatus === 'recovery-required') {
+      setAuthState('recovery-required');
     } else if (newStatus === 'pending') {
       setAuthState('pending');
     }
@@ -315,7 +403,7 @@ function AppWithAuth() {
     );
   }
 
-  if (authState === 'unauthenticated' || authState === 'pending') {
+  if (authState === 'unauthenticated' || authState === 'pending' || authState === 'recovery-required') {
     return <LoginScreen onAuthenticated={handleAuthenticated} authStatus={authState} />;
   }
 

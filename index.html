@@ -5,6 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com https://cdnjs.cloudflare.com https://cdn.tailwindcss.com https://cdn.jsdelivr.net https://www.gstatic.com https://apis.google.com https://accounts.google.com; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://unpkg.com; connect-src 'self' https://unpkg.com https://cdnjs.cloudflare.com https://www.gstatic.com https://*.firebaseio.com https://*.firebasedatabase.app https://*.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://accounts.google.com wss://*.firebaseio.com wss://*.firebasedatabase.app; img-src 'self' data: blob:; font-src 'self' https://unpkg.com; frame-src https://accounts.google.com https://*.firebaseapp.com; worker-src 'self'; media-src 'self' blob:;">
   <title>J&M Artsteel Safety</title>
+  <script>
+    (function() {
+      var params = new URLSearchParams(window.location.search);
+      window.__JMART_RUNTIME_MODE__ = params.get('mode') || (params.get('e2e') === '1' ? 'e2e' : 'production');
+      window.__JMART_E2E__ = window.__JMART_RUNTIME_MODE__ === 'e2e';
+    })();
+  </script>
 
   <!-- PWA Meta Tags -->
   <meta name="application-name" content="J&M Artsteel Safety">
@@ -76,6 +83,7 @@
     // Service scripts that depend on Firebase and other CDN libs
     var serviceScripts = [
       'js/config.js', 'js/intervalRegistry.js', 'js/storageQuotaManager.js',
+      'js/formAssetStore.js',
       'js/deviceAuth.js', 'js/googleDriveConfig.js', 'js/googleDriveSync.js',
       'js/dailyBackupScheduler.js', 'js/auditLogManager.js', 'js/firebaseSync.js',
       'js/jobsManager.js', 'js/deviceAuthManager.js', 'js/photoUploadManager.js',
@@ -284,7 +292,7 @@
 
   <!-- Service Worker Registration (v3 - external file with stale-while-revalidate, background sync) -->
   <script>
-    if ('serviceWorker' in navigator) {
+    if ('serviceWorker' in navigator && !window.__JMART_E2E__) {
       navigator.serviceWorker.register('./sw.js')
         .then(reg => {
           console.log('✅ SW registered, scope:', reg.scope);

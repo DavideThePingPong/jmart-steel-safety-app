@@ -1,0 +1,76 @@
+{
+  "root": true,
+  "env": {
+    "browser": true,
+    "es2022": true,
+    "jest": true,
+    "node": true
+  },
+  "extends": [
+    "eslint:recommended",
+    "plugin:react/recommended",
+    "plugin:react-hooks/recommended"
+  ],
+  "parserOptions": {
+    "ecmaVersion": 2022,
+    "sourceType": "script",
+    "ecmaFeatures": {
+      "jsx": true
+    }
+  },
+  "settings": {
+    "react": {
+      "version": "18.2"
+    }
+  },
+  "globals": {
+    "React": "readonly",
+    "ReactDOM": "readonly",
+    "useState": "readonly",
+    "useEffect": "readonly",
+    "useRef": "readonly",
+    "useMemo": "readonly",
+    "useCallback": "readonly",
+    "firebase": "readonly",
+    "firebaseApp": "readonly",
+    "firebaseDb": "readonly",
+    "firebaseAuthUid": "readonly",
+    "firebaseAuthReady": "readonly",
+    "firebaseRead": "readonly",
+    "firebaseRestRead": "readonly",
+    "isFirebaseConfigured": "readonly",
+    "DeviceAuth": "readonly",
+    "DeviceAuthManager": "readonly",
+    "FirebaseSync": "readonly",
+    "FormAssetStore": "readonly",
+    "GoogleDriveSync": "readonly",
+    "PDFGenerator": "readonly",
+    "StorageQuotaManager": "readonly",
+    "OfflinePhotoQueue": "readonly",
+    "ToastNotifier": "readonly",
+    "ErrorTelemetry": "readonly",
+    "AuditLogManager": "readonly",
+    "DailyBackupScheduler": "readonly",
+    "IntervalRegistry": "readonly",
+    "NetworkStatus": "readonly",
+    "JobsManager": "readonly",
+    "PhotoUploadManager": "readonly",
+    "ConfirmDialog": "readonly",
+    "sanitizeForFirebase": "readonly",
+    "loadScriptTag": "readonly",
+    "lucide": "readonly",
+    "jspdf": "readonly",
+    "JMartSteelSafetyApp": "readonly"
+  },
+  "rules": {
+    "no-undef": "off",
+    "no-unused-vars": "off",
+    "no-empty": "off",
+    "no-useless-escape": "off",
+    "no-prototype-builtins": "off",
+    "react/react-in-jsx-scope": "off",
+    "react/prop-types": "off",
+    "react/jsx-no-undef": "off",
+    "react/no-unescaped-entities": "off"
+  }
+}

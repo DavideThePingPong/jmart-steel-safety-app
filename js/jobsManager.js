@@ -8,6 +8,9 @@
 const JobsManager = {
   jobs: [],
   listeners: [],
+  listenerAttached: false,
+  initStarted: false,
+  dedupeTimer: null,
 
   // Initialize and load jobs from Firebase
   init: async function() {
@@ -15,6 +18,46 @@ const JobsManager = {
       console.log('JobsManager: Firebase not configured');
       return;
     }
+
+    if (this.initStarted) {
+      return;
+    }
+    this.initStarted = true;
+
+    try {
+      await firebaseAuthReady;
+    } catch (e) {
+      console.warn('JobsManager: Firebase auth not ready:', e.message);
+      return;
+    }
+
+    if (!firebaseAuthUid) {
+      console.warn('JobsManager: No Firebase auth UID available yet');
+      return;
+    }
+
+    const approvalRef = firebaseDb.ref('jmart-safety/authDevices/' + firebaseAuthUid + '/approvedAt');
+    const handleApproval = (snapshot) => {
+      if (!snapshot.exists()) {
+        console.log('JobsManager: Waiting for approved auth device before subscribing to jobs');
+        return;
+      }
+
+      approvalRef.off('value', handleApproval);
+      this.startAuthorizedSync();
+    };
+
+    approvalRef.on('value', handleApproval, (error) => {
+      console.error('JobsManager: Auth approval listener error:', error);
+      if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(error, 'jobs-auth-listener');
+    });
+  },
+
+  startAuthorizedSync: function() {
+    if (this.listenerAttached) {
+      return;
+    }
+    this.listenerAttached = true;
 
     // Listen for real-time job updates
     firebaseDb.ref('jmart-safety/jobs').on('value', (snapshot) => {
@@ -29,6 +72,13 @@ const JobsManager = {
 
     // Migrate old sites to new jobs structure if needed
     this.migrateFromSites();
+
+    if (!this.dedupeTimer) {
+      this.dedupeTimer = setTimeout(() => {
+        this.dedupeTimer = null;
+        this.deduplicateJobs();
+      }, 3000);
+    }
   },
 
   // Migrate from old 'sites' structure to new 'jobs' structure
@@ -219,5 +269,3 @@ const JobsManager = {
 
 // Initialize Jobs Manager and clean up duplicates
 JobsManager.init();
-// Run dedup once on load to clean up any existing duplicates
-setTimeout(() => JobsManager.deduplicateJobs(), 3000);

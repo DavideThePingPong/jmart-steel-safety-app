@@ -73,6 +73,11 @@ describe('LoginScreen — first-time setup flow', () => {
   it('should handle setup timeout gracefully (8s)', () => {
     expect(code).toMatch(/setTimeout\(\s*\(\)\s*=>\s*reject\(new\s*Error\(['"]timeout['"]\)\)\s*,\s*8000\s*\)/);
   });
+
+  it('should fail closed when first-time setup cannot be confirmed', () => {
+    expect(code).toMatch(/Setup could not be confirmed within 8 seconds/);
+    expect(code).not.toMatch(/proceeding anyway/);
+  });
 });
 
 // ==========================================================================
@@ -84,12 +89,19 @@ describe('LoginScreen — login flow', () => {
     expect(code).toMatch(/DeviceAuthManager\.verifyPassword\(password\)/);
   });
 
-  it('should call onAuthenticated(true) on successful password', () => {
-    expect(code).toMatch(/onAuthenticated\(true\)/);
+  it('should only call onAuthenticated(true) after device access is confirmed', () => {
+    expect(code).toMatch(/status\.canAccess\)\s*\{\s*onAuthenticated\(true\)/);
   });
 
-  it('should fire-and-forget device registration after login', () => {
-    expect(code).toMatch(/DeviceAuthManager\.init\(\)/);
+  it('should move new devices into pending instead of granting immediate access', () => {
+    expect(code).toMatch(/status\.status\s*===\s*['"]new['"]/);
+    expect(code).toMatch(/DeviceAuthManager\.registerDevice/);
+    expect(code).toMatch(/onAuthenticated\(false,\s*['"]pending['"]\)/);
+  });
+
+  it('should keep access locked when device approval cannot be verified', () => {
+    expect(code).toMatch(/status\.status\s*===\s*['"]error['"]/);
+    expect(code).toMatch(/Access stays locked until Firebase responds/);
   });
 
   it('should handle login with Enter key', () => {
@@ -102,11 +114,12 @@ describe('LoginScreen — login flow', () => {
 // ==========================================================================
 describe('AppWithAuth — auth state machine', () => {
 
-  it('should define auth states: loading, authenticated, unauthenticated, pending', () => {
+  it('should define auth states: loading, authenticated, unauthenticated, pending, recovery-required', () => {
     expect(code).toMatch(/['"]loading['"]/);
     expect(code).toMatch(/['"]authenticated['"]/);
     expect(code).toMatch(/['"]unauthenticated['"]/);
     expect(code).toMatch(/['"]pending['"]/);
+    expect(code).toMatch(/['"]recovery-required['"]/);
   });
 
   it('should auto-authenticate when Firebase is not configured', () => {
@@ -168,5 +181,15 @@ describe('auth.jsx — exports', () => {
 
   it('should export window.AppWithAuth', () => {
     expect(code).toMatch(/window\.AppWithAuth\s*=\s*AppWithAuth/);
+  });
+});
+
+describe('LoginScreen manual recovery required', () => {
+  it('should show manual recovery required screen', () => {
+    expect(code).toMatch(/Manual Admin Recovery Required/);
+  });
+
+  it('should mention the recover:admin command', () => {
+    expect(code).toMatch(/recover:admin/);
   });
 });

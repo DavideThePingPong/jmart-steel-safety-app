@@ -21,8 +21,263 @@ const firebaseConfig = {
 // ========================================
 const COMPANY_ABN = '94 164 562 207';
 
+const runtimeMode = window.__JMART_RUNTIME_MODE__ || 'production';
+const isE2ERuntime = runtimeMode === 'e2e';
+
+function createE2EFirebaseRuntime() {
+  const storageKey = 'jmart-e2e-firebase-db';
+  const authUid = 'e2e-auth-user';
+  const listeners = {
+    value: new Map(),
+    child_added: new Map()
+  };
+  let pushCounter = 0;
+
+  const clone = (value) => {
+    if (value === undefined) return null;
+    if (value === null) return null;
+    return JSON.parse(JSON.stringify(value));
+  };
+
+  const normalizePath = (path) => String(path || '')
+    .replace(/^\/+|\/+$/g, '')
+    .replace(/\/+/g, '/');
+
+  const splitPath = (path) => {
+    const normalized = normalizePath(path);
+    return normalized ? normalized.split('/') : [];
+  };
+
+  const createSnapshot = (path, value) => {
+    const segments = splitPath(path);
+    return {
+      key: segments.length ? segments[segments.length - 1] : null,
+      exists: () => value !== null && value !== undefined,
+      val: () => clone(value)
+    };
+  };
+
+  const defaultState = () => ({
+    '.info': { connected: true },
+    'jmart-safety': {}
+  });
+
+  const readState = () => {
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (!raw) return defaultState();
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return defaultState();
+      if (!parsed['.info']) parsed['.info'] = { connected: true };
+      if (!parsed['jmart-safety']) parsed['jmart-safety'] = {};
+      return parsed;
+    } catch (e) {
+      return defaultState();
+    }
+  };
+
+  const writeState = (state) => {
+    localStorage.setItem(storageKey, JSON.stringify(state));
+  };
+
+  const getAtPath = (state, path) => {
+    const segments = splitPath(path);
+    let cursor = state;
+    for (let i = 0; i < segments.length; i++) {
+      if (cursor == null || typeof cursor !== 'object' || !(segments[i] in cursor)) {
+        return null;
+      }
+      cursor = cursor[segments[i]];
+    }
+    return cursor === undefined ? null : cursor;
+  };
+
+  const setAtPath = (state, path, value) => {
+    const segments = splitPath(path);
+    if (segments.length === 0) return clone(value);
+    let cursor = state;
+    for (let i = 0; i < segments.length - 1; i++) {
+      const segment = segments[i];
+      if (!cursor[segment] || typeof cursor[segment] !== 'object') {
+        cursor[segment] = {};
+      }
+      cursor = cursor[segment];
+    }
+    const lastSegment = segments[segments.length - 1];
+    if (value === null || value === undefined) {
+      delete cursor[lastSegment];
+    } else {
+      cursor[lastSegment] = clone(value);
+    }
+    return state;
+  };
+
+  const isRelatedPath = (listenerPath, changedPath) => {
+    const listenerSegments = splitPath(listenerPath);
+    const changedSegments = splitPath(changedPath);
+    const minLength = Math.min(listenerSegments.length, changedSegments.length);
+    for (let i = 0; i < minLength; i++) {
+      if (listenerSegments[i] !== changedSegments[i]) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const isDirectChildChange = (listenerPath, changedPath) => {
+    const listenerSegments = splitPath(listenerPath);
+    const changedSegments = splitPath(changedPath);
+    if (changedSegments.length !== listenerSegments.length + 1) {
+      return false;
+    }
+    for (let i = 0; i < listenerSegments.length; i++) {
+      if (listenerSegments[i] !== changedSegments[i]) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const notifyValueListeners = (changedPath) => {
+    const state = readState();
+    listeners.value.forEach((handlers, path) => {
+      if (!isRelatedPath(path, changedPath)) return;
+      const snapshot = createSnapshot(path, getAtPath(state, path));
+      handlers.forEach(handler => {
+        try { handler(snapshot); } catch (e) { console.warn('[E2E Firebase] value listener failed:', e.message); }
+      });
+    });
+  };
+
+  const notifyChildAddedListeners = (changedPath, previousState) => {
+    const state = readState();
+    listeners.child_added.forEach((handlers, path) => {
+      if (!isDirectChildChange(path, changedPath)) return;
+      const previousValue = getAtPath(previousState, changedPath);
+      const nextValue = getAtPath(state, changedPath);
+      if ((previousValue !== null && previousValue !== undefined) || nextValue === null || nextValue === undefined) {
+        return;
+      }
+      const snapshot = createSnapshot(changedPath, nextValue);
+      handlers.forEach(handler => {
+        try { handler(snapshot); } catch (e) { console.warn('[E2E Firebase] child_added listener failed:', e.message); }
+      });
+    });
+  };
+
+  const commit = (changedPath, mutateFn) => {
+    const previousState = readState();
+    const nextState = clone(previousState);
+    mutateFn(nextState);
+    writeState(nextState);
+    notifyValueListeners(changedPath);
+    notifyChildAddedListeners(changedPath, previousState);
+  };
+
+  const addListener = (type, path, handler) => {
+    if (!listeners[type].has(path)) listeners[type].set(path, new Set());
+    listeners[type].get(path).add(handler);
+    return handler;
+  };
+
+  const removeListener = (type, path, handler) => {
+    if (!listeners[type].has(path)) return;
+    if (handler) {
+      listeners[type].get(path).delete(handler);
+    } else {
+      listeners[type].delete(path);
+      return;
+    }
+    if (listeners[type].get(path).size === 0) {
+      listeners[type].delete(path);
+    }
+  };
+
+  window.addEventListener('storage', (event) => {
+    if (event.key !== storageKey) return;
+    let previousState = defaultState();
+    try {
+      previousState = event.oldValue ? JSON.parse(event.oldValue) : defaultState();
+    } catch (e) {}
+    notifyValueListeners('');
+    listeners.child_added.forEach((handlers, path) => {
+      const previousChildren = getAtPath(previousState, path) || {};
+      const nextChildren = getAtPath(readState(), path) || {};
+      Object.keys(nextChildren).forEach((childKey) => {
+        if (previousChildren[childKey] !== undefined) return;
+        const snapshot = createSnapshot(path + '/' + childKey, nextChildren[childKey]);
+        handlers.forEach(handler => {
+          try { handler(snapshot); } catch (e) { console.warn('[E2E Firebase] storage child_added failed:', e.message); }
+        });
+      });
+    });
+  });
+
+  const makeRef = (path) => {
+    const normalizedPath = normalizePath(path);
+    return {
+      key: splitPath(normalizedPath).slice(-1)[0] || null,
+      child: function(childPath) {
+        return makeRef(normalizedPath ? normalizedPath + '/' + childPath : childPath);
+      },
+      set: function(value) {
+        commit(normalizedPath, (state) => setAtPath(state, normalizedPath, value));
+        return Promise.resolve();
+      },
+      update: function(updates) {
+        commit(normalizedPath, (state) => {
+          const existing = getAtPath(state, normalizedPath);
+          const nextValue = (existing && typeof existing === 'object') ? { ...existing } : {};
+          Object.keys(updates || {}).forEach((key) => {
+            nextValue[key] = updates[key];
+          });
+          setAtPath(state, normalizedPath, nextValue);
+        });
+        return Promise.resolve();
+      },
+      remove: function() {
+        commit(normalizedPath, (state) => setAtPath(state, normalizedPath, null));
+        return Promise.resolve();
+      },
+      once: function(eventType) {
+        if (eventType !== 'value') return Promise.resolve(createSnapshot(normalizedPath, null));
+        return Promise.resolve(createSnapshot(normalizedPath, getAtPath(readState(), normalizedPath)));
+      },
+      on: function(eventType, handler) {
+        const registered = addListener(eventType, normalizedPath, handler);
+        if (eventType === 'value') {
+          handler(createSnapshot(normalizedPath, getAtPath(readState(), normalizedPath)));
+        }
+        return registered;
+      },
+      off: function(eventType, handler) {
+        removeListener(eventType, normalizedPath, handler);
+      },
+      push: function(value) {
+        pushCounter += 1;
+        const key = 'e2e-' + Date.now().toString(36) + '-' + pushCounter.toString(36);
+        const childRef = makeRef(normalizedPath ? normalizedPath + '/' + key : key);
+        if (arguments.length > 0) {
+          return childRef.set(value).then(() => childRef);
+        }
+        return childRef;
+      }
+    };
+  };
+
+  return {
+    authUid,
+    db: {
+      ref: makeRef
+    },
+    read: function(path) {
+      return clone(getAtPath(readState(), path));
+    }
+  };
+}
+
 // Check if Firebase is configured
-const isFirebaseConfigured = firebaseConfig.apiKey !== "YOUR_API_KEY_HERE";
+const isFirebaseConfigured = isE2ERuntime || firebaseConfig.apiKey !== "YOUR_API_KEY_HERE";
 
 // Initialize Firebase only if configured
 let firebaseApp = null;
@@ -31,7 +286,15 @@ let firebaseAuthUid = null;
 // Promise that resolves when Firebase auth is ready (or immediately if not configured)
 let firebaseAuthReady = Promise.resolve(null);
 
-if (isFirebaseConfigured) {
+if (isE2ERuntime) {
+  const e2eRuntime = createE2EFirebaseRuntime();
+  firebaseApp = { name: 'jmart-e2e' };
+  firebaseDb = e2eRuntime.db;
+  firebaseAuthUid = e2eRuntime.authUid;
+  firebaseAuthReady = Promise.resolve(firebaseAuthUid);
+  window.__JMART_E2E_FIREBASE__ = e2eRuntime;
+  console.log('Firebase E2E runtime connected, auth uid:', firebaseAuthUid);
+} else if (isFirebaseConfigured) {
   try {
     // Clear cached WebSocket failure flag — if a previous session had a transient
     // WS error (e.g. CSP blocking), the SDK remembers it and permanently falls back
@@ -74,6 +337,9 @@ if (isFirebaseConfigured) {
 // This helper provides a reliable fallback for critical reads.
 // ========================================
 async function firebaseRestRead(path) {
+  if (isE2ERuntime && window.__JMART_E2E_FIREBASE__) {
+    return window.__JMART_E2E_FIREBASE__.read(path);
+  }
   if (!isFirebaseConfigured) return null;
   var user = firebase.auth().currentUser;
   if (!user) {

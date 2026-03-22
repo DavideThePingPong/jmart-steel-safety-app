@@ -12,6 +12,7 @@ const pushMock = jest.fn(() => Promise.resolve({ key: '-NewKey123' }));
 const updateMock = jest.fn(() => Promise.resolve());
 const onceMock = jest.fn(() => Promise.resolve({ val: () => null }));
 const onMock = jest.fn();
+const offMock = jest.fn();
 const setMock = jest.fn(() => Promise.resolve());
 
 const refMock = jest.fn(() => ({
@@ -19,11 +20,14 @@ const refMock = jest.fn(() => ({
   update: updateMock,
   once: onceMock,
   on: onMock,
+  off: offMock,
   set: setMock
 }));
 
 global.firebaseDb = { ref: refMock };
 global.isFirebaseConfigured = true;
+global.firebaseAuthReady = Promise.resolve();
+global.firebaseAuthUid = 'auth-uid-1';
 
 // Load the source and strip auto-init calls, then eval so `const` lands in this scope
 const ROOT = path.resolve(__dirname, '..', '..', '..');
@@ -57,8 +61,16 @@ describe('JobsManager', () => {
     // Reset internal state
     JobsManager.jobs = [];
     JobsManager.listeners = [];
+    JobsManager.listenerAttached = false;
+    JobsManager.initStarted = false;
+    if (JobsManager.dedupeTimer) {
+      clearTimeout(JobsManager.dedupeTimer);
+      JobsManager.dedupeTimer = null;
+    }
     // Re-wire firebase mock (in case a test nullified it)
     global.firebaseDb = { ref: refMock };
+    global.firebaseAuthReady = Promise.resolve();
+    global.firebaseAuthUid = 'auth-uid-1';
   });
 
   // -------------------------------------------------------
@@ -198,6 +210,31 @@ describe('JobsManager', () => {
 
       unsub();
       expect(JobsManager.listeners).not.toContain(cb);
+    });
+  });
+
+  describe('init', () => {
+    it('waits for approved auth device before subscribing to jobs', async () => {
+      onMock.mockImplementation(() => {});
+
+      await JobsManager.init();
+
+      expect(refMock).toHaveBeenCalledWith('jmart-safety/authDevices/auth-uid-1/approvedAt');
+      expect(refMock).not.toHaveBeenCalledWith('jmart-safety/jobs');
+    });
+
+    it('subscribes to jobs after auth device approval exists', async () => {
+      onMock.mockImplementation((eventType, handler) => {
+        if (eventType === 'value') {
+          handler({ exists: () => true, val: () => null });
+        }
+      });
+
+      await JobsManager.init();
+
+      expect(refMock).toHaveBeenCalledWith('jmart-safety/authDevices/auth-uid-1/approvedAt');
+      expect(refMock).toHaveBeenCalledWith('jmart-safety/jobs');
+      expect(offMock).toHaveBeenCalled();
     });
   });
 });

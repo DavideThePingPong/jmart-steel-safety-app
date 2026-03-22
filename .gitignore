@@ -5,9 +5,12 @@ node_modules/
 dist/
 build/
 js/app.js
+.firebase/
 
 # Test coverage
 coverage/
+test-results/
+playwright-report/
 
 # OS files
 .DS_Store
@@ -16,6 +19,7 @@ Thumbs.db
 # IDE
 .idea/
 .vscode/
+.claude/
 *.swp
 
 # Environment
@@ -24,3 +28,7 @@ Thumbs.db
 
 # Logs
 npm-debug.log*
+firebase-debug.log*
+
+# Local audits / generated checks
+sync-healthcheck-*.md

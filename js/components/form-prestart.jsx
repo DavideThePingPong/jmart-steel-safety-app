@@ -76,7 +76,7 @@ function PrestartView({ onSubmit, onUpdate, editingForm, previousPrestarts = [],
     setSignatures(data.signatures || FORM_CONSTANTS.emptySignatures());
     setSubmitted(false);
     setValidationErrors([]);
-  }, [editingForm?.id]);
+  }, [editingForm]);
 
   const displayDate = formDate.toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const displayTime = formDate.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
@@ -379,6 +379,7 @@ function PrestartView({ onSubmit, onUpdate, editingForm, previousPrestarts = [],
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">👤 Supervisor Name *</label>
             <select value={supervisorName} onChange={(e) => setSupervisorName(e.target.value)}
+              aria-label="Supervisor Name"
               className="w-full border border-gray-300 rounded-lg p-3 bg-white">
               <option value="">Select Supervisor</option>
               {FORM_CONSTANTS.supervisors.map(name => <option key={name} value={name}>{name}</option>)}
@@ -386,14 +387,14 @@ function PrestartView({ onSubmit, onUpdate, editingForm, previousPrestarts = [],
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Site Conducted *</label>
-            <select value={siteConducted} onChange={(e) => setSiteConducted(e.target.value)} className="w-full border border-gray-300 rounded-lg p-3 bg-white">
+            <select value={siteConducted} onChange={(e) => setSiteConducted(e.target.value)} aria-label="Site Conducted" className="w-full border border-gray-300 rounded-lg p-3 bg-white">
               <option value="">Select Site</option>
               {sitesList.map((site) => <option key={site} value={site}>{site}</option>)}
             </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Builder *</label>
-            <select value={builder} onChange={(e) => setBuilder(e.target.value)} className="w-full border border-gray-300 rounded-lg p-3 bg-white">
+            <select value={builder} onChange={(e) => setBuilder(e.target.value)} aria-label="Builder" className="w-full border border-gray-300 rounded-lg p-3 bg-white">
               <option value="">Select Builder</option>
               {builders.map((b) => <option key={b} value={b}>{b}</option>)}
             </select>
@@ -402,6 +403,7 @@ function PrestartView({ onSubmit, onUpdate, editingForm, previousPrestarts = [],
             <label className="block text-sm font-medium text-gray-700 mb-2">📍 Address *</label>
             <div className="flex gap-2">
               <input type="text" value={address} onChange={(e) => setAddress(e.target.value)}
+                aria-label="Address"
                 className="flex-1 border border-gray-300 rounded-lg p-3" placeholder="Enter site address" />
               <button onClick={getLocation} disabled={isLocating}
                 className="bg-blue-600 text-white px-4 rounded-lg disabled:bg-blue-400">
@@ -432,10 +434,12 @@ function PrestartView({ onSubmit, onUpdate, editingForm, previousPrestarts = [],
           <h4 className="font-semibold text-gray-800 mb-3">🚜 Is Plant/Equipment to be used?</h4>
           <div className="flex gap-3">
             <button onClick={() => setIsPlantEquipmentUsed(true)}
+              aria-label="Plant Equipment Yes"
               className={`flex-1 py-3 rounded-lg font-medium border-2 ${isPlantEquipmentUsed === true ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 text-gray-700'}`}>
               Yes
             </button>
             <button onClick={() => setIsPlantEquipmentUsed(false)}
+              aria-label="Plant Equipment No"
               className={`flex-1 py-3 rounded-lg font-medium border-2 ${isPlantEquipmentUsed === false ? 'bg-red-500 border-red-500 text-white' : 'border-gray-300 text-gray-700'}`}>
               No
             </button>
@@ -457,6 +461,7 @@ function PrestartView({ onSubmit, onUpdate, editingForm, previousPrestarts = [],
         <div className="bg-white rounded-xl p-4 shadow-sm">
           <h4 className="font-semibold text-gray-800 text-orange-600 mb-3">Site Specific Hazards</h4>
           <textarea value={siteHazards.value} onChange={(e) => setSiteHazards(prev => ({...prev, value: e.target.value}))}
+            aria-label="Site Specific Hazards"
             className="w-full border border-gray-300 rounded-lg p-3 text-sm min-h-[80px]"
             placeholder="Enter site specific hazards..." />
         </div>
@@ -465,6 +470,7 @@ function PrestartView({ onSubmit, onUpdate, editingForm, previousPrestarts = [],
         <div className="bg-white rounded-xl p-4 shadow-sm">
           <h4 className="font-semibold text-gray-800 text-orange-600 mb-3">Site Specific Permits Required</h4>
           <textarea value={permitsRequired.value} onChange={(e) => setPermitsRequired(prev => ({...prev, value: e.target.value}))}
+            aria-label="Site Specific Permits Required"
             className="w-full border border-gray-300 rounded-lg p-3 text-sm min-h-[80px]"
             placeholder="Enter permits required..." />
         </div>
@@ -474,14 +480,17 @@ function PrestartView({ onSubmit, onUpdate, editingForm, previousPrestarts = [],
           <h4 className="font-semibold text-gray-800 mb-3">⚠️ High Risk Works?</h4>
           <div className="flex gap-3">
             <button onClick={() => setHighRiskWorks('yes')}
+              aria-label="High Risk Works Yes"
               className={`flex-1 py-3 rounded-lg font-medium border-2 ${highRiskWorks === 'yes' ? 'bg-red-500 border-red-500 text-white' : 'border-gray-300 text-gray-700'}`}>
               Yes
             </button>
             <button onClick={() => setHighRiskWorks('no')}
+              aria-label="High Risk Works No"
               className={`flex-1 py-3 rounded-lg font-medium border-2 ${highRiskWorks === 'no' ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 text-gray-700'}`}>
               No
             </button>
             <button onClick={() => setHighRiskWorks('na')}
+              aria-label="High Risk Works N/A"
               className={`flex-1 py-3 rounded-lg font-medium border-2 ${highRiskWorks === 'na' ? 'bg-gray-500 border-gray-500 text-white' : 'border-gray-300 text-gray-700'}`}>
               N/A
             </button>
@@ -493,14 +502,17 @@ function PrestartView({ onSubmit, onUpdate, editingForm, previousPrestarts = [],
           <h4 className="font-semibold text-gray-800 mb-3">📋 Works performed are covered by SWMS?</h4>
           <div className="flex gap-3">
             <button onClick={() => setWorksCoveredBySWMS('yes')}
+              aria-label="SWMS Covered Yes"
               className={`flex-1 py-3 rounded-lg font-medium border-2 ${worksCoveredBySWMS === 'yes' ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 text-gray-700'}`}>
               Yes
             </button>
             <button onClick={() => setWorksCoveredBySWMS('no')}
+              aria-label="SWMS Covered No"
               className={`flex-1 py-3 rounded-lg font-medium border-2 ${worksCoveredBySWMS === 'no' ? 'bg-red-500 border-red-500 text-white' : 'border-gray-300 text-gray-700'}`}>
               No
             </button>
             <button onClick={() => setWorksCoveredBySWMS('na')}
+              aria-label="SWMS Covered N/A"
               className={`flex-1 py-3 rounded-lg font-medium border-2 ${worksCoveredBySWMS === 'na' ? 'bg-gray-500 border-gray-500 text-white' : 'border-gray-300 text-gray-700'}`}>
               N/A
             </button>
@@ -540,8 +552,10 @@ function PrestartView({ onSubmit, onUpdate, editingForm, previousPrestarts = [],
                 <span className="text-gray-700">{idx + 1}. {item.text}</span>
                 <div className="flex gap-2">
                   <button onClick={() => setChecks({...checks, [item.id]: true})}
+                    aria-label={item.text + ' pass'}
                     className={`w-10 h-10 rounded-lg flex items-center justify-center border-2 ${checks[item.id] === true ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300'}`}>✓</button>
                   <button onClick={() => setChecks({...checks, [item.id]: false})}
+                    aria-label={item.text + ' fail'}
                     className={`w-10 h-10 rounded-lg flex items-center justify-center border-2 ${checks[item.id] === false ? 'bg-red-500 border-red-500 text-white' : 'border-gray-300'}`}>✕</button>
                 </div>
               </div>
@@ -634,6 +648,7 @@ function PrestartView({ onSubmit, onUpdate, editingForm, previousPrestarts = [],
                 </div>
               ) : (
                 <button onClick={() => setSigningWorker(name)}
+                  aria-label={`Sign ${name}`}
                   className="h-16 w-32 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-orange-500">
                   Tap to sign
                 </button>
