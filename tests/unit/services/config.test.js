@@ -64,6 +64,7 @@ describe('firebaseRead (js/config.js)', () => {
 
     // Set up globals that firebaseRead / firebaseRestRead reference
     global.firebaseDb = mockDb;
+    global.isE2ERuntime = false;
     global.isFirebaseConfigured = true;
     global.firebaseAuthReady = Promise.resolve('test-uid');
     global.firebaseConfig = {
@@ -86,6 +87,7 @@ describe('firebaseRead (js/config.js)', () => {
 
   afterEach(() => {
     delete global.firebaseDb;
+    delete global.isE2ERuntime;
     delete global.isFirebaseConfigured;
     delete global.firebaseAuthReady;
     delete global.firebaseConfig;

@@ -11,6 +11,9 @@ module.exports = {
     '^.+\\.(js|jsx)$': 'babel-jest'
   },
   setupFilesAfterEnv: ['<rootDir>/tests/setupTests.js'],
+  testPathIgnorePatterns: [
+    '<rootDir>/tests/e2e/'
+  ],
   collectCoverageFrom: [
     'js/**/*.{js,jsx}',
     '!js/app.js',
