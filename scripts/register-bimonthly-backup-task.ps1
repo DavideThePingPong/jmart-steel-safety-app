@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $workspaceRoot = "C:\Users\david\Desktop\JM Artsteel\Davidex\JM"
-$runnerPath = "C:\Users\david\run-safety-backup.cmd"
+$runnerPath = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Users\david\run-safety-backup.ps1"
 $taskName = "JMart Safety App Bi-Monthly Backup"
 $taskDescription = "Exports Safety App Firebase data to a local archive and Google Drive every two months."
 
