@@ -408,6 +408,7 @@ describe('DeviceAuth', () => {
       global.firebaseDb = mockDb;
       DeviceAuth.deviceId = 'DEV-PEND';
       DeviceAuth.deviceInfo = { type: 'iPad', browser: 'Safari', screen: '1024x768' };
+      DeviceAuth.notifyAdminsOfNewDevice = jest.fn();
 
       await DeviceAuth.registerAsPending();
 
@@ -419,12 +420,27 @@ describe('DeviceAuth', () => {
         })
       );
       expect(mockDb._mockRef.push).not.toHaveBeenCalled();
+      expect(DeviceAuth.notifyAdminsOfNewDevice).not.toHaveBeenCalled();
     });
 
     it('does nothing when firebaseDb is null', async () => {
       global.firebaseDb = null;
       await DeviceAuth.registerAsPending();
       // No error thrown - silent return
+    });
+
+    it('only notifies admins when the current device is already approved admin', async () => {
+      const mockDb = createMockFirebaseDb();
+      global.firebaseDb = mockDb;
+      DeviceAuth.deviceId = 'DEV-PEND';
+      DeviceAuth.deviceInfo = { type: 'Windows PC', browser: 'Chrome', screen: '1920x1080' };
+      DeviceAuth.isApproved = true;
+      DeviceAuth.isAdmin = true;
+      DeviceAuth.notifyAdminsOfNewDevice = jest.fn();
+
+      await DeviceAuth.registerAsPending();
+
+      expect(DeviceAuth.notifyAdminsOfNewDevice).toHaveBeenCalledTimes(1);
     });
   });
 

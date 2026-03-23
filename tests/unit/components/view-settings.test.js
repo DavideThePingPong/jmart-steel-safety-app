@@ -72,3 +72,20 @@ describe('SettingsView — addSite duplicate prevention [REGRESSION]', () => {
     expect(addSiteBlock).toMatch(/onUpdateSites/);
   });
 });
+
+describe('SettingsView admin-only shared settings controls', () => {
+  it('should derive shared-settings permissions from admin flags', () => {
+    expect(settingsCode).toMatch(/const canManageSharedSettings = isAdmin \|\| isDeviceAdmin;/);
+  });
+
+  it('should guard site mutations behind shared-settings permissions', () => {
+    expect(addSiteBlock).toMatch(/if \(!canManageSharedSettings\) return;/);
+    expect(settingsCode).toMatch(/\{canManageSharedSettings && \(/);
+  });
+
+  it('should guard signature mutations behind shared-settings permissions', () => {
+    expect(settingsCode).toMatch(/const saveSignature = \(name, signatureData\) => \{\s*if \(!canManageSharedSettings\) return;/s);
+    expect(settingsCode).toMatch(/const deleteSignature = \(name\) => \{\s*if \(!canManageSharedSettings\) return;/s);
+    expect(settingsCode).toMatch(/const addNewMember = \(\) => \{\s*if \(!canManageSharedSettings\) return;/s);
+  });
+});

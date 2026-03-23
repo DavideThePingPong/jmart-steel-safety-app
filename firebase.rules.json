@@ -76,7 +76,7 @@
         ".read": "auth != null && root.child('jmart-safety/authDevices/' + auth.uid).child('approvedAt').exists()",
         "$formId": {
           ".write": "auth != null && root.child('jmart-safety/authDevices/' + auth.uid).child('approvedAt').exists()",
-          ".validate": "newData.hasChildren(['id', 'type', 'createdAt', 'createdBy']) && newData.child('type').isString() && newData.child('type').val().length < 100 && newData.child('createdBy').isString() && newData.child('createdBy').val().length < 200"
+          ".validate": "!newData.exists() || (newData.hasChildren(['id', 'type', 'createdAt', 'createdBy', '_lastModified', '_modifiedBy']) && newData.child('id').isString() && newData.child('id').val() === $formId && newData.child('type').isString() && newData.child('type').val().length < 100 && newData.child('createdAt').isString() && newData.child('createdBy').isString() && newData.child('createdBy').val().length < 200 && newData.child('_lastModified').isNumber() && newData.child('_modifiedBy').isString() && (!data.exists() || newData.child('createdAt').val() === data.child('createdAt').val()) && (!data.exists() || newData.child('createdBy').val() === data.child('createdBy').val()))"
         }
       },
 
@@ -90,13 +90,13 @@
       // Jobs - managed job entries for forms and photo uploads
       "jobs": {
         ".read": "auth != null && root.child('jmart-safety/authDevices/' + auth.uid).child('approvedAt').exists()",
-        ".write": "auth != null && root.child('jmart-safety/authDevices/' + auth.uid).child('approvedAt').exists()"
+        ".write": "auth != null && root.child('jmart-safety/adminAuthUids/' + auth.uid).exists()"
       },
 
-      // Sites - any authenticated device can read/write (stored as flat array, must use .set())
+      // Sites - any authenticated device can read; only admins can replace the shared list
       "sites": {
         ".read": "auth != null && root.child('jmart-safety/authDevices/' + auth.uid).child('approvedAt').exists()",
-        ".write": "auth != null && root.child('jmart-safety/authDevices/' + auth.uid).child('approvedAt').exists()"
+        ".write": "auth != null && root.child('jmart-safety/adminAuthUids/' + auth.uid).exists()"
       },
 
       // Training - any authenticated device can read/write
@@ -167,13 +167,12 @@
       }
     },
 
-    // Signatures - any authenticated device can read/write
-    // Parent-level write allowed for bulk set() from hooks.jsx; child-level validates structure
+    // Signatures - any authenticated device can read; only admins can replace the shared map
     "signatures": {
       ".read": "auth != null && root.child('jmart-safety/authDevices/' + auth.uid).child('approvedAt').exists()",
-      ".write": "auth != null && root.child('jmart-safety/authDevices/' + auth.uid).child('approvedAt').exists()",
+      ".write": "auth != null && root.child('jmart-safety/adminAuthUids/' + auth.uid).exists()",
       "$signatureId": {
-        ".validate": "newData.hasChildren(['ownerId', 'data']) && newData.child('ownerId').isString() && newData.child('data').isString() && newData.child('data').val().length < 500000"
+        ".validate": "!newData.exists() || newData.val() === null || (newData.isString() && newData.val().length < 500000)"
       }
     }
   }

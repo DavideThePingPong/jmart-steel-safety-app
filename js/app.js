@@ -845,6 +845,10 @@ function useFormManager({
 
   // Update team signatures
   const updateSignatures = newSignatures => {
+    if (typeof DeviceAuthManager !== 'undefined' && !DeviceAuthManager.isAdmin) {
+      console.warn('Ignoring signature update from non-admin device');
+      return false;
+    }
     setSavedSignatures(newSignatures);
     if (typeof StorageQuotaManager !== 'undefined' && StorageQuotaManager.safeSignaturesWrite) {
       StorageQuotaManager.safeSignaturesWrite(newSignatures);
@@ -854,6 +858,7 @@ function useFormManager({
     if (FirebaseSync.isConnected()) {
       firebaseDb.ref('signatures').set(typeof sanitizeForFirebase === 'function' ? sanitizeForFirebase(newSignatures) : newSignatures).catch(err => console.error('Signature sync error:', err));
     }
+    return true;
   };
 
   // Signature reuse warning flag — components should show amber banner when using saved signatures
@@ -1490,6 +1495,10 @@ function useDataSync({
         return;
       }
       if (FirebaseSync.isConnected() && isOnlineRef.current) {
+        if (typeof DeviceAuthManager !== 'undefined' && !DeviceAuthManager.isAdmin) {
+          console.warn('Ignoring shared site sync from non-admin device');
+          return;
+        }
         FirebaseSync.syncSites(sites);
       }
     }
@@ -6958,6 +6967,7 @@ function SettingsView({
   const [isFixing, setIsFixing] = useState(false);
   const [fixDone, setFixDone] = useState(false);
   const currentSites = [...new Set(sites.length > 0 ? sites : FORM_CONSTANTS.defaultSites)];
+  const canManageSharedSettings = isAdmin || isDeviceAdmin;
 
   // Listen to device changes if admin, viewer, or has revoke permission
   useEffect(() => {
@@ -7060,6 +7070,7 @@ function SettingsView({
   // Get all members (default + any custom added via signatures)
   const allMembers = [...new Set([...defaultMembers, ...Object.keys(signatures).filter(name => !defaultMembers.includes(name))])];
   const saveSignature = (name, signatureData) => {
+    if (!canManageSharedSettings) return;
     const newSignatures = {
       ...signatures,
       [name]: signatureData
@@ -7068,6 +7079,7 @@ function SettingsView({
     setShowSignaturePad(null);
   };
   const deleteSignature = name => {
+    if (!canManageSharedSettings) return;
     const newSignatures = {
       ...signatures
     };
@@ -7075,6 +7087,7 @@ function SettingsView({
     onUpdateSignatures(newSignatures);
   };
   const addNewMember = () => {
+    if (!canManageSharedSettings) return;
     if (newMemberName.trim() && !allMembers.includes(newMemberName.trim())) {
       // Add member with empty signature (will show "Add Signature" button)
       const newSignatures = {
@@ -7087,6 +7100,7 @@ function SettingsView({
     }
   };
   const deleteMember = name => {
+    if (!canManageSharedSettings) return;
     // Only allow deleting custom members (not in defaultMembers)
     if (!defaultMembers.includes(name)) {
       const newSignatures = {
@@ -7097,6 +7111,7 @@ function SettingsView({
     }
   };
   const addSite = () => {
+    if (!canManageSharedSettings) return;
     const trimmed = newSite.trim();
     if (trimmed) {
       const isDuplicate = currentSites.some(s => s.toLowerCase() === trimmed.toLowerCase());
@@ -7467,10 +7482,12 @@ function SettingsView({
     className: "flex items-center justify-between mb-3"
   }, /*#__PURE__*/React.createElement("h3", {
     className: "font-semibold text-gray-800"
-  }, "\uD83C\uDFD7\uFE0F Sites"), /*#__PURE__*/React.createElement("button", {
+  }, "\uD83C\uDFD7\uFE0F Sites"), canManageSharedSettings ? /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowAddSite(!showAddSite),
     className: "bg-green-600 text-white px-3 py-1 rounded-lg text-sm"
-  }, "+ Add Site")), showAddSite && /*#__PURE__*/React.createElement("div", {
+  }, "+ Add Site") : /*#__PURE__*/React.createElement("span", {
+    className: "text-xs text-gray-400"
+  }, "Admin only")), canManageSharedSettings && showAddSite && /*#__PURE__*/React.createElement("div", {
     className: "mb-4 flex gap-2"
   }, /*#__PURE__*/React.createElement("input", {
     type: "text",
@@ -7488,7 +7505,7 @@ function SettingsView({
     className: "flex items-center justify-between p-2 bg-gray-50 rounded-lg"
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-sm text-gray-700"
-  }, site), /*#__PURE__*/React.createElement("button", {
+  }, site), canManageSharedSettings && /*#__PURE__*/React.createElement("button", {
     onClick: () => onUpdateSites(currentSites.filter(s => s !== site)),
     className: "text-red-500"
   }, "\uD83D\uDDD1\uFE0F"))))), /*#__PURE__*/React.createElement("div", {
@@ -7497,12 +7514,14 @@ function SettingsView({
     className: "flex items-center justify-between mb-3"
   }, /*#__PURE__*/React.createElement("h3", {
     className: "font-semibold text-gray-800"
-  }, "\u270D\uFE0F Team Signatures"), /*#__PURE__*/React.createElement("button", {
+  }, "\u270D\uFE0F Team Signatures"), canManageSharedSettings ? /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowAddMember(!showAddMember),
     className: "bg-green-600 text-white px-3 py-1 rounded-lg text-sm"
-  }, "+ Add Member")), /*#__PURE__*/React.createElement("p", {
+  }, "+ Add Member") : /*#__PURE__*/React.createElement("span", {
+    className: "text-xs text-gray-400"
+  }, "Admin only")), /*#__PURE__*/React.createElement("p", {
     className: "text-xs text-gray-500 mb-3"
-  }, "Save signatures once and use them automatically in all forms"), showAddMember && /*#__PURE__*/React.createElement("div", {
+  }, "Save signatures once and use them automatically in all forms"), canManageSharedSettings && showAddMember && /*#__PURE__*/React.createElement("div", {
     className: "mb-4 flex gap-2"
   }, /*#__PURE__*/React.createElement("input", {
     type: "text",
@@ -7530,7 +7549,7 @@ function SettingsView({
     className: "text-xs text-gray-400 italic"
   }, "No signature saved")), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-2"
-  }, /*#__PURE__*/React.createElement("button", {
+  }, canManageSharedSettings && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowSignaturePad(name),
     className: `px-3 py-1 rounded-lg text-sm ${signatures[name] ? 'bg-orange-100 text-orange-600' : 'bg-green-600 text-white'}`
   }, signatures[name] ? '✏️ Update' : '➕ Add'), signatures[name] && /*#__PURE__*/React.createElement("button", {
@@ -7539,7 +7558,7 @@ function SettingsView({
   }, "\uD83D\uDDD1\uFE0F"), !defaultMembers.includes(name) && /*#__PURE__*/React.createElement("button", {
     onClick: () => deleteMember(name),
     className: "text-red-500 text-xs underline ml-1"
-  }, "Remove")))))), showSignaturePad && /*#__PURE__*/React.createElement(SignaturePad, {
+  }, "Remove"))))))), showSignaturePad && /*#__PURE__*/React.createElement(SignaturePad, {
     name: showSignaturePad,
     onSave: sig => saveSignature(showSignaturePad, sig),
     onCancel: () => setShowSignaturePad(null)

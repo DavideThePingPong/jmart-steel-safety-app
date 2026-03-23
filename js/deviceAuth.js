@@ -319,7 +319,9 @@ const DeviceAuth = {
 
       await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).set(typeof sanitizeForFirebase === 'function' ? sanitizeForFirebase(deviceData) : deviceData);
       console.log('Device registered as pending approval');
-      this.notifyAdminsOfNewDevice(deviceData);
+      if (this.isApproved && this.isAdmin) {
+        this.notifyAdminsOfNewDevice(deviceData);
+      }
     } catch (e) {
       // Non-fatal - app continues working, just won't auto-approve until manually approved
       console.log('[DeviceAuth] Registration skipped (auth timing):', e.message.substring(0, 100));

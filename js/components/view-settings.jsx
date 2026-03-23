@@ -117,6 +117,7 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
   const [isFixing, setIsFixing] = useState(false);
   const [fixDone, setFixDone] = useState(false);
   const currentSites = [...new Set(sites.length > 0 ? sites : FORM_CONSTANTS.defaultSites)];
+  const canManageSharedSettings = isAdmin || isDeviceAdmin;
 
   // Listen to device changes if admin, viewer, or has revoke permission
   useEffect(() => {
@@ -216,18 +217,21 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
   const allMembers = [...new Set([...defaultMembers, ...Object.keys(signatures).filter(name => !defaultMembers.includes(name))])];
 
   const saveSignature = (name, signatureData) => {
+    if (!canManageSharedSettings) return;
     const newSignatures = { ...signatures, [name]: signatureData };
     onUpdateSignatures(newSignatures);
     setShowSignaturePad(null);
   };
 
   const deleteSignature = (name) => {
+    if (!canManageSharedSettings) return;
     const newSignatures = { ...signatures };
     delete newSignatures[name];
     onUpdateSignatures(newSignatures);
   };
 
   const addNewMember = () => {
+    if (!canManageSharedSettings) return;
     if (newMemberName.trim() && !allMembers.includes(newMemberName.trim())) {
       // Add member with empty signature (will show "Add Signature" button)
       const newSignatures = { ...signatures, [newMemberName.trim()]: null };
@@ -238,6 +242,7 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
   };
 
   const deleteMember = (name) => {
+    if (!canManageSharedSettings) return;
     // Only allow deleting custom members (not in defaultMembers)
     if (!defaultMembers.includes(name)) {
       const newSignatures = { ...signatures };
@@ -247,6 +252,7 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
   };
 
   const addSite = () => {
+    if (!canManageSharedSettings) return;
     const trimmed = newSite.trim();
     if (trimmed) {
       const isDuplicate = currentSites.some(s => s.toLowerCase() === trimmed.toLowerCase());
@@ -665,9 +671,13 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
       <div className="bg-white rounded-xl shadow-sm p-4">
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-semibold text-gray-800">🏗️ Sites</h3>
-          <button onClick={() => setShowAddSite(!showAddSite)} className="bg-green-600 text-white px-3 py-1 rounded-lg text-sm">+ Add Site</button>
+          {canManageSharedSettings ? (
+            <button onClick={() => setShowAddSite(!showAddSite)} className="bg-green-600 text-white px-3 py-1 rounded-lg text-sm">+ Add Site</button>
+          ) : (
+            <span className="text-xs text-gray-400">Admin only</span>
+          )}
         </div>
-        {showAddSite && (
+        {canManageSharedSettings && showAddSite && (
           <div className="mb-4 flex gap-2">
             <input type="text" value={newSite} onChange={(e) => setNewSite(e.target.value)} className="flex-1 border rounded-lg p-2 text-sm" placeholder="Enter site name" />
             <button onClick={addSite} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm">Add</button>
@@ -677,7 +687,9 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
           {currentSites.map((site) => (
             <div key={site} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
               <span className="text-sm text-gray-700">{site}</span>
-              <button onClick={() => onUpdateSites(currentSites.filter(s => s !== site))} className="text-red-500">🗑️</button>
+              {canManageSharedSettings && (
+                <button onClick={() => onUpdateSites(currentSites.filter(s => s !== site))} className="text-red-500">🗑️</button>
+              )}
             </div>
           ))}
         </div>
@@ -686,11 +698,15 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
       <div className="bg-white rounded-xl shadow-sm p-4">
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-semibold text-gray-800">✍️ Team Signatures</h3>
-          <button onClick={() => setShowAddMember(!showAddMember)} className="bg-green-600 text-white px-3 py-1 rounded-lg text-sm">+ Add Member</button>
+          {canManageSharedSettings ? (
+            <button onClick={() => setShowAddMember(!showAddMember)} className="bg-green-600 text-white px-3 py-1 rounded-lg text-sm">+ Add Member</button>
+          ) : (
+            <span className="text-xs text-gray-400">Admin only</span>
+          )}
         </div>
         <p className="text-xs text-gray-500 mb-3">Save signatures once and use them automatically in all forms</p>
 
-        {showAddMember && (
+        {canManageSharedSettings && showAddMember && (
           <div className="mb-4 flex gap-2">
             <input
               type="text"
@@ -715,17 +731,21 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
                 )}
               </div>
               <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setShowSignaturePad(name)}
-                  className={`px-3 py-1 rounded-lg text-sm ${signatures[name] ? 'bg-orange-100 text-orange-600' : 'bg-green-600 text-white'}`}
-                >
-                  {signatures[name] ? '✏️ Update' : '➕ Add'}
-                </button>
-                {signatures[name] && (
-                  <button onClick={() => deleteSignature(name)} className="text-red-500 text-lg">🗑️</button>
-                )}
-                {!defaultMembers.includes(name) && (
-                  <button onClick={() => deleteMember(name)} className="text-red-500 text-xs underline ml-1">Remove</button>
+                {canManageSharedSettings && (
+                  <>
+                    <button
+                      onClick={() => setShowSignaturePad(name)}
+                      className={`px-3 py-1 rounded-lg text-sm ${signatures[name] ? 'bg-orange-100 text-orange-600' : 'bg-green-600 text-white'}`}
+                    >
+                      {signatures[name] ? '✏️ Update' : '➕ Add'}
+                    </button>
+                    {signatures[name] && (
+                      <button onClick={() => deleteSignature(name)} className="text-red-500 text-lg">🗑️</button>
+                    )}
+                    {!defaultMembers.includes(name) && (
+                      <button onClick={() => deleteMember(name)} className="text-red-500 text-xs underline ml-1">Remove</button>
+                    )}
+                  </>
                 )}
               </div>
             </div>

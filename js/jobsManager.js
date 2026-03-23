@@ -16,6 +16,10 @@ const JobsManager = {
     return typeof sanitizeForFirebase === 'function' ? sanitizeForFirebase(value) : value;
   },
 
+  hasAdminAccess: function() {
+    return typeof DeviceAuthManager === 'undefined' ? true : !!DeviceAuthManager.isAdmin;
+  },
+
   normalizeSites: function(rawSites) {
     if (!rawSites) return [];
 
@@ -103,14 +107,18 @@ const JobsManager = {
       if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(error, 'jobs-listener');
     });
 
-    // Migrate old sites to new jobs structure if needed
-    this.migrateFromSites();
+    if (this.hasAdminAccess()) {
+      // Migrate old sites to new jobs structure if needed
+      this.migrateFromSites();
 
-    if (!this.dedupeTimer) {
-      this.dedupeTimer = setTimeout(() => {
-        this.dedupeTimer = null;
-        this.deduplicateJobs();
-      }, 3000);
+      if (!this.dedupeTimer) {
+        this.dedupeTimer = setTimeout(() => {
+          this.dedupeTimer = null;
+          this.deduplicateJobs();
+        }, 3000);
+      }
+    } else {
+      console.log('JobsManager: Skipping admin-only reconciliation on non-admin device');
     }
   },
 
@@ -118,6 +126,10 @@ const JobsManager = {
   // Uses a migration-complete flag to prevent re-running on every app load
   migrateFromSites: async function() {
     if (!firebaseDb) return;
+    if (!this.hasAdminAccess()) {
+      console.log('JobsManager: Site migration skipped for non-admin device');
+      return false;
+    }
 
     try {
       const migrationRef = firebaseDb.ref('jmart-safety/config/jobsMigrationComplete');
@@ -174,6 +186,10 @@ const JobsManager = {
   // Add a new job
   addJob: async function(jobData) {
     if (!firebaseDb) return null;
+    if (!this.hasAdminAccess()) {
+      console.warn('JobsManager: Refusing addJob on non-admin device');
+      return null;
+    }
 
     const job = {
       name: jobData.name,
@@ -199,6 +215,10 @@ const JobsManager = {
   // Update a job
   updateJob: async function(jobId, updates) {
     if (!firebaseDb || !jobId) return false;
+    if (!this.hasAdminAccess()) {
+      console.warn('JobsManager: Refusing updateJob on non-admin device');
+      return false;
+    }
 
     try {
       var updateData = { ...updates, updatedAt: new Date().toISOString() };
@@ -253,6 +273,10 @@ const JobsManager = {
   // Clean up duplicate jobs (keeps the oldest entry for each name)
   deduplicateJobs: async function() {
     if (!firebaseDb) return;
+    if (!this.hasAdminAccess()) {
+      console.log('JobsManager: Dedup skipped for non-admin device');
+      return false;
+    }
 
     try {
       const jobsSnap = await firebaseDb.ref('jmart-safety/jobs').once('value');

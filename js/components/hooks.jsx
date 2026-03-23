@@ -45,12 +45,18 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
 
   // Update team signatures
   const updateSignatures = (newSignatures) => {
+    if (typeof DeviceAuthManager !== 'undefined' && !DeviceAuthManager.isAdmin) {
+      console.warn('Ignoring signature update from non-admin device');
+      return false;
+    }
+
     setSavedSignatures(newSignatures);
     if (typeof StorageQuotaManager !== 'undefined' && StorageQuotaManager.safeSignaturesWrite) { StorageQuotaManager.safeSignaturesWrite(newSignatures); } else { localStorage.setItem('jmart-team-signatures', JSON.stringify(newSignatures)); }
     if (FirebaseSync.isConnected()) {
       firebaseDb.ref('signatures').set(typeof sanitizeForFirebase === 'function' ? sanitizeForFirebase(newSignatures) : newSignatures)
         .catch(err => console.error('Signature sync error:', err));
     }
+    return true;
   };
 
   // Signature reuse warning flag — components should show amber banner when using saved signatures
@@ -678,6 +684,10 @@ function useDataSync({ setForms, setSites, deletingFormRef, deletedFormIdsRef })
       }
 
       if (FirebaseSync.isConnected() && isOnlineRef.current) {
+        if (typeof DeviceAuthManager !== 'undefined' && !DeviceAuthManager.isAdmin) {
+          console.warn('Ignoring shared site sync from non-admin device');
+          return;
+        }
         FirebaseSync.syncSites(sites);
       }
     }

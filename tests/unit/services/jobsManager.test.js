@@ -28,6 +28,7 @@ global.firebaseDb = { ref: refMock };
 global.isFirebaseConfigured = true;
 global.firebaseAuthReady = Promise.resolve();
 global.firebaseAuthUid = 'auth-uid-1';
+global.DeviceAuthManager = { isAdmin: true };
 
 // Load the source and strip auto-init calls, then eval so `const` lands in this scope
 const ROOT = path.resolve(__dirname, '..', '..', '..');
@@ -72,6 +73,7 @@ describe('JobsManager', () => {
     global.firebaseDb = { ref: refMock };
     global.firebaseAuthReady = Promise.resolve();
     global.firebaseAuthUid = 'auth-uid-1';
+    global.DeviceAuthManager = { isAdmin: true };
   });
 
   // -------------------------------------------------------
@@ -96,6 +98,15 @@ describe('JobsManager', () => {
       global.firebaseDb = null;
       const result = await JobsManager.addJob({ name: 'Test' });
       expect(result).toBeNull();
+    });
+
+    it('should refuse to add a job from a non-admin device', async () => {
+      global.DeviceAuthManager.isAdmin = false;
+
+      const result = await JobsManager.addJob({ name: 'Blocked' });
+
+      expect(result).toBeNull();
+      expect(pushMock).not.toHaveBeenCalled();
     });
   });
 
@@ -124,6 +135,15 @@ describe('JobsManager', () => {
     it('should return false when jobId is falsy', async () => {
       const result = await JobsManager.updateJob(null, { status: 'active' });
       expect(result).toBe(false);
+    });
+
+    it('should refuse to update a job from a non-admin device', async () => {
+      global.DeviceAuthManager.isAdmin = false;
+
+      const result = await JobsManager.updateJob('abc123', { status: 'completed' });
+
+      expect(result).toBe(false);
+      expect(updateMock).not.toHaveBeenCalled();
     });
   });
 
@@ -291,6 +311,16 @@ describe('JobsManager', () => {
 
       expect(setMock).toHaveBeenCalledWith('jmart-safety/config/jobsMigrationComplete', true);
     });
+
+    it('skips migration writes for non-admin devices', async () => {
+      global.DeviceAuthManager.isAdmin = false;
+
+      const result = await JobsManager.migrateFromSites();
+
+      expect(result).toBe(false);
+      expect(pushMock).not.toHaveBeenCalled();
+      expect(setMock).not.toHaveBeenCalled();
+    });
   });
 
   describe('deduplicateJobs', () => {
@@ -311,6 +341,15 @@ describe('JobsManager', () => {
       await JobsManager.deduplicateJobs();
 
       expect(updateMock).toHaveBeenCalledWith('jmart-safety/jobs', { newer: null });
+    });
+
+    it('skips deduplication writes for non-admin devices', async () => {
+      global.DeviceAuthManager.isAdmin = false;
+
+      const result = await JobsManager.deduplicateJobs();
+
+      expect(result).toBe(false);
+      expect(updateMock).not.toHaveBeenCalled();
     });
   });
 });
