@@ -15,13 +15,13 @@ const onMock = jest.fn();
 const offMock = jest.fn();
 const setMock = jest.fn(() => Promise.resolve());
 
-const refMock = jest.fn(() => ({
-  push: pushMock,
-  update: updateMock,
-  once: onceMock,
-  on: onMock,
-  off: offMock,
-  set: setMock
+const refMock = jest.fn((refPath) => ({
+  push: (value) => pushMock(refPath, value),
+  update: (value) => updateMock(refPath, value),
+  once: (eventType) => onceMock(refPath, eventType),
+  on: (eventType, handler, errorHandler) => onMock(refPath, eventType, handler, errorHandler),
+  off: (eventType, handler) => offMock(refPath, eventType, handler),
+  set: (value) => setMock(refPath, value)
 }));
 
 global.firebaseDb = { ref: refMock };
@@ -58,6 +58,7 @@ const JobsManager = global.JobsManager;
 describe('JobsManager', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    delete global.sanitizeForFirebase;
     // Reset internal state
     JobsManager.jobs = [];
     JobsManager.listeners = [];
@@ -83,7 +84,7 @@ describe('JobsManager', () => {
       expect(refMock).toHaveBeenCalledWith('jmart-safety/jobs');
       expect(pushMock).toHaveBeenCalledTimes(1);
 
-      const pushed = pushMock.mock.calls[0][0];
+      const pushed = pushMock.mock.calls[0][1];
       expect(pushed.name).toBe('Sydney Opera House');
       expect(pushed.client).toBe('Lendlease');
       expect(pushed.status).toBe('active');
@@ -224,8 +225,8 @@ describe('JobsManager', () => {
     });
 
     it('subscribes to jobs after auth device approval exists', async () => {
-      onMock.mockImplementation((eventType, handler) => {
-        if (eventType === 'value') {
+      onMock.mockImplementation((refPath, eventType, handler) => {
+        if (refPath === 'jmart-safety/authDevices/auth-uid-1/approvedAt' && eventType === 'value') {
           handler({ exists: () => true, val: () => null });
         }
       });
@@ -235,6 +236,81 @@ describe('JobsManager', () => {
       expect(refMock).toHaveBeenCalledWith('jmart-safety/authDevices/auth-uid-1/approvedAt');
       expect(refMock).toHaveBeenCalledWith('jmart-safety/jobs');
       expect(offMock).toHaveBeenCalled();
+    });
+  });
+
+  describe('migrateFromSites', () => {
+    it('reconciles missing site jobs even when migration is already marked complete', async () => {
+      onceMock.mockImplementation((refPath) => {
+        if (refPath === 'jmart-safety/config/jobsMigrationComplete') {
+          return Promise.resolve({ val: () => true });
+        }
+        if (refPath === 'jmart-safety/sites') {
+          return Promise.resolve({
+            val: () => ['Existing Site', { name: 'Missing Site', builder: 'Builder Co', address: '123 Test St' }]
+          });
+        }
+        if (refPath === 'jmart-safety/jobs') {
+          return Promise.resolve({
+            val: () => ({
+              existing: { name: 'Existing Site', status: 'active' }
+            })
+          });
+        }
+        return Promise.resolve({ val: () => null });
+      });
+
+      await JobsManager.migrateFromSites();
+
+      expect(pushMock).toHaveBeenCalledTimes(1);
+      expect(pushMock.mock.calls[0][0]).toBe('jmart-safety/jobs');
+      expect(pushMock.mock.calls[0][1]).toMatchObject({
+        name: 'Missing Site',
+        client: 'Builder Co',
+        address: '123 Test St',
+        source: 'migrated-from-sites'
+      });
+      expect(setMock).toHaveBeenCalledWith('jmart-safety/config/jobsMigrationComplete', true);
+    });
+
+    it('marks migration complete even when sanitizeForFirebase is unavailable', async () => {
+      onceMock.mockImplementation((refPath) => {
+        if (refPath === 'jmart-safety/config/jobsMigrationComplete') {
+          return Promise.resolve({ val: () => false });
+        }
+        if (refPath === 'jmart-safety/sites') {
+          return Promise.resolve({ val: () => [] });
+        }
+        if (refPath === 'jmart-safety/jobs') {
+          return Promise.resolve({ val: () => ({}) });
+        }
+        return Promise.resolve({ val: () => null });
+      });
+
+      await JobsManager.migrateFromSites();
+
+      expect(setMock).toHaveBeenCalledWith('jmart-safety/config/jobsMigrationComplete', true);
+    });
+  });
+
+  describe('deduplicateJobs', () => {
+    it('removes duplicate jobs even when sanitizeForFirebase is unavailable', async () => {
+      onceMock.mockImplementation((refPath) => {
+        if (refPath === 'jmart-safety/jobs') {
+          return Promise.resolve({
+            val: () => ({
+              old: { name: 'Site A', createdAt: '2026-01-01T00:00:00.000Z' },
+              newer: { name: 'Site A', createdAt: '2026-02-01T00:00:00.000Z' },
+              unique: { name: 'Site B', createdAt: '2026-03-01T00:00:00.000Z' }
+            })
+          });
+        }
+        return Promise.resolve({ val: () => null });
+      });
+
+      await JobsManager.deduplicateJobs();
+
+      expect(updateMock).toHaveBeenCalledWith('jmart-safety/jobs', { newer: null });
     });
   });
 });

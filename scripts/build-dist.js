@@ -2,6 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const RETRYABLE_REMOVE_ERRORS = new Set(['EBUSY', 'ENOTEMPTY', 'EPERM']);
 
 const ROOT = path.resolve(__dirname, '..');
 const DIST = path.join(ROOT, 'dist');
@@ -26,8 +27,27 @@ const DIRECTORIES = [
   'js'
 ];
 
+function sleep(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
 function removeDir(dirPath) {
-  fs.rmSync(dirPath, { recursive: true, force: true });
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    try {
+      fs.rmSync(dirPath, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+      if (!fs.existsSync(dirPath)) return;
+    } catch (error) {
+      if (!RETRYABLE_REMOVE_ERRORS.has(error.code) || attempt === 5) {
+        throw error;
+      }
+    }
+
+    sleep(attempt * 100);
+  }
+
+  if (fs.existsSync(dirPath)) {
+    throw new Error('[build-dist] Failed to remove dist directory after retries: ' + dirPath);
+  }
 }
 
 function ensureDir(dirPath) {

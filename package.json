@@ -10,6 +10,7 @@
     "backfill:auth-devices": "node scripts/backfill-auth-devices.js",
     "migrate:forms": "node scripts/migrate-legacy-forms.js",
     "migrate:forms:write": "node scripts/migrate-legacy-forms.js --write",
+    "reconcile:jobs": "python scripts/reconcile-jobs-from-sites.py",
     "recover:admin": "node scripts/recover-admin-device.js",
     "test": "jest",
     "test:hub": "jest tests/unit/hub",

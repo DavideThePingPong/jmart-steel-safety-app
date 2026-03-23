@@ -12,6 +12,39 @@ const JobsManager = {
   initStarted: false,
   dedupeTimer: null,
 
+  sanitizeValue: function(value) {
+    return typeof sanitizeForFirebase === 'function' ? sanitizeForFirebase(value) : value;
+  },
+
+  normalizeSites: function(rawSites) {
+    if (!rawSites) return [];
+
+    const siteEntries = Array.isArray(rawSites) ? rawSites : Object.values(rawSites);
+    return siteEntries
+      .map((site) => {
+        if (typeof site === 'string') {
+          const name = site.trim();
+          return {
+            name,
+            client: '',
+            address: name
+          };
+        }
+
+        if (!site || typeof site !== 'object') return null;
+
+        const name = typeof site.name === 'string' ? site.name.trim() : '';
+        if (!name) return null;
+
+        return {
+          name,
+          client: typeof site.builder === 'string' ? site.builder : (typeof site.client === 'string' ? site.client : ''),
+          address: typeof site.address === 'string' && site.address.trim() ? site.address : name
+        };
+      })
+      .filter((site) => site && site.name);
+  },
+
   // Initialize and load jobs from Firebase
   init: async function() {
     if (!firebaseDb || !isFirebaseConfigured) {
@@ -87,54 +120,52 @@ const JobsManager = {
     if (!firebaseDb) return;
 
     try {
-      // Check if migration was already completed
-      const migrationSnap = await firebaseDb.ref('jmart-safety/config/jobsMigrationComplete').once('value');
-      if (migrationSnap.val()) {
-        console.log('JobsManager: Migration already completed, skipping');
-        return;
-      }
+      const migrationRef = firebaseDb.ref('jmart-safety/config/jobsMigrationComplete');
+      const migrationSnap = await migrationRef.once('value');
+      const migrationAlreadyComplete = !!migrationSnap.val();
 
       const sitesSnap = await firebaseDb.ref('jmart-safety/sites').once('value');
-      const sites = sitesSnap.val();
+      const sites = this.normalizeSites(sitesSnap.val());
 
-      if (sites && Array.isArray(sites)) {
-        const jobsSnap = await firebaseDb.ref('jmart-safety/jobs').once('value');
-        const existingJobs = jobsSnap.val();
+      const jobsSnap = await firebaseDb.ref('jmart-safety/jobs').once('value');
+      const existingJobs = jobsSnap.val();
 
-        // Build a Set of existing job names to prevent duplicates
-        const existingNames = new Set();
-        if (existingJobs) {
-          Object.values(existingJobs).forEach(j => {
-            if (j && j.name) existingNames.add(j.name.toLowerCase());
-          });
-        }
-
-        let migratedCount = 0;
-        for (const site of sites) {
-          // Sites can be plain strings (e.g. "Martin Place") or objects with .name
-          const siteName = typeof site === 'string' ? site : (site && site.name ? site.name : null);
-          if (siteName && !existingNames.has(siteName.toLowerCase())) {
-            await this.addJob({
-              name: siteName,
-              client: (typeof site === 'object' && site.builder) ? site.builder : '',
-              address: (typeof site === 'object' && site.address) ? site.address : '',
-              status: 'active',
-              createdAt: new Date().toISOString(),
-              source: 'migrated-from-sites'
-            });
-            existingNames.add(siteName.toLowerCase());
-            migratedCount++;
-          }
-        }
-
-        if (migratedCount > 0) {
-          console.log('JobsManager: Migrated', migratedCount, 'new sites to jobs');
-        }
+      // Build a Set of existing job names to prevent duplicates and allow safe reconciliation
+      const existingNames = new Set();
+      if (existingJobs) {
+        Object.values(existingJobs).forEach((job) => {
+          if (job && job.name) existingNames.add(job.name.toLowerCase().trim());
+        });
       }
 
-      // Mark migration as complete so it never runs again
-      await firebaseDb.ref('jmart-safety/config/jobsMigrationComplete').set(sanitizeForFirebase(true));
-      console.log('JobsManager: Migration flagged as complete');
+      let migratedCount = 0;
+      for (const site of sites) {
+        const normalizedName = site.name.toLowerCase().trim();
+        if (existingNames.has(normalizedName)) continue;
+
+        await this.addJob({
+          name: site.name,
+          client: site.client,
+          address: site.address,
+          status: 'active',
+          createdAt: new Date().toISOString(),
+          source: 'migrated-from-sites'
+        });
+        existingNames.add(normalizedName);
+        migratedCount++;
+      }
+
+      if (migratedCount > 0) {
+        console.log('JobsManager: Reconciled', migratedCount, 'missing jobs from sites');
+      } else if (migrationAlreadyComplete) {
+        console.log('JobsManager: Migration already completed, no missing site jobs found');
+      }
+
+      if (!migrationAlreadyComplete || migratedCount > 0) {
+        const migrationFlag = typeof sanitizeForFirebase === 'function' ? sanitizeForFirebase(true) : true;
+        await migrationRef.set(migrationFlag);
+        console.log('JobsManager: Migration flagged as complete');
+      }
     } catch (error) {
       console.error('JobsManager: Migration error:', error);
     }
@@ -155,7 +186,7 @@ const JobsManager = {
     };
 
     try {
-      var safeJob = typeof sanitizeForFirebase === 'function' ? sanitizeForFirebase(job) : job;
+      var safeJob = this.sanitizeValue(job);
       const ref = await firebaseDb.ref('jmart-safety/jobs').push(safeJob);
       console.log('JobsManager: Added job', job.name, ref.key);
       return { id: ref.key, ...job };
@@ -171,8 +202,10 @@ const JobsManager = {
 
     try {
       var updateData = { ...updates, updatedAt: new Date().toISOString() };
-      updateData = typeof sanitizeForFirebase === 'function' ? sanitizeForFirebase(updateData) : updateData;
-      await firebaseDb.ref(`jmart-safety/jobs/${jobId}`).update(updateData);
+      const safeUpdateData = typeof sanitizeForFirebase === 'function'
+        ? sanitizeForFirebase(updateData)
+        : updateData;
+      await firebaseDb.ref(`jmart-safety/jobs/${jobId}`).update(safeUpdateData);
       console.log('JobsManager: Updated job', jobId);
       return true;
     } catch (error) {
@@ -256,7 +289,10 @@ const JobsManager = {
         console.log('JobsManager: Removing', duplicateKeys.length, 'duplicate jobs');
         const updates = {};
         duplicateKeys.forEach(key => { updates[key] = null; });
-        await firebaseDb.ref('jmart-safety/jobs').update(sanitizeForFirebase(updates));
+        const safeUpdates = typeof sanitizeForFirebase === 'function'
+          ? sanitizeForFirebase(updates)
+          : updates;
+        await firebaseDb.ref('jmart-safety/jobs').update(safeUpdates);
         console.log('JobsManager: Deduplication complete');
       } else {
         console.log('JobsManager: No duplicate jobs found');
