@@ -7,6 +7,8 @@
     "build": "node scripts/build-jsx.js && node scripts/build-dist.js",
     "lint": "eslint js/components/*.jsx js/*.js",
     "lint:fix": "eslint js/components/*.jsx js/*.js --fix",
+    "backup:drive": "python scripts/backup-safety-data-to-drive.py",
+    "backup:register-task": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/register-bimonthly-backup-task.ps1",
     "backfill:auth-devices": "node scripts/backfill-auth-devices.js",
     "migrate:forms": "node scripts/migrate-legacy-forms.js",
     "migrate:forms:write": "node scripts/migrate-legacy-forms.js --write",

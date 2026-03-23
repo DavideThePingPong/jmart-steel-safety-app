@@ -40,6 +40,19 @@ If old form records need metadata repair:
 1. Dry run: `npm run migrate:forms`
 2. Write migration: `npm run migrate:forms:write`
 
+## Backups
+
+- Forms are saved locally in browser storage under `jmart-safety-forms`, but the durable source of truth is Firebase Realtime Database.
+- Live form records are stored in `jmart-safety/forms`.
+- Large per-form signatures and other bulky assets are stored in `jmart-safety/formAssets`.
+- Shared reusable signatures are stored in `/signatures`.
+- Site and job context lives in `jmart-safety/sites` and `jmart-safety/jobs`.
+- Manual backup now runs with `npm run backup:drive` or `C:\Users\david\Desktop\JM Artsteel\Davidex\JM\RUN-SAFETY-BACKUP.ps1`.
+- The Windows scheduled task `JMart Safety App Bi-Monthly Backup` runs on the first day of January, March, May, July, September, and November at 9:00 AM local time.
+- Local archives are written to `C:\Users\david\Desktop\JM Artsteel\backups\safety-app`.
+- Drive copies are written to `G:\My Drive\JMart Steel\Safety App Backups` and then synced by Google Drive for Desktop.
+- If `G:` is unavailable, the archive still exists locally and can be copied manually from `C:\Users\david\Desktop\JM Artsteel\backups\safety-app`.
+
 ## If Sync Looks Broken
 
 1. Make sure the user is on `https://jmart-steel-safety.web.app`
