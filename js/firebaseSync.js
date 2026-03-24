@@ -491,7 +491,10 @@ const FirebaseSync = {
         break;
       }
       case 'training':
-        await this.writeWithFallback('jmart-safety/training', 'set', item.data);
+        // FIXED: Use update() not set() — set() replaces the entire training node
+        // and destroys records from other devices that synced while offline.
+        // Live syncTraining() already uses update(); queue replay must match.
+        await this.writeWithFallback('jmart-safety/training', 'update', item.data);
         break;
       case 'signatures':
         await this.writeWithFallback('signatures', 'set', item.data);
