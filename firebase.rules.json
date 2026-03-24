@@ -167,10 +167,10 @@
       }
     },
 
-    // Signatures - any authenticated device can read; only admins can replace the shared map
+    // Signatures - any approved device can read/write the shared map
     "signatures": {
       ".read": "auth != null && root.child('jmart-safety/authDevices/' + auth.uid).child('approvedAt').exists()",
-      ".write": "auth != null && root.child('jmart-safety/adminAuthUids/' + auth.uid).exists()",
+      ".write": "auth != null && root.child('jmart-safety/authDevices/' + auth.uid).child('approvedAt').exists()",
       "$signatureId": {
         ".validate": "!newData.exists() || newData.val() === null || (newData.isString() && newData.val().length < 500000)"
       }

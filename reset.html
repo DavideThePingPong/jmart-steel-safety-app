@@ -44,11 +44,11 @@
         • Strip photos from local cache (they're safe in Firebase)<br>
         • Clear old sync queue &amp; temp data<br>
         • Remove service worker &amp; caches<br>
-        • Your forms and credentials are preserved
+        • Your forms, credentials, and saved signatures are preserved
       </div>
       <button class="btn-reset" id="resetBtn" onclick="doReset()">Fix Everything</button>
       <button class="btn-go" id="goBtn" onclick="window.location.href='./'" disabled>Open App</button>
-      <div class="small">Device name &amp; password are preserved. Forms are in Firebase.</div>
+      <div class="small">Device name, password, and saved signatures are preserved. Forms are in Firebase.</div>
     </div>
   </div>
   <script>
@@ -137,7 +137,7 @@
         el.textContent = 'Step 4/7: Clearing sync queue & temp data...';
         var nuked = 0;
         ['jmart-sync-queue', 'jmart-audit-log', 'jmart-photo-queue', 'jmart-job-recordings',
-         'jmart-backed-up-forms', 'jmart-team-signatures'].forEach(function(k) {
+         'jmart-backed-up-forms'].forEach(function(k) {
           try {
             if (localStorage.getItem(k)) { localStorage.removeItem(k); nuked++; }
           } catch(e) {}

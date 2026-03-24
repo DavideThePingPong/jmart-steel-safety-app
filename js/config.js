@@ -371,6 +371,63 @@ async function firebaseRestRead(path, timeoutMs) {
   }
 }
 
+async function firebaseRestWrite(path, operation, value, timeoutMs) {
+  if (isE2ERuntime && window.__JMART_E2E_FIREBASE__) {
+    var ref = window.__JMART_E2E_FIREBASE__.db.ref(path);
+    if (operation === 'set') return ref.set(value);
+    if (operation === 'update') return ref.update(value);
+    if (operation === 'delete') return ref.remove();
+    throw new Error('Unsupported REST write operation: ' + operation);
+  }
+  if (!isFirebaseConfigured) throw new Error('Firebase not configured');
+
+  var user = firebase.auth().currentUser;
+  if (!user) {
+    try { await firebaseAuthReady; user = firebase.auth().currentUser; } catch(e) {}
+  }
+  if (!user) throw new Error('No Firebase auth user');
+
+  var token = await user.getIdToken();
+  var url = firebaseConfig.databaseURL + '/' + path + '.json?auth=' + token;
+  var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  var timeoutId = null;
+  var method = operation === 'set' ? 'PUT' : operation === 'update' ? 'PATCH' : operation === 'delete' ? 'DELETE' : null;
+
+  if (!method) throw new Error('Unsupported REST write operation: ' + operation);
+
+  try {
+    if (controller && timeoutMs) {
+      timeoutId = setTimeout(function() {
+        controller.abort();
+      }, timeoutMs);
+    }
+
+    var options = {
+      method: method,
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    };
+    if (controller) options.signal = controller.signal;
+    if (operation !== 'delete') {
+      options.body = JSON.stringify(typeof sanitizeForFirebase === 'function' ? sanitizeForFirebase(value) : value);
+    }
+
+    var response = await fetch(url, options);
+    if (!response.ok) throw new Error('REST write failed: HTTP ' + response.status);
+
+    if (operation === 'delete') return null;
+    return response.json();
+  } catch (e) {
+    if (e && (e.name === 'AbortError' || /aborted/i.test(e.message || ''))) {
+      throw new Error('REST write timed out');
+    }
+    throw e;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
 // Wrapper: try SDK once() with timeout, fall back to REST
 async function firebaseRead(path, timeoutMs) {
   timeoutMs = timeoutMs || 3000;

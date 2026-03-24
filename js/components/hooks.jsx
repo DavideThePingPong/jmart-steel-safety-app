@@ -33,6 +33,21 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
   const deletingFormRef = useRef(false);
   const deletedFormIdsRef = useRef(new Set(function() { try { return JSON.parse(localStorage.getItem('jmart-deleted-form-ids') || '[]'); } catch(e) { return []; } }()));
   const suppressNextFormsSyncRef = useRef(false);
+  const savedSignaturesRef = useRef(savedSignatures);
+
+  useEffect(() => {
+    savedSignaturesRef.current = savedSignatures;
+  }, [savedSignatures]);
+
+  const persistSignaturesLocally = (nextSignatures) => {
+    if (typeof StorageQuotaManager !== 'undefined' && StorageQuotaManager.safeSignaturesWrite) {
+      StorageQuotaManager.safeSignaturesWrite(nextSignatures);
+    } else {
+      try { localStorage.setItem('jmart-team-signatures', JSON.stringify(nextSignatures || {})); } catch (e) {}
+    }
+  };
+
+  const hasQueuedSignatureSync = () => Array.isArray(FirebaseSync.pendingQueue) && FirebaseSync.pendingQueue.some((item) => item && item.type === 'signatures');
 
   // Mark form as backed up (after PDF download)
   const markAsBackedUp = (formId) => {
@@ -46,24 +61,59 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
 
   // Update team signatures
   const updateSignatures = (newSignatures) => {
-    if (typeof DeviceAuthManager !== 'undefined' && !DeviceAuthManager.isAdmin) {
-      console.warn('Ignoring signature update from non-admin device');
-      return false;
-    }
-
     setSavedSignatures(newSignatures);
-    if (typeof StorageQuotaManager !== 'undefined' && StorageQuotaManager.safeSignaturesWrite) { StorageQuotaManager.safeSignaturesWrite(newSignatures); } else { localStorage.setItem('jmart-team-signatures', JSON.stringify(newSignatures)); }
+    persistSignaturesLocally(newSignatures);
     if (FirebaseSync.isConnected()) {
-      firebaseDb.ref('signatures').set(typeof sanitizeForFirebase === 'function' ? sanitizeForFirebase(newSignatures) : newSignatures)
+      FirebaseSync.syncSignatures(newSignatures)
         .catch(err => console.error('Signature sync error:', err));
     }
     return true;
   };
 
   // Signature reuse warning flag — components should show amber banner when using saved signatures
-  const signatureReuseWarning = Object.keys(savedSignatures).length > 0
-    ? 'Saved signatures are being reused. Ensure each signer is physically present and consents to signing.'
-    : null;
+  const signatureReuseWarning = null;
+
+  useEffect(() => {
+    if (!FirebaseSync.isConnected()) return;
+
+    let active = true;
+    const applyRemoteSignatures = (remoteSignatures) => {
+      if (!active) return;
+      const remoteMap = remoteSignatures && typeof remoteSignatures === 'object' ? remoteSignatures : {};
+      const localMap = savedSignaturesRef.current || {};
+
+      if (Object.keys(remoteMap).length > 0) {
+        setSavedSignatures(remoteMap);
+        persistSignaturesLocally(remoteMap);
+        return;
+      }
+
+      if (Object.keys(localMap).length > 0) {
+        if (!hasQueuedSignatureSync()) {
+          FirebaseSync.syncSignatures(localMap).catch(err => console.warn('Signature backfill skipped:', err.message));
+        }
+        return;
+      }
+
+      setSavedSignatures({});
+      persistSignaturesLocally({});
+    };
+
+    if (typeof firebaseRead === 'function') {
+      firebaseRead('signatures', 2000)
+        .then((result) => applyRemoteSignatures(result && result.val ? result.val : {}))
+        .catch((err) => console.warn('Could not load signatures from Firebase:', err.message));
+    }
+
+    const unsubscribe = typeof FirebaseSync.onSignaturesChange === 'function'
+      ? FirebaseSync.onSignaturesChange((remoteSignatures) => applyRemoteSignatures(remoteSignatures))
+      : null;
+
+    return () => {
+      active = false;
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, []);
 
   // Add a new form
   const addForm = (formType, formData) => {
@@ -425,6 +475,18 @@ function useDataSync({ setForms, setSites, deletingFormRef, deletedFormIdsRef, s
       }))
       .sort((a, b) => String(a.id || '').localeCompare(String(b.id || '')))
   );
+  const buildQueueComparableSignature = (forms) => JSON.stringify(
+    (Array.isArray(forms) ? forms : Object.values(forms || {}))
+      .map((form) => ({
+        id: form?.id || null,
+        type: form?.type || null,
+        version: form?.version || 1,
+        createdAt: form?.createdAt || null,
+        updatedAt: form?.updatedAt || null,
+        site: form?.data?.siteConducted || form?.data?.site || null
+      }))
+      .sort((a, b) => String(a.id || '').localeCompare(String(b.id || '')))
+  );
   const hasQueuedFormSync = () => Array.isArray(FirebaseSync.pendingQueue) && FirebaseSync.pendingQueue.some((item) => {
     if (!item) return false;
     if (item.type === 'forms') return true;
@@ -549,6 +611,18 @@ function useDataSync({ setForms, setSites, deletingFormRef, deletedFormIdsRef, s
           const mergedForms = [];
           formMap.forEach(form => mergedForms.push(form));
           mergedForms.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+          const queuedFormsItem = Array.isArray(FirebaseSync.pendingQueue)
+            ? FirebaseSync.pendingQueue.find((item) => item && item.type === 'forms')
+            : null;
+          if (queuedFormsItem) {
+            const queuedSignature = buildQueueComparableSignature(queuedFormsItem.data);
+            const remoteSignature = buildQueueComparableSignature(mergedForms);
+            if (queuedSignature === remoteSignature) {
+              FirebaseSync.pendingQueue = FirebaseSync.pendingQueue.filter((item) => item !== queuedFormsItem);
+              FirebaseSync.saveQueue();
+            }
+          }
 
           // Update React state with full data (including photos for viewing)
           formsFromFirebaseRef.current = true;  // Prevent syncFormsEffect from sending back to Firebase
@@ -833,13 +907,30 @@ function useDataSync({ setForms, setSites, deletingFormRef, deletedFormIdsRef, s
 
   // Online/Offline detection
   useEffect(() => {
-    const handleOnline = () => { setIsOnline(true); isOnlineRef.current = true; };
+    const processPendingQueue = () => {
+      if (navigator.onLine && FirebaseSync.getPendingCount() > 0) {
+        FirebaseSync.processQueue();
+      }
+    };
+    const handleOnline = () => {
+      setIsOnline(true);
+      isOnlineRef.current = true;
+      processPendingQueue();
+    };
     const handleOffline = () => { setIsOnline(false); isOnlineRef.current = false; };
+    const handleFocus = () => processPendingQueue();
+    const handleVisibilityChange = () => {
+      if (!document.hidden) processPendingQueue();
+    };
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []);
 

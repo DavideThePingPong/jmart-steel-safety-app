@@ -447,8 +447,8 @@ StorageQuotaManager.safeRecordingsWrite = function(recordingsArray) {
 };
 
 // SAFE TEAM SIGNATURES WRITE
-// Signatures are small base64 PNGs but can accumulate
-StorageQuotaManager.MAX_SIGNATURES_BYTES = 250 * 1024; // 250KB (was 500KB)
+// Signatures should remain durable. Do not trim or delete them automatically.
+StorageQuotaManager.MAX_SIGNATURES_BYTES = 1024 * 1024; // 1MB local cache target
 
 StorageQuotaManager.safeSignaturesWrite = function(signaturesObj) {
   if (!signaturesObj || typeof signaturesObj !== 'object') {
@@ -456,21 +456,10 @@ StorageQuotaManager.safeSignaturesWrite = function(signaturesObj) {
     return;
   }
   var json = JSON.stringify(signaturesObj);
-  // If over budget, drop signatures until it fits (keep newest by iterating keys)
-  if (json.length > this.MAX_SIGNATURES_BYTES) {
-    var keys = Object.keys(signaturesObj);
-    var trimmed = Object.assign({}, signaturesObj);
-    // Drop entries from the start (oldest added) until under budget
-    while (JSON.stringify(trimmed).length > this.MAX_SIGNATURES_BYTES && keys.length > 0) {
-      delete trimmed[keys.shift()];
-    }
-    json = JSON.stringify(trimmed);
-    console.warn('[safeSignaturesWrite] Trimmed signatures to fit (' + Math.round(json.length / 1024) + 'KB)');
-  }
   try {
     localStorage.setItem('jmart-team-signatures', json);
   } catch(e) {
-    try { localStorage.removeItem('jmart-team-signatures'); } catch(e2) {}
+    console.error('[safeSignaturesWrite] Could not cache signatures locally:', e.message);
   }
 };
 
@@ -505,8 +494,6 @@ StorageQuotaManager.safeSignaturesWrite = function(signaturesObj) {
       try { localStorage.removeItem('jmart-backed-up-forms'); } catch(e) {}
       try { localStorage.removeItem('jmart-photo-queue'); } catch(e) {}
       try { localStorage.removeItem('jmart-job-recordings'); } catch(e) {}
-      try { localStorage.removeItem('jmart-team-signatures'); } catch(e) {}
-
       // 2. Nuke all temp/cache/backup keys
       for (var j = localStorage.length - 1; j >= 0; j--) {
         var k = localStorage.key(j);

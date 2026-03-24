@@ -250,6 +250,47 @@ const FirebaseSync = {
     setTimeout(() => this.processQueue(), 250);
   },
 
+  writeWithFallback: async function(path, operation, data) {
+    if (!firebaseDb || !isFirebaseConfigured) {
+      throw new Error('Firebase not configured');
+    }
+
+    var ref = firebaseDb.ref(path);
+    var payload = operation === 'delete' ? null : sanitizeForFirebase(data);
+
+    try {
+      switch (operation) {
+        case 'set':
+          await ref.set(payload);
+          break;
+        case 'update':
+          await ref.update(payload);
+          break;
+        case 'delete':
+          await ref.remove();
+          break;
+        default:
+          throw new Error('Unknown operation: ' + operation);
+      }
+      return { success: true, source: 'sdk' };
+    } catch (sdkError) {
+      if (typeof firebaseRestWrite !== 'function') {
+        throw sdkError;
+      }
+
+      console.warn('[FirebaseSync] SDK write failed for ' + path + ' (' + operation + ') - trying REST fallback:', sdkError.message);
+      try {
+        await firebaseRestWrite(path, operation, payload, 10000);
+        return { success: true, source: 'rest' };
+      } catch (restError) {
+        var combinedError = new Error('SDK write failed: ' + sdkError.message + ' | REST fallback failed: ' + restError.message);
+        combinedError.sdkError = sdkError;
+        combinedError.restError = restError;
+        throw combinedError;
+      }
+    }
+  },
+
   _prepareQueueData: function(data) {
     var safeData = data;
     if (typeof StorageQuotaManager !== 'undefined' && StorageQuotaManager.stripLargeData) {
@@ -416,13 +457,7 @@ const FirebaseSync = {
 
     // v3 granular operations (path-based)
     if (item.path && item.operation) {
-      const ref = firebaseDb.ref(item.path);
-      switch (item.operation) {
-        case 'set': await ref.set(sanitizeForFirebase(item.data)); break;
-        case 'update': await ref.update(sanitizeForFirebase(item.data)); break;
-        case 'delete': await ref.remove(); break;
-        default: throw new Error('Unknown operation: ' + item.operation);
-      }
+      await this.writeWithFallback(item.path, item.operation, item.data);
       return;
     }
 
@@ -434,8 +469,8 @@ const FirebaseSync = {
         var strippedForms = stripFormAssets(formsArray);
         var formUpdates = normalizeFormsPayload(strippedForms, deviceId);
         var assetUpdates = collectFormAssetUpdates(formsArray);
-        await firebaseDb.ref('jmart-safety/forms').set(formUpdates);
-        await firebaseDb.ref('jmart-safety/formAssets').set(sanitizeForFirebase(assetUpdates));
+        await this.writeWithFallback('jmart-safety/forms', 'set', formUpdates);
+        await this.writeWithFallback('jmart-safety/formAssets', 'set', assetUpdates);
         break;
       }
       case 'sites': {
@@ -449,20 +484,20 @@ const FirebaseSync = {
           }
           return null;
         }).filter(s => s && s.length > 1 && s !== 'undefined' && s !== 'null'))];
-        await firebaseDb.ref('jmart-safety/sites').set(sanitizeForFirebase(clean));
+        await this.writeWithFallback('jmart-safety/sites', 'set', clean);
         break;
       }
       case 'training':
-        await firebaseDb.ref('jmart-safety/training').set(sanitizeForFirebase(item.data));
+        await this.writeWithFallback('jmart-safety/training', 'set', item.data);
         break;
       case 'signatures':
-        await firebaseDb.ref('signatures').set(sanitizeForFirebase(item.data));
+        await this.writeWithFallback('signatures', 'set', item.data);
         break;
       case 'delete-form':
-        await firebaseDb.ref('jmart-safety/forms/' + item.data.formId).remove();
+        await this.writeWithFallback('jmart-safety/forms/' + item.data.formId, 'delete');
         break;
       case 'delete-form-assets':
-        await firebaseDb.ref('jmart-safety/formAssets/' + item.data.formId).remove();
+        await this.writeWithFallback('jmart-safety/formAssets/' + item.data.formId, 'delete');
         break;
       default:
         throw new Error('Unknown sync type: ' + item.type);
@@ -488,8 +523,8 @@ const FirebaseSync = {
       const strippedForms = stripFormAssets(formsArray);
       const updates = normalizeFormsPayload(strippedForms, deviceId);
       // Single atomic update of all forms (granular keys, no full overwrite)
-      await firebaseDb.ref('jmart-safety/forms').update(updates);
-      await firebaseDb.ref('jmart-safety/formAssets').update(sanitizeForFirebase(assetUpdates));
+      await this.writeWithFallback('jmart-safety/forms', 'update', updates);
+      await this.writeWithFallback('jmart-safety/formAssets', 'update', assetUpdates);
       console.log('Forms synced to Firebase (granular):', Object.keys(updates).length, 'forms');
       return { success: true };
     } catch (error) {
@@ -516,8 +551,8 @@ const FirebaseSync = {
     }
 
     try {
-      await firebaseDb.ref('jmart-safety/forms/' + formId).remove();
-      await firebaseDb.ref('jmart-safety/formAssets/' + formId).remove();
+      await this.writeWithFallback('jmart-safety/forms/' + formId, 'delete');
+      await this.writeWithFallback('jmart-safety/formAssets/' + formId, 'delete');
       return { success: true };
     } catch (error) {
       this.addToQueue('delete-form', { formId: formId });
@@ -548,7 +583,7 @@ const FirebaseSync = {
       )];
 
       // Use set() to REPLACE the entire sites node — prevents accumulation
-      await firebaseDb.ref('jmart-safety/sites').set(sanitizeForFirebase(sitesArray));
+      await this.writeWithFallback('jmart-safety/sites', 'set', sitesArray);
       console.log('Sites synced to Firebase (clean replace):', sitesArray.length, 'sites');
       return { success: true };
     } catch (error) {
@@ -577,12 +612,34 @@ const FirebaseSync = {
         const key = record.id || ('training-' + i);
         updates[key] = sanitizeForFirebase({ ...record, _lastModified: Date.now() });
       });
-      await firebaseDb.ref('jmart-safety/training').update(updates);
+      await this.writeWithFallback('jmart-safety/training', 'update', updates);
       console.log('Training synced to Firebase (granular):', trainingArray.length, 'records');
       return { success: true };
     } catch (error) {
       console.error('Error syncing training, adding to retry queue:', error);
       this.addToQueue('training', training);
+      return { success: false, queued: true, error: error.message };
+    }
+  },
+
+  syncSignatures: async function(signatures) {
+    var payload = signatures && typeof signatures === 'object' ? signatures : {};
+    if (!firebaseDb || !isFirebaseConfigured) {
+      this.addToQueue('signatures', payload);
+      return { success: false, queued: true };
+    }
+    var authOk = await this._ensureAuth();
+    if (!authOk) {
+      this.addToQueue('signatures', payload);
+      return { success: false, queued: true, error: 'Auth not ready' };
+    }
+    try {
+      await this.writeWithFallback('signatures', 'set', payload);
+      console.log('Signatures synced to Firebase:', Object.keys(payload).length, 'members');
+      return { success: true };
+    } catch (error) {
+      console.error('Error syncing signatures, adding to retry queue:', error);
+      this.addToQueue('signatures', payload);
       return { success: false, queued: true, error: error.message };
     }
   },
@@ -673,6 +730,20 @@ const FirebaseSync = {
     const errorHandler = (error) => {
       console.error('Firebase training listener error:', error);
       if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(error, 'firebase-training-listener');
+    };
+    ref.on('value', handler, errorHandler);
+    return () => ref.off('value', handler);
+  },
+
+  onSignaturesChange: (callback) => {
+    if (!firebaseDb || !isFirebaseConfigured) return () => {};
+    const ref = firebaseDb.ref('signatures');
+    const handler = (snapshot) => {
+      callback(snapshot.val());
+    };
+    const errorHandler = (error) => {
+      console.error('Firebase signatures listener error:', error);
+      if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(error, 'firebase-signatures-listener');
     };
     ref.on('value', handler, errorHandler);
     return () => ref.off('value', handler);

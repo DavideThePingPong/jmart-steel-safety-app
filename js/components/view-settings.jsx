@@ -118,6 +118,7 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
   const [fixDone, setFixDone] = useState(false);
   const currentSites = [...new Set(sites.length > 0 ? sites : FORM_CONSTANTS.defaultSites)];
   const canManageSharedSettings = isAdmin || isDeviceAdmin;
+  const canManageSignatures = true;
 
   // Listen to device changes if admin, viewer, or has revoke permission
   useEffect(() => {
@@ -217,21 +218,18 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
   const allMembers = [...new Set([...defaultMembers, ...Object.keys(signatures).filter(name => !defaultMembers.includes(name))])];
 
   const saveSignature = (name, signatureData) => {
-    if (!canManageSharedSettings) return;
     const newSignatures = { ...signatures, [name]: signatureData };
     onUpdateSignatures(newSignatures);
     setShowSignaturePad(null);
   };
 
   const deleteSignature = (name) => {
-    if (!canManageSharedSettings) return;
     const newSignatures = { ...signatures };
     delete newSignatures[name];
     onUpdateSignatures(newSignatures);
   };
 
   const addNewMember = () => {
-    if (!canManageSharedSettings) return;
     if (newMemberName.trim() && !allMembers.includes(newMemberName.trim())) {
       // Add member with empty signature (will show "Add Signature" button)
       const newSignatures = { ...signatures, [newMemberName.trim()]: null };
@@ -242,7 +240,6 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
   };
 
   const deleteMember = (name) => {
-    if (!canManageSharedSettings) return;
     // Only allow deleting custom members (not in defaultMembers)
     if (!defaultMembers.includes(name)) {
       const newSignatures = { ...signatures };
@@ -319,7 +316,7 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
   }, []);
 
   const doFixEverything = async () => {
-    if (!await ConfirmDialog.show('This will strip photos from local cache and clear temp data.\n\nYour forms and credentials are preserved.\nPhotos are safe in Firebase & Drive.\n\nContinue?', { title: 'Clear Cache', confirmLabel: 'Continue' })) return;
+    if (!await ConfirmDialog.show('This will strip photos from local cache and clear temp data.\n\nYour forms, credentials, and saved signatures are preserved.\nPhotos are safe in Firebase & Drive.\n\nContinue?', { title: 'Clear Cache', confirmLabel: 'Continue' })) return;
     setIsFixing(true);
     setFixDone(false);
     setFixStatus('Starting...');
@@ -366,7 +363,7 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
       setFixStatus('Step 3/6: Clearing sync queue & temp data...');
       var nuked = 0;
       ['jmart-sync-queue', 'jmart-audit-log', 'jmart-photo-queue', 'jmart-job-recordings',
-       'jmart-backed-up-forms', 'jmart-team-signatures'].forEach(function(k) {
+       'jmart-backed-up-forms'].forEach(function(k) {
         try { if (localStorage.getItem(k)) { localStorage.removeItem(k); nuked++; } } catch(e) {}
       });
       steps.push('Cleared ' + nuked + ' data store(s)');
@@ -698,15 +695,13 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
       <div className="bg-white rounded-xl shadow-sm p-4">
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-semibold text-gray-800">✍️ Team Signatures</h3>
-          {canManageSharedSettings ? (
+          {canManageSignatures ? (
             <button onClick={() => setShowAddMember(!showAddMember)} className="bg-green-600 text-white px-3 py-1 rounded-lg text-sm">+ Add Member</button>
-          ) : (
-            <span className="text-xs text-gray-400">Admin only</span>
-          )}
+          ) : null}
         </div>
         <p className="text-xs text-gray-500 mb-3">Save signatures once and use them automatically in all forms</p>
 
-        {canManageSharedSettings && showAddMember && (
+        {canManageSignatures && showAddMember && (
           <div className="mb-4 flex gap-2">
             <input
               type="text"
@@ -731,7 +726,7 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
                 )}
               </div>
               <div className="flex items-center gap-2">
-                {canManageSharedSettings && (
+                {canManageSignatures && (
                   <>
                     <button
                       onClick={() => setShowSignaturePad(name)}
@@ -792,7 +787,7 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
         </button>
 
         <p className="text-xs text-gray-500 mt-2 text-center">
-          Strips photos from cache, clears temp data & caches. Forms & credentials preserved.
+          Strips photos from cache, clears temp data & caches. Forms, credentials, and saved signatures are preserved.
         </p>
 
         {fixStatus && (

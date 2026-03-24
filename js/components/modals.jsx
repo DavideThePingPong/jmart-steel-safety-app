@@ -286,7 +286,7 @@ function SyncStatusBanner({ syncStatus, pendingSyncCount, syncError, onRetry }) 
           <span className="text-xl">{syncStatus === 'error' ? '⚠️' : '🔄'}</span>
           <div>
             <p className="font-semibold text-sm">
-              {syncStatus === 'error' ? 'Sync Failed' : `${pendingSyncCount} form(s) waiting to sync`}
+              {syncStatus === 'error' ? 'Sync Failed' : `${pendingSyncCount} item(s) waiting to sync`}
             </p>
             <p className="text-xs opacity-80">
               {syncStatus === 'error' ? (syncError || 'Will retry automatically when online') : 'Will sync when connection is restored'}

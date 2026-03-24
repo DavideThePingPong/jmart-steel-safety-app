@@ -129,27 +129,12 @@ describe('SignaturePad — core functionality', () => {
 // ==========================================================================
 describe('SignaturePad — security', () => {
 
-  it('should require verification code for saved signatures', () => {
-    expect(code).toMatch(/Signature Verification Required/);
-    expect(code).toMatch(/verificationCode/);
-  });
-
-  it('should generate verification code based on name hash', () => {
-    expect(code).toMatch(/getVerificationCode/);
-    expect(code).toMatch(/padStart\(4,\s*'0'\)/);
-  });
-
-  it('should BLOCK using other peoples signatures (security fix)', () => {
-    expect(code).toMatch(/SECURITY FIX/);
-    expect(code).toMatch(/must sign their own signature/);
+  it('should offer direct saved signature reuse', () => {
+    expect(code).toMatch(/Use Saved Signature/);
   });
 
   it('should log signature usage to AuditLogManager', () => {
     expect(code).toMatch(/AuditLogManager\.log\(['"]signature_used['"]/);
-  });
-
-  it('should show error on incorrect verification code', () => {
-    expect(code).toMatch(/Incorrect code/);
   });
 });
 

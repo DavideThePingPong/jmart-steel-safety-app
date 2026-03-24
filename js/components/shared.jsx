@@ -141,7 +141,6 @@ function SignaturePad({ onSave, onCancel, name }) {
   const canvasRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasSignature, setHasSignature] = useState(false);
-  const [showSavedOptions, setShowSavedOptions] = useState(false);
 
   // Get saved signatures from localStorage
   const savedSignatures = useMemo(() => {
@@ -197,66 +196,29 @@ function SignaturePad({ onSave, onCancel, name }) {
   };
   const saveSignature = () => onSave(canvasRef.current.toDataURL('image/png'));
 
-  // SIGNATURE SECURITY: Require verification before using saved signatures
-  const [verificationCode, setVerificationCode] = useState('');
-  const [showVerification, setShowVerification] = useState(false);
-  const [selectedMember, setSelectedMember] = useState(null);
-  const [verificationError, setVerificationError] = useState('');
-
-  // Generate a simple verification code based on name (last 4 chars of name hash)
-  const getVerificationCode = (memberName) => {
-    let hash = 0;
-    const str = memberName.toLowerCase().replace(/\s/g, '');
-    for (let i = 0; i < str.length; i++) {
-      hash = ((hash << 5) - hash) + str.charCodeAt(i);
-      hash = hash & hash;
-    }
-    return Math.abs(hash % 10000).toString().padStart(4, '0');
-  };
-
-  // Use saved signature - requires verification
   const useSavedSignature = () => {
     if (hasSavedSignature) {
-      setSelectedMember(name);
-      setShowVerification(true);
-      setVerificationError('');
+      if (typeof AuditLogManager !== 'undefined') {
+        AuditLogManager.log('signature_used', {
+          signerName: name,
+          usedBy: DeviceAuthManager.deviceId,
+          method: 'saved_signature',
+          timestamp: new Date().toISOString()
+        });
+      }
+      onSave(savedSignatures[name]);
     }
   };
 
-  // Use another team member's saved signature - DISABLED for security
-  // Each person must sign their own signature
-  const useOtherSignature = (memberName) => {
-    // SECURITY FIX: Do not allow using other people's signatures
-    // Instead, show a message that each person must sign their own
-    ToastNotifier.warning(`Security Notice: ${memberName} must sign their own signature. Please have them sign directly on this device.`);
-    setShowSavedOptions(false);
-  };
-
-  // Verify and apply signature
-  const verifyAndApplySignature = () => {
-    if (!selectedMember) return;
-
-    const expectedCode = getVerificationCode(selectedMember);
-    if (verificationCode === expectedCode) {
-      // Verification passed - apply signature with audit log
-      AuditLogManager.log('signature_used', {
-        signerName: selectedMember,
-        usedBy: DeviceAuthManager.deviceId,
-        method: 'saved_signature',
-        timestamp: new Date().toISOString()
-      });
-      onSave(savedSignatures[selectedMember]);
-      setShowVerification(false);
-      setVerificationCode('');
-    } else {
-      setVerificationError('Incorrect code. Please enter your personal verification code.');
-    }
-  };
-
-  // Get list of team members with saved signatures (for display only)
-  const membersWithSignatures = Object.entries(savedSignatures)
-    .filter(([_, sig]) => sig && sig.startsWith('data:image'))
-    .map(([memberName]) => memberName);
+  const showVerification = false;
+  const selectedMember = name;
+  const verificationCode = '';
+  const verificationError = '';
+  const setShowVerification = function() {};
+  const setVerificationCode = function() {};
+  const setVerificationError = function() {};
+  const verifyAndApplySignature = function() {};
+  const membersWithSignatures = [];
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -267,7 +229,7 @@ function SignaturePad({ onSave, onCancel, name }) {
         </div>
 
         {/* Verification Modal */}
-        {showVerification && (
+        {false && (
           <div className="p-4 bg-amber-50 border-b border-amber-200">
             <p className="text-sm text-amber-800 mb-2 font-medium">🔐 Signature Verification Required</p>
             <p className="text-xs text-amber-700 mb-3">
@@ -306,7 +268,7 @@ function SignaturePad({ onSave, onCancel, name }) {
         )}
 
         {/* Saved Signature Option - only show if not in verification mode */}
-        {hasSavedSignature && !showVerification && (
+        {hasSavedSignature && (
           <div className="p-4 bg-green-50 border-b border-green-100">
             <p className="text-sm text-green-700 mb-2">✓ {name} has a saved signature</p>
             <button
@@ -319,7 +281,7 @@ function SignaturePad({ onSave, onCancel, name }) {
         )}
 
         {/* Info about signature security */}
-        {membersWithSignatures.length > 1 && !showVerification && (
+        {false && (
           <div className="px-4 pt-3">
             <p className="text-xs text-gray-500 italic">
               🔒 Security: Each team member must sign their own signature.

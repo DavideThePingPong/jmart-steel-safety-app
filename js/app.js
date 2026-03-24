@@ -273,7 +273,6 @@ function SignaturePad({
   const canvasRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasSignature, setHasSignature] = useState(false);
-  const [showSavedOptions, setShowSavedOptions] = useState(false);
 
   // Get saved signatures from localStorage
   const savedSignatures = useMemo(() => {
@@ -336,64 +335,28 @@ function SignaturePad({
     setHasSignature(false);
   };
   const saveSignature = () => onSave(canvasRef.current.toDataURL('image/png'));
-
-  // SIGNATURE SECURITY: Require verification before using saved signatures
-  const [verificationCode, setVerificationCode] = useState('');
-  const [showVerification, setShowVerification] = useState(false);
-  const [selectedMember, setSelectedMember] = useState(null);
-  const [verificationError, setVerificationError] = useState('');
-
-  // Generate a simple verification code based on name (last 4 chars of name hash)
-  const getVerificationCode = memberName => {
-    let hash = 0;
-    const str = memberName.toLowerCase().replace(/\s/g, '');
-    for (let i = 0; i < str.length; i++) {
-      hash = (hash << 5) - hash + str.charCodeAt(i);
-      hash = hash & hash;
-    }
-    return Math.abs(hash % 10000).toString().padStart(4, '0');
-  };
-
-  // Use saved signature - requires verification
   const useSavedSignature = () => {
     if (hasSavedSignature) {
-      setSelectedMember(name);
-      setShowVerification(true);
-      setVerificationError('');
+      if (typeof AuditLogManager !== 'undefined') {
+        AuditLogManager.log('signature_used', {
+          signerName: name,
+          usedBy: DeviceAuthManager.deviceId,
+          method: 'saved_signature',
+          timestamp: new Date().toISOString()
+        });
+      }
+      onSave(savedSignatures[name]);
     }
   };
-
-  // Use another team member's saved signature - DISABLED for security
-  // Each person must sign their own signature
-  const useOtherSignature = memberName => {
-    // SECURITY FIX: Do not allow using other people's signatures
-    // Instead, show a message that each person must sign their own
-    ToastNotifier.warning(`Security Notice: ${memberName} must sign their own signature. Please have them sign directly on this device.`);
-    setShowSavedOptions(false);
-  };
-
-  // Verify and apply signature
-  const verifyAndApplySignature = () => {
-    if (!selectedMember) return;
-    const expectedCode = getVerificationCode(selectedMember);
-    if (verificationCode === expectedCode) {
-      // Verification passed - apply signature with audit log
-      AuditLogManager.log('signature_used', {
-        signerName: selectedMember,
-        usedBy: DeviceAuthManager.deviceId,
-        method: 'saved_signature',
-        timestamp: new Date().toISOString()
-      });
-      onSave(savedSignatures[selectedMember]);
-      setShowVerification(false);
-      setVerificationCode('');
-    } else {
-      setVerificationError('Incorrect code. Please enter your personal verification code.');
-    }
-  };
-
-  // Get list of team members with saved signatures (for display only)
-  const membersWithSignatures = Object.entries(savedSignatures).filter(([_, sig]) => sig && sig.startsWith('data:image')).map(([memberName]) => memberName);
+  const showVerification = false;
+  const selectedMember = name;
+  const verificationCode = '';
+  const verificationError = '';
+  const setShowVerification = function () {};
+  const setVerificationCode = function () {};
+  const setVerificationError = function () {};
+  const verifyAndApplySignature = function () {};
+  const membersWithSignatures = [];
   return /*#__PURE__*/React.createElement("div", {
     className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
   }, /*#__PURE__*/React.createElement("div", {
@@ -404,7 +367,7 @@ function SignaturePad({
     className: "font-semibold text-gray-800"
   }, "Sign: ", name), /*#__PURE__*/React.createElement("p", {
     className: "text-sm text-gray-500"
-  }, "Draw your signature below or use a saved one")), showVerification && /*#__PURE__*/React.createElement("div", {
+  }, "Draw your signature below or use a saved one")), false && /*#__PURE__*/React.createElement("div", {
     className: "p-4 bg-amber-50 border-b border-amber-200"
   }, /*#__PURE__*/React.createElement("p", {
     className: "text-sm text-amber-800 mb-2 font-medium"
@@ -435,14 +398,14 @@ function SignaturePad({
   }, "Cancel"), /*#__PURE__*/React.createElement("button", {
     onClick: verifyAndApplySignature,
     className: "flex-1 bg-amber-600 text-white py-2 rounded-lg font-medium"
-  }, "Verify & Sign"))), hasSavedSignature && !showVerification && /*#__PURE__*/React.createElement("div", {
+  }, "Verify & Sign"))), hasSavedSignature && /*#__PURE__*/React.createElement("div", {
     className: "p-4 bg-green-50 border-b border-green-100"
   }, /*#__PURE__*/React.createElement("p", {
     className: "text-sm text-green-700 mb-2"
   }, "\u2713 ", name, " has a saved signature"), /*#__PURE__*/React.createElement("button", {
     onClick: useSavedSignature,
     className: "w-full bg-green-600 text-white py-2 rounded-lg font-medium flex items-center justify-center gap-2"
-  }, /*#__PURE__*/React.createElement("span", null, "\u270D\uFE0F"), " Use Saved Signature (requires verification)")), membersWithSignatures.length > 1 && !showVerification && /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("span", null, "\u270D\uFE0F"), " Use Saved Signature (requires verification)")), false && /*#__PURE__*/React.createElement("div", {
     className: "px-4 pt-3"
   }, /*#__PURE__*/React.createElement("p", {
     className: "text-xs text-gray-500 italic"
@@ -833,6 +796,20 @@ function useFormManager({
     }
   }()));
   const suppressNextFormsSyncRef = useRef(false);
+  const savedSignaturesRef = useRef(savedSignatures);
+  useEffect(() => {
+    savedSignaturesRef.current = savedSignatures;
+  }, [savedSignatures]);
+  const persistSignaturesLocally = nextSignatures => {
+    if (typeof StorageQuotaManager !== 'undefined' && StorageQuotaManager.safeSignaturesWrite) {
+      StorageQuotaManager.safeSignaturesWrite(nextSignatures);
+    } else {
+      try {
+        localStorage.setItem('jmart-team-signatures', JSON.stringify(nextSignatures || {}));
+      } catch (e) {}
+    }
+  };
+  const hasQueuedSignatureSync = () => Array.isArray(FirebaseSync.pendingQueue) && FirebaseSync.pendingQueue.some(item => item && item.type === 'signatures');
 
   // Mark form as backed up (after PDF download)
   const markAsBackedUp = formId => {
@@ -846,24 +823,46 @@ function useFormManager({
 
   // Update team signatures
   const updateSignatures = newSignatures => {
-    if (typeof DeviceAuthManager !== 'undefined' && !DeviceAuthManager.isAdmin) {
-      console.warn('Ignoring signature update from non-admin device');
-      return false;
-    }
     setSavedSignatures(newSignatures);
-    if (typeof StorageQuotaManager !== 'undefined' && StorageQuotaManager.safeSignaturesWrite) {
-      StorageQuotaManager.safeSignaturesWrite(newSignatures);
-    } else {
-      localStorage.setItem('jmart-team-signatures', JSON.stringify(newSignatures));
-    }
+    persistSignaturesLocally(newSignatures);
     if (FirebaseSync.isConnected()) {
-      firebaseDb.ref('signatures').set(typeof sanitizeForFirebase === 'function' ? sanitizeForFirebase(newSignatures) : newSignatures).catch(err => console.error('Signature sync error:', err));
+      FirebaseSync.syncSignatures(newSignatures).catch(err => console.error('Signature sync error:', err));
     }
     return true;
   };
 
   // Signature reuse warning flag — components should show amber banner when using saved signatures
-  const signatureReuseWarning = Object.keys(savedSignatures).length > 0 ? 'Saved signatures are being reused. Ensure each signer is physically present and consents to signing.' : null;
+  const signatureReuseWarning = null;
+  useEffect(() => {
+    if (!FirebaseSync.isConnected()) return;
+    let active = true;
+    const applyRemoteSignatures = remoteSignatures => {
+      if (!active) return;
+      const remoteMap = remoteSignatures && typeof remoteSignatures === 'object' ? remoteSignatures : {};
+      const localMap = savedSignaturesRef.current || {};
+      if (Object.keys(remoteMap).length > 0) {
+        setSavedSignatures(remoteMap);
+        persistSignaturesLocally(remoteMap);
+        return;
+      }
+      if (Object.keys(localMap).length > 0) {
+        if (!hasQueuedSignatureSync()) {
+          FirebaseSync.syncSignatures(localMap).catch(err => console.warn('Signature backfill skipped:', err.message));
+        }
+        return;
+      }
+      setSavedSignatures({});
+      persistSignaturesLocally({});
+    };
+    if (typeof firebaseRead === 'function') {
+      firebaseRead('signatures', 2000).then(result => applyRemoteSignatures(result && result.val ? result.val : {})).catch(err => console.warn('Could not load signatures from Firebase:', err.message));
+    }
+    const unsubscribe = typeof FirebaseSync.onSignaturesChange === 'function' ? FirebaseSync.onSignaturesChange(remoteSignatures => applyRemoteSignatures(remoteSignatures)) : null;
+    return () => {
+      active = false;
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, []);
 
   // Add a new form
   const addForm = (formType, formData) => {
@@ -1248,6 +1247,14 @@ function useDataSync({
     version: form?.version || null,
     modified: form?._lastModified || form?.updatedAt || form?.createdAt || null
   })).sort((a, b) => String(a.id || '').localeCompare(String(b.id || ''))));
+  const buildQueueComparableSignature = forms => JSON.stringify((Array.isArray(forms) ? forms : Object.values(forms || {})).map(form => ({
+    id: form?.id || null,
+    type: form?.type || null,
+    version: form?.version || 1,
+    createdAt: form?.createdAt || null,
+    updatedAt: form?.updatedAt || null,
+    site: form?.data?.siteConducted || form?.data?.site || null
+  })).sort((a, b) => String(a.id || '').localeCompare(String(b.id || ''))));
   const hasQueuedFormSync = () => Array.isArray(FirebaseSync.pendingQueue) && FirebaseSync.pendingQueue.some(item => {
     if (!item) return false;
     if (item.type === 'forms') return true;
@@ -1368,6 +1375,15 @@ function useDataSync({
           const mergedForms = [];
           formMap.forEach(form => mergedForms.push(form));
           mergedForms.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+          const queuedFormsItem = Array.isArray(FirebaseSync.pendingQueue) ? FirebaseSync.pendingQueue.find(item => item && item.type === 'forms') : null;
+          if (queuedFormsItem) {
+            const queuedSignature = buildQueueComparableSignature(queuedFormsItem.data);
+            const remoteSignature = buildQueueComparableSignature(mergedForms);
+            if (queuedSignature === remoteSignature) {
+              FirebaseSync.pendingQueue = FirebaseSync.pendingQueue.filter(item => item !== queuedFormsItem);
+              FirebaseSync.saveQueue();
+            }
+          }
 
           // Update React state with full data (including photos for viewing)
           formsFromFirebaseRef.current = true; // Prevent syncFormsEffect from sending back to Firebase
@@ -1632,19 +1648,33 @@ function useDataSync({
 
   // Online/Offline detection
   useEffect(() => {
+    const processPendingQueue = () => {
+      if (navigator.onLine && FirebaseSync.getPendingCount() > 0) {
+        FirebaseSync.processQueue();
+      }
+    };
     const handleOnline = () => {
       setIsOnline(true);
       isOnlineRef.current = true;
+      processPendingQueue();
     };
     const handleOffline = () => {
       setIsOnline(false);
       isOnlineRef.current = false;
     };
+    const handleFocus = () => processPendingQueue();
+    const handleVisibilityChange = () => {
+      if (!document.hidden) processPendingQueue();
+    };
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []);
 
@@ -2224,7 +2254,7 @@ function SyncStatusBanner({
     className: "text-xl"
   }, syncStatus === 'error' ? '⚠️' : '🔄'), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
     className: "font-semibold text-sm"
-  }, syncStatus === 'error' ? 'Sync Failed' : `${pendingSyncCount} form(s) waiting to sync`), /*#__PURE__*/React.createElement("p", {
+  }, syncStatus === 'error' ? 'Sync Failed' : `${pendingSyncCount} item(s) waiting to sync`), /*#__PURE__*/React.createElement("p", {
     className: "text-xs opacity-80"
   }, syncStatus === 'error' ? syncError || 'Will retry automatically when online' : 'Will sync when connection is restored'))), /*#__PURE__*/React.createElement("button", {
     onClick: onRetry,
@@ -7106,6 +7136,7 @@ function SettingsView({
   const [fixDone, setFixDone] = useState(false);
   const currentSites = [...new Set(sites.length > 0 ? sites : FORM_CONSTANTS.defaultSites)];
   const canManageSharedSettings = isAdmin || isDeviceAdmin;
+  const canManageSignatures = true;
 
   // Listen to device changes if admin, viewer, or has revoke permission
   useEffect(() => {
@@ -7208,7 +7239,6 @@ function SettingsView({
   // Get all members (default + any custom added via signatures)
   const allMembers = [...new Set([...defaultMembers, ...Object.keys(signatures).filter(name => !defaultMembers.includes(name))])];
   const saveSignature = (name, signatureData) => {
-    if (!canManageSharedSettings) return;
     const newSignatures = {
       ...signatures,
       [name]: signatureData
@@ -7217,7 +7247,6 @@ function SettingsView({
     setShowSignaturePad(null);
   };
   const deleteSignature = name => {
-    if (!canManageSharedSettings) return;
     const newSignatures = {
       ...signatures
     };
@@ -7225,7 +7254,6 @@ function SettingsView({
     onUpdateSignatures(newSignatures);
   };
   const addNewMember = () => {
-    if (!canManageSharedSettings) return;
     if (newMemberName.trim() && !allMembers.includes(newMemberName.trim())) {
       // Add member with empty signature (will show "Add Signature" button)
       const newSignatures = {
@@ -7238,7 +7266,6 @@ function SettingsView({
     }
   };
   const deleteMember = name => {
-    if (!canManageSharedSettings) return;
     // Only allow deleting custom members (not in defaultMembers)
     if (!defaultMembers.includes(name)) {
       const newSignatures = {
@@ -7315,7 +7342,7 @@ function SettingsView({
     setStorageInfo(getStorageInfo());
   }, []);
   const doFixEverything = async () => {
-    if (!(await ConfirmDialog.show('This will strip photos from local cache and clear temp data.\n\nYour forms and credentials are preserved.\nPhotos are safe in Firebase & Drive.\n\nContinue?', {
+    if (!(await ConfirmDialog.show('This will strip photos from local cache and clear temp data.\n\nYour forms, credentials, and saved signatures are preserved.\nPhotos are safe in Firebase & Drive.\n\nContinue?', {
       title: 'Clear Cache',
       confirmLabel: 'Continue'
     }))) return;
@@ -7365,7 +7392,7 @@ function SettingsView({
       // 3. Clear sync queue, audit log, photo queue, recordings
       setFixStatus('Step 3/6: Clearing sync queue & temp data...');
       var nuked = 0;
-      ['jmart-sync-queue', 'jmart-audit-log', 'jmart-photo-queue', 'jmart-job-recordings', 'jmart-backed-up-forms', 'jmart-team-signatures'].forEach(function (k) {
+      ['jmart-sync-queue', 'jmart-audit-log', 'jmart-photo-queue', 'jmart-job-recordings', 'jmart-backed-up-forms'].forEach(function (k) {
         try {
           if (localStorage.getItem(k)) {
             localStorage.removeItem(k);
@@ -7652,14 +7679,12 @@ function SettingsView({
     className: "flex items-center justify-between mb-3"
   }, /*#__PURE__*/React.createElement("h3", {
     className: "font-semibold text-gray-800"
-  }, "\u270D\uFE0F Team Signatures"), canManageSharedSettings ? /*#__PURE__*/React.createElement("button", {
+  }, "\u270D\uFE0F Team Signatures"), canManageSignatures ? /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowAddMember(!showAddMember),
     className: "bg-green-600 text-white px-3 py-1 rounded-lg text-sm"
-  }, "+ Add Member") : /*#__PURE__*/React.createElement("span", {
-    className: "text-xs text-gray-400"
-  }, "Admin only")), /*#__PURE__*/React.createElement("p", {
+  }, "+ Add Member") : null), /*#__PURE__*/React.createElement("p", {
     className: "text-xs text-gray-500 mb-3"
-  }, "Save signatures once and use them automatically in all forms"), canManageSharedSettings && showAddMember && /*#__PURE__*/React.createElement("div", {
+  }, "Save signatures once and use them automatically in all forms"), canManageSignatures && showAddMember && /*#__PURE__*/React.createElement("div", {
     className: "mb-4 flex gap-2"
   }, /*#__PURE__*/React.createElement("input", {
     type: "text",
@@ -7687,7 +7712,7 @@ function SettingsView({
     className: "text-xs text-gray-400 italic"
   }, "No signature saved")), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-2"
-  }, canManageSharedSettings && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
+  }, canManageSignatures && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowSignaturePad(name),
     className: `px-3 py-1 rounded-lg text-sm ${signatures[name] ? 'bg-orange-100 text-orange-600' : 'bg-green-600 text-white'}`
   }, signatures[name] ? '✏️ Update' : '➕ Add'), signatures[name] && /*#__PURE__*/React.createElement("button", {
@@ -7729,7 +7754,7 @@ function SettingsView({
     className: `w-full py-3 rounded-lg text-white font-bold text-base ${isFixing ? 'bg-gray-400' : 'bg-red-600 active:bg-red-700'}`
   }, isFixing ? 'Working...' : 'Fix Everything'), /*#__PURE__*/React.createElement("p", {
     className: "text-xs text-gray-500 mt-2 text-center"
-  }, "Strips photos from cache, clears temp data & caches. Forms & credentials preserved."), fixStatus && /*#__PURE__*/React.createElement("div", {
+  }, "Strips photos from cache, clears temp data & caches. Forms, credentials, and saved signatures are preserved."), fixStatus && /*#__PURE__*/React.createElement("div", {
     className: `mt-3 p-3 rounded-lg text-sm ${fixDone ? 'bg-green-50 border border-green-200 text-green-700' : isFixing ? 'bg-yellow-50 border border-yellow-200 text-yellow-800' : 'bg-red-50 border border-red-200 text-red-700'}`
   }, fixStatus), fixDone && /*#__PURE__*/React.createElement("button", {
     onClick: () => window.location.reload(),

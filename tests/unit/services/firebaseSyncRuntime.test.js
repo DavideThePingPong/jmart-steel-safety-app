@@ -51,6 +51,7 @@ describe('FirebaseSync (runtime)', () => {
       stripLargeData: jest.fn(data => data)
     };
     global.AuditLogManager = { log: jest.fn() };
+    global.firebaseRestWrite = jest.fn().mockResolvedValue();
 
     navigator.onLine = true;
 
@@ -73,6 +74,7 @@ describe('FirebaseSync (runtime)', () => {
     delete global.IntervalRegistry;
     delete global.StorageQuotaManager;
     delete global.AuditLogManager;
+    delete global.firebaseRestWrite;
   });
 
   // =====================================================
@@ -330,6 +332,7 @@ describe('FirebaseSync (runtime)', () => {
       FirebaseSync._authReady = true;
       mockRef.set.mockRejectedValue(new Error('network error'));
       mockRef.update.mockRejectedValue(new Error('network error'));
+      firebaseRestWrite.mockRejectedValue(new Error('rest error'));
       FirebaseSync.pendingQueue = [{ id: '1', type: 'forms', data: [], attempts: 0 }];
       await FirebaseSync.processQueue();
       expect(FirebaseSync.pendingQueue[0].attempts).toBe(1);
@@ -339,6 +342,7 @@ describe('FirebaseSync (runtime)', () => {
       FirebaseSync._authReady = true;
       mockRef.set.mockRejectedValue(new Error('fail'));
       mockRef.update.mockRejectedValue(new Error('fail'));
+      firebaseRestWrite.mockRejectedValue(new Error('rest fail'));
       FirebaseSync.pendingQueue = [{ id: '1', type: 'forms', data: [], attempts: 4 }];
       const cb = jest.fn();
       FirebaseSync.syncListeners = [cb];
@@ -367,6 +371,12 @@ describe('FirebaseSync (runtime)', () => {
       expect(mockRef.set).toHaveBeenCalledWith({ a: 1 });
     });
 
+    it('falls back to REST write when SDK set fails', async () => {
+      mockRef.set.mockRejectedValueOnce(new Error('sdk failed'));
+      await FirebaseSync.executeSync({ path: 'test/path', operation: 'set', data: { a: 1 } });
+      expect(firebaseRestWrite).toHaveBeenCalledWith('test/path', 'set', { a: 1 }, 10000);
+    });
+
     it('handles v3 update operation', async () => {
       await FirebaseSync.executeSync({ path: 'test/path', operation: 'update', data: { a: 1 } });
       expect(mockRef.update).toHaveBeenCalledWith({ a: 1 });
@@ -378,8 +388,9 @@ describe('FirebaseSync (runtime)', () => {
     });
 
     it('throws on unknown operation', async () => {
+      firebaseRestWrite.mockRejectedValueOnce(new Error('Unsupported REST write operation: bad'));
       await expect(FirebaseSync.executeSync({ path: 'p', operation: 'bad' }))
-        .rejects.toThrow('Unknown operation');
+        .rejects.toThrow(/Unknown operation|Unsupported REST write operation/);
     });
 
     it('handles legacy forms type', async () => {
@@ -457,6 +468,7 @@ describe('FirebaseSync (runtime)', () => {
 
     it('queues on error', async () => {
       mockRef.update.mockRejectedValue(new Error('fail'));
+      firebaseRestWrite.mockRejectedValue(new Error('rest fail'));
       const cb = jest.fn();
       FirebaseSync.syncListeners = [cb];
       const result = await FirebaseSync.syncForms([{ id: 'f1' }]);
@@ -492,6 +504,25 @@ describe('FirebaseSync (runtime)', () => {
       global.firebaseDb = null;
       const result = await FirebaseSync.syncSites(['A']);
       expect(result.queued).toBe(true);
+    });
+  });
+
+  describe('syncSignatures()', () => {
+    beforeEach(() => { FirebaseSync._authReady = true; });
+
+    it('syncs signatures via set()', async () => {
+      const result = await FirebaseSync.syncSignatures({ Davide: 'sig-data' });
+      expect(result.success).toBe(true);
+      expect(mockRef.set).toHaveBeenCalledWith({ Davide: 'sig-data' });
+    });
+
+    it('queues signatures when write fails', async () => {
+      mockRef.set.mockRejectedValue(new Error('fail'));
+      firebaseRestWrite.mockRejectedValue(new Error('rest fail'));
+      const result = await FirebaseSync.syncSignatures({ Davide: 'sig-data' });
+      expect(result.success).toBe(false);
+      expect(result.queued).toBe(true);
+      expect(FirebaseSync.pendingQueue.some(item => item.type === 'signatures')).toBe(true);
     });
   });
 

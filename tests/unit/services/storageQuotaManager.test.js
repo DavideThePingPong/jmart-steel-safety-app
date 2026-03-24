@@ -295,12 +295,19 @@ describe('StorageQuotaManager', () => {
       expect(JSON.parse(testStorage._data['jmart-team-signatures']).a).toBe('s1');
     });
 
-    it('trims when over 250KB budget', () => {
+    it('does not trim signatures automatically', () => {
       const sigs = {};
       for (let i = 0; i < 100; i++) sigs[`s${i}`] = 'x'.repeat(5000);
       StorageQuotaManager.safeSignaturesWrite(sigs);
       const w = JSON.parse(testStorage._data['jmart-team-signatures']);
-      expect(Object.keys(w).length).toBeLessThan(100);
+      expect(Object.keys(w).length).toBe(100);
+    });
+
+    it('does not delete existing signatures when a write fails', () => {
+      testStorage._data['jmart-team-signatures'] = JSON.stringify({ keep: 'me' });
+      testStorage.setItem.mockImplementation(() => { throw new Error('fail'); });
+      StorageQuotaManager.safeSignaturesWrite({ changed: 'value' });
+      expect(JSON.parse(testStorage._data['jmart-team-signatures'])).toEqual({ keep: 'me' });
     });
   });
 

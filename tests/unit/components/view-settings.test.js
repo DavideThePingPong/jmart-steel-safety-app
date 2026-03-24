@@ -83,9 +83,10 @@ describe('SettingsView admin-only shared settings controls', () => {
     expect(settingsCode).toMatch(/\{canManageSharedSettings && \(/);
   });
 
-  it('should guard signature mutations behind shared-settings permissions', () => {
-    expect(settingsCode).toMatch(/const saveSignature = \(name, signatureData\) => \{\s*if \(!canManageSharedSettings\) return;/s);
-    expect(settingsCode).toMatch(/const deleteSignature = \(name\) => \{\s*if \(!canManageSharedSettings\) return;/s);
-    expect(settingsCode).toMatch(/const addNewMember = \(\) => \{\s*if \(!canManageSharedSettings\) return;/s);
+  it('should allow signatures to be managed independently of shared site permissions', () => {
+    expect(settingsCode).toMatch(/const canManageSignatures = true;/);
+    expect(settingsCode).not.toMatch(/const saveSignature = \(name, signatureData\) => \{\s*if \(!canManageSharedSettings\) return;/s);
+    expect(settingsCode).not.toMatch(/const deleteSignature = \(name\) => \{\s*if \(!canManageSharedSettings\) return;/s);
+    expect(settingsCode).not.toMatch(/const addNewMember = \(\) => \{\s*if \(!canManageSharedSettings\) return;/s);
   });
 });
