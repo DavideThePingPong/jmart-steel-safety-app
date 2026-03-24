@@ -405,7 +405,7 @@ function SignaturePad({
   }, "\u2713 ", name, " has a saved signature"), /*#__PURE__*/React.createElement("button", {
     onClick: useSavedSignature,
     className: "w-full bg-green-600 text-white py-2 rounded-lg font-medium flex items-center justify-center gap-2"
-  }, /*#__PURE__*/React.createElement("span", null, "\u270D\uFE0F"), " Use Saved Signature (requires verification)")), false && /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("span", null, "\u270D\uFE0F"), " Use Saved Signature")), false && /*#__PURE__*/React.createElement("div", {
     className: "px-4 pt-3"
   }, /*#__PURE__*/React.createElement("p", {
     className: "text-xs text-gray-500 italic"

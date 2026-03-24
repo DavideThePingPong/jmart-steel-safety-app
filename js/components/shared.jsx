@@ -275,7 +275,7 @@ function SignaturePad({ onSave, onCancel, name }) {
               onClick={useSavedSignature}
               className="w-full bg-green-600 text-white py-2 rounded-lg font-medium flex items-center justify-center gap-2"
             >
-              <span>✍️</span> Use Saved Signature (requires verification)
+              <span>✍️</span> Use Saved Signature
             </button>
           </div>
         )}
