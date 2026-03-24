@@ -1171,14 +1171,20 @@ function useFormManager({
       console.log('Form deleted, saved to localStorage:', updatedForms.length, 'forms remaining');
       deletingFormRef.current = true;
       if (FirebaseSync.isConnected()) {
-        FirebaseSync.deleteForm(formId).then(() => {
-          console.log('Deletion synced to Firebase');
+        FirebaseSync.deleteForm(formId).then(result => {
           deletingFormRef.current = false;
-          // Clean up the persisted deleted ID since Firebase is now in sync
-          deletedFormIdsRef.current.delete(formId);
-          try {
-            localStorage.setItem('jmart-deleted-form-ids', JSON.stringify([...deletedFormIdsRef.current]));
-          } catch (e) {}
+          if (result && result.success) {
+            console.log('Deletion synced to Firebase');
+            // Clean up the persisted deleted ID since Firebase is now in sync
+            deletedFormIdsRef.current.delete(formId);
+            try {
+              localStorage.setItem('jmart-deleted-form-ids', JSON.stringify([...deletedFormIdsRef.current]));
+            } catch (e) {}
+          } else if (result && result.queued) {
+            console.warn('Deletion queued for Firebase retry:', result.error || 'queued');
+          } else {
+            console.error('Failed to sync deletion to Firebase:', result && result.error ? result.error : result);
+          }
         }).catch(err => {
           console.error('Failed to sync deletion to Firebase:', err);
           deletingFormRef.current = false;
@@ -1295,6 +1301,23 @@ function useDataSync({
         const hasRemoteDeletion = previousRemoteIds.size > 0 && [...previousRemoteIds].some(formId => !formsArray.some(form => form?.id === formId));
         latestRemoteFormsRef.current = formsArray;
         options = options || {};
+
+        // Once Firebase no longer contains a deleted form, drop the local suppression ID.
+        if (deletedFormIdsRef && deletedFormIdsRef.current && deletedFormIdsRef.current.size > 0) {
+          const remoteIds = new Set(formsArray.map(form => form?.id).filter(Boolean));
+          var prunedDeletedIds = false;
+          [...deletedFormIdsRef.current].forEach(formId => {
+            if (!remoteIds.has(formId)) {
+              deletedFormIdsRef.current.delete(formId);
+              prunedDeletedIds = true;
+            }
+          });
+          if (prunedDeletedIds) {
+            try {
+              localStorage.setItem('jmart-deleted-form-ids', JSON.stringify([...deletedFormIdsRef.current]));
+            } catch (e) {}
+          }
+        }
 
         // Throttle rapid-fire listener churn, but never suppress remote deletions.
         var now = Date.now();

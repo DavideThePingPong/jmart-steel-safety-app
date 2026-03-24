@@ -175,6 +175,58 @@ describe('Form Deletion Integration', () => {
       expect(mergedForms).toHaveLength(2);
       expect(mergedForms.find(f => f.id === formIdToDelete)).toBeUndefined();
     });
+
+    it('should keep deleted ID when Firebase delete is queued instead of treating it as synced', () => {
+      const formIdToDelete = 'form-abc123';
+
+      deletedFormIdsRef.current.add(formIdToDelete);
+      storageData['jmart-deleted-form-ids'] = JSON.stringify([...deletedFormIdsRef.current]);
+
+      const deleteResult = { success: false, queued: true, error: 'Auth not ready' };
+
+      // Simulate the hooks.jsx delete callback handling.
+      if (deleteResult.success) {
+        deletedFormIdsRef.current.delete(formIdToDelete);
+        storageData['jmart-deleted-form-ids'] = JSON.stringify([...deletedFormIdsRef.current]);
+      }
+
+      expect(JSON.parse(storageData['jmart-deleted-form-ids'])).toContain(formIdToDelete);
+
+      // Firebase still returns the form, but local suppression should prevent it from reappearing.
+      const firebaseForms = Object.fromEntries(forms.map(f => [f.id, { ...f, source: 'firebase' }]));
+      const formMap = new Map();
+      Object.values(firebaseForms).forEach(form => {
+        if (deletedFormIdsRef.current.has(form.id)) return;
+        formMap.set(form.id, form);
+      });
+
+      const mergedForms = Array.from(formMap.values());
+      expect(mergedForms.find(f => f.id === formIdToDelete)).toBeUndefined();
+    });
+
+    it('should prune deleted IDs after Firebase confirms the form is gone', () => {
+      const formIdToDelete = 'form-abc123';
+
+      deletedFormIdsRef.current.add(formIdToDelete);
+      storageData['jmart-deleted-form-ids'] = JSON.stringify([...deletedFormIdsRef.current]);
+
+      const firebaseForms = forms.filter(f => f.id !== formIdToDelete);
+      const remoteIds = new Set(firebaseForms.map(form => form.id));
+      let prunedDeletedIds = false;
+
+      [...deletedFormIdsRef.current].forEach(id => {
+        if (!remoteIds.has(id)) {
+          deletedFormIdsRef.current.delete(id);
+          prunedDeletedIds = true;
+        }
+      });
+
+      if (prunedDeletedIds) {
+        storageData['jmart-deleted-form-ids'] = JSON.stringify([...deletedFormIdsRef.current]);
+      }
+
+      expect(JSON.parse(storageData['jmart-deleted-form-ids'])).not.toContain(formIdToDelete);
+    });
   });
 
   describe('sanitizeForFirebase', () => {
