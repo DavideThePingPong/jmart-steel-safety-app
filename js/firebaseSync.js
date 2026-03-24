@@ -469,8 +469,11 @@ const FirebaseSync = {
         var strippedForms = stripFormAssets(formsArray);
         var formUpdates = normalizeFormsPayload(strippedForms, deviceId);
         var assetUpdates = collectFormAssetUpdates(formsArray);
-        await this.writeWithFallback('jmart-safety/forms', 'set', formUpdates);
-        await this.writeWithFallback('jmart-safety/formAssets', 'set', assetUpdates);
+        // FIXED: Use update() not set() — set() replaces the entire node and destroys
+        // forms from other devices that synced while this device was offline.
+        // Live syncForms() already uses update(); queue replay must match.
+        await this.writeWithFallback('jmart-safety/forms', 'update', formUpdates);
+        await this.writeWithFallback('jmart-safety/formAssets', 'update', assetUpdates);
         break;
       }
       case 'sites': {
