@@ -301,12 +301,14 @@ describe('DeviceAuth', () => {
       DeviceAuth.deviceInfo = { type: 'Windows PC', browser: 'Chrome' };
 
       // firebaseRead calls in order:
-      // 1. old flat structure migration check -> not exists
-      // 2. approved/<deviceId> -> not exists
-      // 3. approved/ (all) -> not exists (empty)
+      // 1. approved/<deviceId> -> not exists
+      // 2. old flat structure migration check -> not exists
+      // 3. approved/<deviceId> -> still not exists
+      // 4. approved/ (all) -> not exists (empty)
       global.firebaseRead = jest.fn()
-        .mockResolvedValueOnce({ exists: false, val: null }) // migration check
         .mockResolvedValueOnce({ exists: false, val: null }) // approved/<deviceId>
+        .mockResolvedValueOnce({ exists: false, val: null }) // migration check
+        .mockResolvedValueOnce({ exists: false, val: null }) // approved/<deviceId> after migration
         .mockResolvedValueOnce({ exists: false, val: null }); // all approved
 
       const result = await DeviceAuth.checkDeviceStatus();
@@ -321,11 +323,11 @@ describe('DeviceAuth', () => {
       DeviceAuth.deviceId = 'DEV-KNOWN';
 
       global.firebaseRead = jest.fn()
-        .mockResolvedValueOnce({ exists: false, val: null }) // migration check
         .mockResolvedValueOnce({
           exists: true,
           val: { isAdmin: true, canViewDevices: true, canRevokeDevices: false }
-        }); // approved/<deviceId>
+        }) // approved/<deviceId>
+        .mockResolvedValueOnce({ exists: false, val: null }); // adminAuthUids/<uid>
 
       // Mock the update call (fire-and-forget)
       mockDb._mockRef.update.mockReturnValue({ catch: jest.fn() });
@@ -349,8 +351,9 @@ describe('DeviceAuth', () => {
       };
 
       global.firebaseRead = jest.fn()
-        .mockResolvedValueOnce({ exists: false, val: null }) // migration
         .mockResolvedValueOnce({ exists: false, val: null }) // approved/<deviceId>
+        .mockResolvedValueOnce({ exists: false, val: null }) // migration
+        .mockResolvedValueOnce({ exists: false, val: null }) // approved/<deviceId> after migration
         .mockResolvedValueOnce({ exists: true, val: otherAdmin }) // all approved
         .mockResolvedValueOnce({ exists: false, val: null }); // pending/<deviceId>
 
@@ -371,10 +374,11 @@ describe('DeviceAuth', () => {
       };
 
       global.firebaseRead = jest.fn()
-        .mockResolvedValueOnce({ exists: false, val: null })
-        .mockResolvedValueOnce({ exists: false, val: null })
-        .mockResolvedValueOnce({ exists: true, val: staleAdmin })
-        .mockResolvedValueOnce({ exists: false, val: null });
+        .mockResolvedValueOnce({ exists: false, val: null }) // approved/<deviceId>
+        .mockResolvedValueOnce({ exists: false, val: null }) // migration
+        .mockResolvedValueOnce({ exists: false, val: null }) // approved/<deviceId> after migration
+        .mockResolvedValueOnce({ exists: true, val: staleAdmin }) // all approved
+        .mockResolvedValueOnce({ exists: false, val: null }); // pending/<deviceId>
 
       const promoteSpy = jest.spyOn(DeviceAuth, 'registerAsApproved');
       const result = await DeviceAuth.checkDeviceStatus();

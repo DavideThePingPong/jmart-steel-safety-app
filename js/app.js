@@ -832,6 +832,7 @@ function useFormManager({
       return [];
     }
   }()));
+  const suppressNextFormsSyncRef = useRef(false);
 
   // Mark form as backed up (after PDF download)
   const markAsBackedUp = formId => {
@@ -1149,6 +1150,7 @@ function useFormManager({
     setForms(prevForms => {
       const deletedForm = prevForms.find(f => f.id === formId);
       const updatedForms = prevForms.filter(f => f.id !== formId);
+      suppressNextFormsSyncRef.current = true;
       AuditLogManager.log('delete', {
         formId: formId,
         formType: deletedForm?.type || 'unknown',
@@ -1198,6 +1200,7 @@ function useFormManager({
     savedSignatures,
     deletingFormRef,
     deletedFormIdsRef,
+    suppressNextFormsSyncRef,
     // Functions
     addForm,
     updateForm,
@@ -1222,7 +1225,8 @@ function useDataSync({
   setForms,
   setSites,
   deletingFormRef,
-  deletedFormIdsRef
+  deletedFormIdsRef,
+  suppressNextFormsSyncRef
 }) {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const isOnlineRef = useRef(isOnline);
@@ -1244,6 +1248,12 @@ function useDataSync({
     version: form?.version || null,
     modified: form?._lastModified || form?.updatedAt || form?.createdAt || null
   })).sort((a, b) => String(a.id || '').localeCompare(String(b.id || ''))));
+  const hasQueuedFormSync = () => Array.isArray(FirebaseSync.pendingQueue) && FirebaseSync.pendingQueue.some(item => {
+    if (!item) return false;
+    if (item.type === 'forms') return true;
+    if (typeof item.path === 'string' && item.path.indexOf('jmart-safety/forms') === 0) return true;
+    return false;
+  });
 
   // Load saved data from localStorage first, then listen to Firebase
   useEffect(() => {
@@ -1344,8 +1354,11 @@ function useDataSync({
             const freshLocal = localStorage.getItem('jmart-safety-forms');
             if (freshLocal) currentLocalForms = JSON.parse(freshLocal);
           } catch (e) {/* ignore */}
+          const preserveLocalOnlyForms = hasQueuedFormSync();
           currentLocalForms.forEach(localForm => {
+            if (!localForm || deletedIds.has(localForm.id)) return;
             if (!formMap.has(localForm.id)) {
+              if (!preserveLocalOnlyForms) return;
               formMap.set(localForm.id, {
                 ...localForm,
                 source: 'local'
@@ -1373,13 +1386,7 @@ function useDataSync({
             const freshLocal = localStorage.getItem('jmart-safety-forms');
             if (freshLocal) freshLocalForms = JSON.parse(freshLocal);
           } catch (e) {/* ignore */}
-          const hasQueuedFormSync = Array.isArray(FirebaseSync.pendingQueue) && FirebaseSync.pendingQueue.some(item => {
-            if (!item) return false;
-            if (item.type === 'forms') return true;
-            if (typeof item.path === 'string' && item.path.indexOf('jmart-safety/forms') === 0) return true;
-            return false;
-          });
-          if (freshLocalForms.length > 0 && hasQueuedFormSync) {
+          if (freshLocalForms.length > 0 && hasQueuedFormSync()) {
             console.log('Firebase empty, pushing local forms to Firebase');
             FirebaseSync.syncForms(freshLocalForms);
           } else {
@@ -1490,6 +1497,12 @@ function useDataSync({
       // sent full photo data back on every update, and if the write failed, the ENTIRE
       // forms array (with photos) was stored in the sync queue → 5MB+ in localStorage.
       // syncSitesEffect already had this protection (sitesFromFirebaseRef). Forms didn't.
+      if (suppressNextFormsSyncRef && suppressNextFormsSyncRef.current) {
+        suppressNextFormsSyncRef.current = false;
+        setSyncStatus(FirebaseSync.getPendingCount() > 0 ? 'pending' : 'synced');
+        setSyncError(null);
+        return;
+      }
       if (formsFromStorageRef.current) {
         formsFromStorageRef.current = false;
         setSyncStatus(FirebaseSync.getPendingCount() > 0 ? 'pending' : 'synced');
@@ -1506,7 +1519,17 @@ function useDataSync({
           return;
         }
       }
-      if (FirebaseSync.isConnected() && isOnlineRef.current && forms.length > 0) {
+      if (FirebaseSync.isConnected() && forms.length > 0) {
+        if (!isOnlineRef.current) {
+          if (typeof FirebaseSync.queueFormsSnapshot === 'function') {
+            FirebaseSync.queueFormsSnapshot(forms);
+          } else {
+            FirebaseSync.addToQueue('forms', forms);
+          }
+          setSyncStatus('pending');
+          setSyncError(null);
+          return;
+        }
         setSyncStatus('syncing');
         FirebaseSync.syncForms(forms).then(result => {
           if (result && result.success) {
@@ -1529,7 +1552,7 @@ function useDataSync({
         });
       }
     }
-  }, []);
+  }, [suppressNextFormsSyncRef]);
 
   // Save sites to localStorage and sync to Firebase
   const syncSitesEffect = useCallback(sites => {
@@ -2376,7 +2399,7 @@ function LoginScreen({
         } catch (e) {}
       }
       try {
-        const status = await Promise.race([DeviceAuthManager.init(), new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))]);
+        const status = await DeviceAuthManager.init();
         if (status.canAccess) {
           onAuthenticated(true);
         } else if (status.status === 'new') {
@@ -2560,6 +2583,7 @@ function LoginScreen({
 function AppWithAuth() {
   const [authState, setAuthState] = useState('loading'); // 'loading', 'authenticated', 'unauthenticated', 'pending', 'recovery-required'
   const [isAdmin, setIsAdmin] = useState(false);
+  const [authLoadingMessage, setAuthLoadingMessage] = useState('Checking device approval...');
   useEffect(() => {
     checkAuth();
   }, []);
@@ -2571,12 +2595,21 @@ function AppWithAuth() {
       return;
     }
     let status;
+    let slowAuthTimer = null;
     try {
-      status = await Promise.race([DeviceAuthManager.init(), new Promise((_, reject) => setTimeout(() => reject(new Error('Auth timeout')), 5000))]);
-    } catch (timeoutErr) {
-      console.warn('Auth check timed out after 5s, showing login screen:', timeoutErr.message);
+      setAuthLoadingMessage('Checking device approval...');
+      slowAuthTimer = setTimeout(() => {
+        setAuthLoadingMessage('Still checking device approval...');
+      }, 5000);
+      status = await DeviceAuthManager.init();
+    } catch (authErr) {
+      console.warn('Auth check failed:', authErr.message);
       setAuthState('unauthenticated');
       return;
+    } finally {
+      if (slowAuthTimer) {
+        clearTimeout(slowAuthTimer);
+      }
     }
     console.log('Device auth status:', status);
     const requiresE2ELogin = isE2EAuthRuntime() && !!DeviceAuthManager.APP_PASSWORD_HASH && !hasE2EAuthenticatedSession();
@@ -2624,7 +2657,7 @@ function AppWithAuth() {
       className: "text-3xl"
     }, "\uD83D\uDEE1\uFE0F")), /*#__PURE__*/React.createElement("p", {
       className: "text-gray-600"
-    }, "Loading...")));
+    }, authLoadingMessage)));
   }
   if (authState === 'unauthenticated' || authState === 'pending' || authState === 'recovery-required') {
     return /*#__PURE__*/React.createElement(LoginScreen, {
@@ -2687,6 +2720,7 @@ function JMartSteelSafetyApp({
     savedSignatures,
     deletingFormRef,
     deletedFormIdsRef,
+    suppressNextFormsSyncRef,
     addForm,
     updateForm,
     confirmUpdate,
@@ -2716,7 +2750,8 @@ function JMartSteelSafetyApp({
     setForms,
     setSites,
     deletingFormRef,
-    deletedFormIdsRef
+    deletedFormIdsRef,
+    suppressNextFormsSyncRef
   });
 
   // PWA Install

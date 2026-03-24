@@ -122,6 +122,21 @@ describe('useDataSync - queued sync handling [REGRESSION]', () => {
     expect(confirmUpdateBlock).not.toContain('FirebaseSync.syncForms(updatedForms)');
   });
 
+  it('should suppress the next bulk forms sync when deleteForm already issued a direct delete', () => {
+    const deleteBlockStart = hooksCode.indexOf('const deleteForm');
+    const deleteBlock = hooksCode.slice(
+      deleteBlockStart,
+      hooksCode.indexOf('return {', deleteBlockStart)
+    );
+    const syncBlock = hooksCode.slice(
+      hooksCode.indexOf('const syncFormsEffect'),
+      hooksCode.indexOf('const syncSitesEffect')
+    );
+
+    expect(deleteBlock).toContain('suppressNextFormsSyncRef.current = true');
+    expect(syncBlock).toContain('suppressNextFormsSyncRef.current');
+  });
+
   it('should preserve pending status after a Firebase listener merge when the queue is not empty', () => {
     const mergeBlock = hooksCode.slice(
       hooksCode.indexOf('const applyRemoteForms'),

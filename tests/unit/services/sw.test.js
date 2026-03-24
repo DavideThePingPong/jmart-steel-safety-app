@@ -175,19 +175,19 @@ describe('Service Worker (sw.js)', () => {
   describe('getStrategy', () => {
     const { getStrategy } = buildSwEnv();
 
-    it('should return stale-while-revalidate for local .js files [REGRESSION]', () => {
+    it('should return network-first for local .js files [REGRESSION]', () => {
       const req = { url: 'https://jmart-steel-safety.web.app/js/config.js', destination: 'script' };
-      expect(getStrategy(req)).toBe('stale-while-revalidate');
+      expect(getStrategy(req)).toBe('network-first');
     });
 
-    it('should return stale-while-revalidate for local .jsx files [REGRESSION]', () => {
+    it('should return network-first for local .jsx files [REGRESSION]', () => {
       const req = { url: 'https://jmart-steel-safety.web.app/js/components/app.jsx', destination: 'script' };
-      expect(getStrategy(req)).toBe('stale-while-revalidate');
+      expect(getStrategy(req)).toBe('network-first');
     });
 
-    it('should return stale-while-revalidate for local .css files [REGRESSION]', () => {
+    it('should return network-first for local .css files [REGRESSION]', () => {
       const req = { url: 'https://jmart-steel-safety.web.app/styles.css', destination: 'style' };
-      expect(getStrategy(req)).toBe('stale-while-revalidate');
+      expect(getStrategy(req)).toBe('network-first');
     });
 
     it('should return cache-first for CDN resources (different hostname)', () => {
@@ -220,9 +220,9 @@ describe('Service Worker (sw.js)', () => {
       expect(getStrategy(req)).toBe('network-first');
     });
 
-    it('should return stale-while-revalidate for HTML pages (default)', () => {
+    it('should return network-first for HTML pages (default)', () => {
       const req = { url: 'https://jmart-steel-safety.web.app/index.html', destination: 'document' };
-      expect(getStrategy(req)).toBe('stale-while-revalidate');
+      expect(getStrategy(req)).toBe('network-first');
     });
   });
 

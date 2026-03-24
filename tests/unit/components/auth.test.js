@@ -127,8 +127,10 @@ describe('AppWithAuth — auth state machine', () => {
     expect(code).toMatch(/setAuthState\(['"]authenticated['"]\)/);
   });
 
-  it('should handle auth timeout (5s)', () => {
-    expect(code).toMatch(/setTimeout\(\s*\(\)\s*=>\s*reject\(new\s*Error\(['"]Auth timeout['"]\)\)\s*,\s*5000\s*\)/);
+  it('should keep showing loading while device approval is still being checked', () => {
+    expect(code).toMatch(/setAuthLoadingMessage\(['"]Checking device approval\.\.\.['"]\)/);
+    expect(code).toMatch(/setAuthLoadingMessage\(['"]Still checking device approval\.\.\.['"]\)/);
+    expect(code).not.toMatch(/new\s*Error\(['"]Auth timeout['"]\)/);
   });
 
   it('should set isAdmin from DeviceAuthManager', () => {
@@ -141,7 +143,7 @@ describe('AppWithAuth — auth state machine', () => {
 
   it('should show loading spinner while auth state is loading', () => {
     expect(code).toMatch(/authState\s*===\s*['"]loading['"]/);
-    expect(code).toMatch(/Loading\.\.\./);
+    expect(code).toMatch(/authLoadingMessage/);
   });
 
   it('should show LoginScreen for unauthenticated or pending', () => {

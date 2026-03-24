@@ -30,6 +30,7 @@ function JMartSteelSafetyApp({ isAdmin = false }) {
     savedSignatures,
     deletingFormRef,
     deletedFormIdsRef,
+    suppressNextFormsSyncRef,
     addForm,
     updateForm,
     confirmUpdate,
@@ -53,7 +54,7 @@ function JMartSteelSafetyApp({ isAdmin = false }) {
     showSyncBanner, setShowSyncBanner,
     syncFormsEffect,
     syncSitesEffect
-  } = useDataSync({ setForms, setSites, deletingFormRef, deletedFormIdsRef });
+  } = useDataSync({ setForms, setSites, deletingFormRef, deletedFormIdsRef, suppressNextFormsSyncRef });
 
   // PWA Install
   const { showInstallPrompt, handleInstall, dismissInstall } = usePWAInstall();

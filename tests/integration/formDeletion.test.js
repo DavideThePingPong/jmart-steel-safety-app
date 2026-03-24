@@ -227,6 +227,61 @@ describe('Form Deletion Integration', () => {
 
       expect(JSON.parse(storageData['jmart-deleted-form-ids'])).not.toContain(formIdToDelete);
     });
+
+    it('should not merge stale local-only forms back in when Firebase is authoritative', () => {
+      storageData['jmart-safety-forms'] = JSON.stringify(forms);
+      const firebaseForms = {
+        'form-def456': { id: 'form-def456', type: 'incident', createdAt: '2026-03-17T09:00:00Z', data: { siteConducted: 'Other Site' }, source: 'firebase' }
+      };
+
+      const formMap = new Map();
+      Object.values(firebaseForms).forEach(form => {
+        if (deletedFormIdsRef.current.has(form.id)) return;
+        formMap.set(form.id, { ...form, source: 'firebase' });
+      });
+
+      const currentLocalForms = JSON.parse(storageData['jmart-safety-forms'] || '[]');
+      const preserveLocalOnlyForms = false;
+      currentLocalForms.forEach(localForm => {
+        if (!localForm || deletedFormIdsRef.current.has(localForm.id)) return;
+        if (!formMap.has(localForm.id)) {
+          if (!preserveLocalOnlyForms) return;
+          formMap.set(localForm.id, { ...localForm, source: 'local' });
+        }
+      });
+
+      const mergedForms = Array.from(formMap.values());
+      expect(mergedForms).toHaveLength(1);
+      expect(mergedForms[0].id).toBe('form-def456');
+    });
+
+    it('should preserve local-only forms when a real queued form sync exists', () => {
+      storageData['jmart-safety-forms'] = JSON.stringify(forms);
+      const firebaseForms = {
+        'form-def456': { id: 'form-def456', type: 'incident', createdAt: '2026-03-17T09:00:00Z', data: { siteConducted: 'Other Site' }, source: 'firebase' }
+      };
+
+      const formMap = new Map();
+      Object.values(firebaseForms).forEach(form => {
+        if (deletedFormIdsRef.current.has(form.id)) return;
+        formMap.set(form.id, { ...form, source: 'firebase' });
+      });
+
+      const currentLocalForms = JSON.parse(storageData['jmart-safety-forms'] || '[]');
+      const preserveLocalOnlyForms = true;
+      currentLocalForms.forEach(localForm => {
+        if (!localForm || deletedFormIdsRef.current.has(localForm.id)) return;
+        if (!formMap.has(localForm.id)) {
+          if (!preserveLocalOnlyForms) return;
+          formMap.set(localForm.id, { ...localForm, source: 'local' });
+        }
+      });
+
+      const mergedForms = Array.from(formMap.values());
+      expect(mergedForms).toHaveLength(3);
+      expect(mergedForms.find(f => f.id === 'form-abc123')).toBeDefined();
+      expect(mergedForms.find(f => f.id === 'form-ghi789')).toBeDefined();
+    });
   });
 
   describe('sanitizeForFirebase', () => {

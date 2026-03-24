@@ -250,18 +250,7 @@ const FirebaseSync = {
     setTimeout(() => this.processQueue(), 250);
   },
 
-  // Add item to retry queue — blocked when circuit breaker is open
-  // FIXED: Strip base64 photos from queued data. Without this, a single failed
-  // syncForms() call would store 5MB+ of photo data in the sync queue in localStorage,
-  // immediately filling storage to 130%.
-  addToQueue: function(type, data) {
-    if (this.circuitOpen) {
-      console.warn('Circuit breaker OPEN — cannot add to queue. Try again after cooldown.');
-      this.notifyListeners('circuit_open', { reason: 'queue_blocked' });
-      return null;
-    }
-    // Strip large data (photos, signatures, base64) from queue items.
-    // The queue only needs form metadata — photos live in Firebase.
+  _prepareQueueData: function(data) {
     var safeData = data;
     if (typeof StorageQuotaManager !== 'undefined' && StorageQuotaManager.stripLargeData) {
       if (Array.isArray(data)) {
@@ -274,6 +263,22 @@ const FirebaseSync = {
         })); } catch (e) { /* use original */ }
       }
     }
+    return safeData;
+  },
+
+  // Add item to retry queue — blocked when circuit breaker is open
+  // FIXED: Strip base64 photos from queued data. Without this, a single failed
+  // syncForms() call would store 5MB+ of photo data in the sync queue in localStorage,
+  // immediately filling storage to 130%.
+  addToQueue: function(type, data) {
+    if (this.circuitOpen) {
+      console.warn('Circuit breaker OPEN — cannot add to queue. Try again after cooldown.');
+      this.notifyListeners('circuit_open', { reason: 'queue_blocked' });
+      return null;
+    }
+    // Strip large data (photos, signatures, base64) from queue items.
+    // The queue only needs form metadata — photos live in Firebase.
+    var safeData = this._prepareQueueData(data);
     var item = {
       id: Date.now() + '-' + Math.random().toString(36).substr(2, 9),
       type: type,
@@ -286,6 +291,30 @@ const FirebaseSync = {
     this.notifyListeners('queued', { pending: this.pendingQueue.length });
     this.kickQueueProcessor();
     return item.id;
+  },
+
+  queueFormsSnapshot: function(forms) {
+    if (this.circuitOpen) {
+      console.warn('Circuit breaker OPEN â€” cannot queue forms snapshot. Try again after cooldown.');
+      this.notifyListeners('circuit_open', { reason: 'queue_blocked' });
+      return null;
+    }
+
+    var safeData = this._prepareQueueData(forms);
+    var existingItem = this.pendingQueue.find(function(item) {
+      return item && item.type === 'forms';
+    });
+    if (existingItem) {
+      existingItem.data = safeData;
+      existingItem.timestamp = new Date().toISOString();
+      existingItem.attempts = 0;
+      this.saveQueue();
+      this.notifyListeners('queued', { pending: this.pendingQueue.length, item: 'forms' });
+      this.kickQueueProcessor();
+      return existingItem.id;
+    }
+
+    return this.addToQueue('forms', safeData);
   },
 
   // Process the retry queue — respects circuit breaker, concurrency guard, AND auth gate
@@ -443,13 +472,13 @@ const FirebaseSync = {
   // Sync forms to Firebase - v3: granular per-form update() instead of full set()
   syncForms: async function(forms) {
     if (!firebaseDb || !isFirebaseConfigured) {
-      this.addToQueue('forms', forms);
+      this.queueFormsSnapshot(forms);
       return { success: false, queued: true };
     }
     // FIXED: Wait for auth before writing
     var authOk = await this._ensureAuth();
     if (!authOk) {
-      this.addToQueue('forms', forms);
+      this.queueFormsSnapshot(forms);
       return { success: false, queued: true, error: 'Auth not ready' };
     }
     try {
@@ -465,8 +494,7 @@ const FirebaseSync = {
       return { success: true };
     } catch (error) {
       console.error('Error syncing forms, adding to retry queue:', error);
-      this.addToQueue('forms', forms);
-      this.notifyListeners('error', { message: 'Sync failed - will retry automatically' });
+      this.queueFormsSnapshot(forms);
       return { success: false, queued: true, error: error.message };
     }
   },

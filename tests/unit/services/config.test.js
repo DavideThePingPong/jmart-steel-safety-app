@@ -238,4 +238,17 @@ describe('firebaseRead (js/config.js)', () => {
     // SDK should not have been touched
     expect(mockDbRef.once).not.toHaveBeenCalled();
   });
+
+  it('should pass an AbortSignal to REST fallback requests', async () => {
+    global.firebaseDb = null;
+
+    await global.firebaseRead('forms/noDb', 3000);
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/forms/noDb.json?auth=token123'),
+      expect.objectContaining({
+        signal: expect.any(Object)
+      })
+    );
+  });
 });

@@ -247,6 +247,17 @@ describe('FirebaseSync (runtime)', () => {
     });
   });
 
+  describe('queueFormsSnapshot()', () => {
+    it('reuses the existing queued forms item instead of appending duplicates', () => {
+      const firstId = FirebaseSync.queueFormsSnapshot([{ id: 'f1' }]);
+      const secondId = FirebaseSync.queueFormsSnapshot([{ id: 'f1' }, { id: 'f2' }]);
+
+      expect(firstId).toBe(secondId);
+      expect(FirebaseSync.pendingQueue).toHaveLength(1);
+      expect(FirebaseSync.pendingQueue[0].data).toEqual([{ id: 'f1' }, { id: 'f2' }]);
+    });
+  });
+
   // =====================================================
   // Circuit breaker
   // =====================================================
@@ -446,9 +457,13 @@ describe('FirebaseSync (runtime)', () => {
 
     it('queues on error', async () => {
       mockRef.update.mockRejectedValue(new Error('fail'));
+      const cb = jest.fn();
+      FirebaseSync.syncListeners = [cb];
       const result = await FirebaseSync.syncForms([{ id: 'f1' }]);
       expect(result.success).toBe(false);
       expect(result.queued).toBe(true);
+      expect(cb).not.toHaveBeenCalledWith('error', expect.anything());
+      expect(cb).toHaveBeenCalledWith('queued', expect.objectContaining({ pending: 1 }));
     });
   });
 

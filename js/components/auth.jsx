@@ -98,10 +98,7 @@ function LoginScreen({ onAuthenticated, authStatus }) {
         try { localStorage.setItem('jmart-device-name', deviceName); } catch(e) {}
       }
       try {
-        const status = await Promise.race([
-          DeviceAuthManager.init(),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))
-        ]);
+        const status = await DeviceAuthManager.init();
 
         if (status.canAccess) {
           onAuthenticated(true);
@@ -324,6 +321,7 @@ function LoginScreen({ onAuthenticated, authStatus }) {
 function AppWithAuth() {
   const [authState, setAuthState] = useState('loading'); // 'loading', 'authenticated', 'unauthenticated', 'pending', 'recovery-required'
   const [isAdmin, setIsAdmin] = useState(false);
+  const [authLoadingMessage, setAuthLoadingMessage] = useState('Checking device approval...');
 
   useEffect(() => {
     checkAuth();
@@ -338,15 +336,21 @@ function AppWithAuth() {
     }
 
     let status;
+    let slowAuthTimer = null;
     try {
-      status = await Promise.race([
-        DeviceAuthManager.init(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Auth timeout')), 5000))
-      ]);
-    } catch (timeoutErr) {
-      console.warn('Auth check timed out after 5s, showing login screen:', timeoutErr.message);
+      setAuthLoadingMessage('Checking device approval...');
+      slowAuthTimer = setTimeout(() => {
+        setAuthLoadingMessage('Still checking device approval...');
+      }, 5000);
+      status = await DeviceAuthManager.init();
+    } catch (authErr) {
+      console.warn('Auth check failed:', authErr.message);
       setAuthState('unauthenticated');
       return;
+    } finally {
+      if (slowAuthTimer) {
+        clearTimeout(slowAuthTimer);
+      }
     }
     console.log('Device auth status:', status);
 
@@ -397,7 +401,7 @@ function AppWithAuth() {
           <div className="w-16 h-16 bg-orange-500 rounded-2xl flex items-center justify-center mx-auto mb-4 animate-pulse">
             <span className="text-3xl">🛡️</span>
           </div>
-          <p className="text-gray-600">Loading...</p>
+          <p className="text-gray-600">{authLoadingMessage}</p>
         </div>
       </div>
     );

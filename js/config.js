@@ -336,7 +336,7 @@ if (isE2ERuntime) {
 // (once('value') hangs indefinitely) while the REST API works fine.
 // This helper provides a reliable fallback for critical reads.
 // ========================================
-async function firebaseRestRead(path) {
+async function firebaseRestRead(path, timeoutMs) {
   if (isE2ERuntime && window.__JMART_E2E_FIREBASE__) {
     return window.__JMART_E2E_FIREBASE__.read(path);
   }
@@ -348,9 +348,27 @@ async function firebaseRestRead(path) {
   if (!user) throw new Error('No Firebase auth user');
   var token = await user.getIdToken();
   var url = firebaseConfig.databaseURL + '/' + path + '.json?auth=' + token;
-  var response = await fetch(url);
-  if (!response.ok) throw new Error('REST read failed: HTTP ' + response.status);
-  return response.json();
+  var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  var timeoutId = null;
+
+  try {
+    if (controller && timeoutMs) {
+      timeoutId = setTimeout(function() {
+        controller.abort();
+      }, timeoutMs);
+    }
+
+    var response = await fetch(url, controller ? { signal: controller.signal } : undefined);
+    if (!response.ok) throw new Error('REST read failed: HTTP ' + response.status);
+    return response.json();
+  } catch (e) {
+    if (e && (e.name === 'AbortError' || /aborted/i.test(e.message || ''))) {
+      throw new Error('REST read timed out');
+    }
+    throw e;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
 }
 
 // Wrapper: try SDK once() with timeout, fall back to REST
@@ -380,7 +398,7 @@ async function firebaseRead(path, timeoutMs) {
   }
   // REST fallback
   try {
-    var data = await firebaseRestRead(path);
+    var data = await firebaseRestRead(path, Math.max(timeoutMs, 2500));
     return { exists: data !== null, val: data, source: 'rest' };
   } catch (e) {
     console.error('[firebaseRead] REST also failed for', path, ':', e.message);
