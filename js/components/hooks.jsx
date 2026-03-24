@@ -88,13 +88,7 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
         // Safe write to localStorage (strips large data, trims to fit)
         StorageQuotaManager.safeFormsWrite(updatedForms);
 
-        // Sync full form (with photos) to Firebase — Firebase is the source of truth
-        if (FirebaseSync.isConnected()) {
-          FirebaseSync.syncForms(updatedForms).then(() => {
-            console.log('Synced to Firebase');
-          }).catch(err => console.error('Firebase sync error:', err));
-        }
-
+        // Firebase sync is handled centrally by useDataSync.
         return updatedForms;
       });
 
@@ -241,12 +235,6 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
 
         StorageQuotaManager.safeFormsWrite(updatedForms);
         console.log('Updated form saved to localStorage');
-
-        if (FirebaseSync.isConnected()) {
-          FirebaseSync.syncForms(updatedForms).then(() => {
-            console.log('Updated form synced to Firebase');
-          }).catch(err => console.error('Firebase sync error:', err));
-        }
 
         return updatedForms;
       });
@@ -420,10 +408,20 @@ function useDataSync({ setForms, setSites, deletingFormRef, deletedFormIdsRef })
 
   const isInitialLoad = useRef(true);
   const formsFromFirebaseRef = useRef(false);  // Anti-loop: skip syncing back to Firebase when data came FROM Firebase
+  const formsFromStorageRef = useRef(false);
   const sitesFromFirebaseRef = useRef(false);
   const lastFormsWriteRef = useRef(0); // throttle forms listener writes
   const latestRemoteFormsRef = useRef([]);
   const formAssetsRef = useRef({});
+  const buildFormSignature = (forms) => JSON.stringify(
+    (Array.isArray(forms) ? forms : Object.values(forms || {}))
+      .map((form) => ({
+        id: form?.id || null,
+        version: form?.version || null,
+        modified: form?._lastModified || form?.updatedAt || form?.createdAt || null
+      }))
+      .sort((a, b) => String(a.id || '').localeCompare(String(b.id || '')))
+  );
 
   // Load saved data from localStorage first, then listen to Firebase
   useEffect(() => {
@@ -478,7 +476,9 @@ function useDataSync({ setForms, setSites, deletingFormRef, deletedFormIdsRef })
         const mergedAssetForms = (typeof FormAssetStore !== 'undefined' && FormAssetStore.mergeAssetMapIntoForms)
           ? FormAssetStore.mergeAssetMapIntoForms(formsArray, formAssetsRef.current)
           : formsArray;
-          const previousRemoteIds = new Set((latestRemoteFormsRef.current || []).map((form) => form?.id).filter(Boolean));
+          const previousRemoteForms = latestRemoteFormsRef.current || [];
+          const previousRemoteIds = new Set(previousRemoteForms.map((form) => form?.id).filter(Boolean));
+          const hasRemoteMutation = buildFormSignature(previousRemoteForms) !== buildFormSignature(formsArray);
           const hasRemoteDeletion = previousRemoteIds.size > 0 && [...previousRemoteIds].some((formId) => !formsArray.some((form) => form?.id === formId));
 
           latestRemoteFormsRef.current = formsArray;
@@ -499,9 +499,9 @@ function useDataSync({ setForms, setSites, deletingFormRef, deletedFormIdsRef })
             }
           }
 
-          // Throttle rapid-fire listener churn, but never suppress remote deletions.
+          // Throttle duplicate listener churn, but never suppress real remote mutations.
           var now = Date.now();
-        if (!options.skipThrottle && !hasRemoteDeletion && (now - lastFormsWriteRef.current < 5000)) return;
+        if (!options.skipThrottle && !hasRemoteMutation && !hasRemoteDeletion && (now - lastFormsWriteRef.current < 5000)) return;
         lastFormsWriteRef.current = now;
 
         console.log('Firebase forms received:', mergedAssetForms.length, 'forms');
@@ -574,7 +574,8 @@ function useDataSync({ setForms, setSites, deletingFormRef, deletedFormIdsRef })
           }
         }
 
-        setSyncStatus('synced');
+        var pendingAfterMerge = typeof FirebaseSync.getPendingCount === 'function' ? FirebaseSync.getPendingCount() : 0;
+        setSyncStatus(pendingAfterMerge > 0 ? 'pending' : 'synced');
         setLastSynced(new Date().toISOString());
         setSyncError(null);
       };
@@ -675,19 +676,43 @@ function useDataSync({ setForms, setSites, deletingFormRef, deletedFormIdsRef })
       // sent full photo data back on every update, and if the write failed, the ENTIRE
       // forms array (with photos) was stored in the sync queue → 5MB+ in localStorage.
       // syncSitesEffect already had this protection (sitesFromFirebaseRef). Forms didn't.
-      if (formsFromFirebaseRef.current) {
-        formsFromFirebaseRef.current = false;
-        setSyncStatus('synced');
+      if (formsFromStorageRef.current) {
+        formsFromStorageRef.current = false;
+        setSyncStatus(FirebaseSync.getPendingCount() > 0 ? 'pending' : 'synced');
+        setSyncError(null);
         return;
+      }
+
+      if (formsFromFirebaseRef.current) {
+        const remoteSignature = buildFormSignature(latestRemoteFormsRef.current || []);
+        const currentSignature = buildFormSignature(forms);
+        formsFromFirebaseRef.current = false;
+        if (currentSignature === remoteSignature) {
+          setSyncStatus(FirebaseSync.getPendingCount() > 0 ? 'pending' : 'synced');
+          setSyncError(null);
+          return;
+        }
       }
 
       if (FirebaseSync.isConnected() && isOnlineRef.current && forms.length > 0) {
         setSyncStatus('syncing');
-        FirebaseSync.syncForms(forms).then(() => {
-          setSyncStatus('synced');
-          console.log('Forms synced to Firebase:', forms.length, 'forms');
+        FirebaseSync.syncForms(forms).then((result) => {
+          if (result && result.success) {
+            setSyncStatus(FirebaseSync.getPendingCount() > 0 ? 'pending' : 'synced');
+            setSyncError(null);
+            console.log('Forms synced to Firebase:', forms.length, 'forms');
+          } else if (result && result.queued) {
+            setSyncStatus('pending');
+            setSyncError(null);
+            console.warn('Forms queued for Firebase retry:', result.error || 'queued');
+          } else {
+            setSyncStatus('error');
+            setSyncError(result && result.error ? result.error : 'Sync failed');
+            console.error('Firebase sync failed:', result);
+          }
         }).catch((err) => {
-          setSyncStatus('offline');
+          setSyncStatus('error');
+          setSyncError(err && err.message ? err.message : 'Sync failed');
           console.error('Firebase sync failed:', err);
         });
       }
@@ -713,6 +738,75 @@ function useDataSync({ setForms, setSites, deletingFormRef, deletedFormIdsRef })
       }
     }
   }, []);
+
+  // Cross-tab fallback: keep same-browser tabs in sync from shared localStorage
+  // even if the realtime listener arrives late.
+  useEffect(() => {
+    const handleStorage = (event) => {
+      if (event.storageArea !== localStorage) return;
+
+      if (event.key === 'jmart-safety-forms') {
+        try {
+          const parsedForms = JSON.parse(event.newValue || '[]');
+          const deletedIds = deletedFormIdsRef ? deletedFormIdsRef.current : new Set();
+          const nextForms = (Array.isArray(parsedForms) ? parsedForms : Object.values(parsedForms || {}))
+            .filter((form) => !deletedIds.has(form?.id));
+          formsFromStorageRef.current = true;
+          setForms(nextForms);
+          if ((Array.isArray(parsedForms) ? parsedForms.length : Object.values(parsedForms || {}).length) !== nextForms.length) {
+            StorageQuotaManager.safeFormsWrite(nextForms);
+          }
+          setSyncStatus(FirebaseSync.getPendingCount() > 0 ? 'pending' : 'synced');
+          setSyncError(null);
+        } catch (e) {
+          console.warn('Storage form sync skipped:', e.message);
+        }
+      }
+
+      if (event.key === 'jmart-deleted-form-ids') {
+        try {
+          const nextDeletedIds = new Set(JSON.parse(event.newValue || '[]').filter(Boolean));
+          if (deletedFormIdsRef) {
+            deletedFormIdsRef.current = nextDeletedIds;
+          }
+
+          const parsedForms = JSON.parse(localStorage.getItem('jmart-safety-forms') || '[]');
+          const nextForms = (Array.isArray(parsedForms) ? parsedForms : Object.values(parsedForms || {}))
+            .filter((form) => !nextDeletedIds.has(form?.id));
+
+          formsFromStorageRef.current = true;
+          setForms(nextForms);
+          StorageQuotaManager.safeFormsWrite(nextForms);
+        } catch (e) {
+          console.warn('Storage deleted-id sync skipped:', e.message);
+        }
+      }
+
+      if (event.key === 'jmart-safety-sites') {
+        try {
+          const parsedSites = JSON.parse(event.newValue || '[]');
+          const rawSites = Array.isArray(parsedSites) ? parsedSites : Object.values(parsedSites || {});
+          const seenStorageSites = new Set();
+          const nextSites = rawSites
+            .map((site) => typeof site === 'string' ? site : String(site))
+            .filter((site) => site && site !== 'undefined' && site !== 'null')
+            .filter((site) => {
+              const key = site.toLowerCase().trim();
+              if (seenStorageSites.has(key)) return false;
+              seenStorageSites.add(key);
+              return true;
+            });
+          sitesFromFirebaseRef.current = true;
+          setSites(nextSites);
+        } catch (e) {
+          console.warn('Storage site sync skipped:', e.message);
+        }
+      }
+    };
+
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, [deletedFormIdsRef, setForms, setSites]);
 
   // Online/Offline detection
   useEffect(() => {

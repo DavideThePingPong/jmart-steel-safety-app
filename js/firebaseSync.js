@@ -238,6 +238,18 @@ const FirebaseSync = {
     this.syncListeners.forEach(cb => cb(status, details));
   },
 
+  // Kick the retry processor when a write is queued while the app is still online.
+  // This closes the gap where a queued write could sit idle until the next auth init,
+  // online event, or manual retry.
+  kickQueueProcessor: function() {
+    if (!navigator.onLine || !this.isConnected()) return;
+    if (typeof IntervalRegistry !== 'undefined' && IntervalRegistry.setTimeout) {
+      IntervalRegistry.setTimeout(() => this.processQueue(), 250, 'FirebaseSync-kick');
+      return;
+    }
+    setTimeout(() => this.processQueue(), 250);
+  },
+
   // Add item to retry queue — blocked when circuit breaker is open
   // FIXED: Strip base64 photos from queued data. Without this, a single failed
   // syncForms() call would store 5MB+ of photo data in the sync queue in localStorage,
@@ -272,6 +284,7 @@ const FirebaseSync = {
     this.pendingQueue.push(item);
     this.saveQueue();
     this.notifyListeners('queued', { pending: this.pendingQueue.length });
+    this.kickQueueProcessor();
     return item.id;
   },
 

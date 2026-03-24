@@ -66,17 +66,18 @@ test('auth gate, create pre-start, sync across tabs, and delete form', async ({ 
   await pageA.getByRole('button', { name: /Complete Pre-Start/i }).click();
   await expect(pageA.getByText('Form Submitted!')).toBeVisible();
   await pageA.getByRole('button', { name: /Back to Dashboard/i }).click();
-  await expect(pageA.getByText('Recent Forms')).toBeVisible();
+  await expect(pageA.getByText('Welcome Back!')).toBeVisible();
 
-  const syncedForm = pageB.getByRole('button', { name: /Site 1 - Sydney CBD/i }).first();
+  await expect.poll(async () => await pageB.locator('button').filter({ hasText: 'Site 1 - Sydney CBD' }).count()).toBe(1);
+  const syncedForm = pageB.locator('button').filter({ hasText: 'Site 1 - Sydney CBD' }).first();
   await expect(syncedForm).toBeVisible();
 
   await syncedForm.click();
   await pageB.getByRole('button', { name: /Delete Form/i }).click();
   await pageB.getByRole('button', { name: /Delete Permanently/i }).click();
 
-  const deletedFormCardA = pageA.getByRole('button', { name: /Site 1 - Sydney CBD/i });
-  const deletedFormCardB = pageB.getByRole('button', { name: /Site 1 - Sydney CBD/i });
+  const deletedFormCardA = pageA.locator('button').filter({ hasText: 'Site 1 - Sydney CBD' });
+  const deletedFormCardB = pageB.locator('button').filter({ hasText: 'Site 1 - Sydney CBD' });
   await expect(deletedFormCardA).toHaveCount(0);
   await expect(deletedFormCardB).toHaveCount(0);
 

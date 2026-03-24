@@ -73,6 +73,90 @@ describe('useFormManager — confirmUpdate metadata preservation [REGRESSION]', 
 });
 
 // ==========================================================================
+// REGRESSION #2: queued writes must not be reported as synced
+// ==========================================================================
+describe('useDataSync - queued sync handling [REGRESSION]', () => {
+
+  it('should only mark forms as synced after an explicit success result', () => {
+    const syncBlock = hooksCode.slice(
+      hooksCode.indexOf('const syncFormsEffect'),
+      hooksCode.indexOf('const syncSitesEffect')
+    );
+
+    expect(syncBlock).toMatch(/FirebaseSync\.syncForms\(forms\)\.then\(\(result\)\s*=>\s*\{/);
+    expect(syncBlock).toMatch(/if\s*\(result\s*&&\s*result\.success\)[\s\S]*setSyncStatus\(FirebaseSync\.getPendingCount\(\)\s*>\s*0\s*\?\s*'pending'\s*:\s*'synced'\)/);
+  });
+
+  it('should only skip the next sync when the current forms still match the last remote snapshot', () => {
+    const syncBlock = hooksCode.slice(
+      hooksCode.indexOf('const syncFormsEffect'),
+      hooksCode.indexOf('const syncSitesEffect')
+    );
+
+    expect(syncBlock).toContain('if (formsFromStorageRef.current)');
+    expect(syncBlock).toContain('const remoteSignature = buildFormSignature(latestRemoteFormsRef.current || [])');
+    expect(syncBlock).toContain('const currentSignature = buildFormSignature(forms)');
+    expect(syncBlock).toContain('if (currentSignature === remoteSignature)');
+  });
+
+  it('should keep pending status when FirebaseSync queues the write', () => {
+    const syncBlock = hooksCode.slice(
+      hooksCode.indexOf('const syncFormsEffect'),
+      hooksCode.indexOf('const syncSitesEffect')
+    );
+
+    expect(syncBlock).toMatch(/else if\s*\(result\s*&&\s*result\.queued\)[\s\S]*setSyncStatus\('pending'\)/);
+  });
+
+  it('should not trigger duplicate form syncs inside addForm or confirmUpdate', () => {
+    const addFormBlock = hooksCode.slice(
+      hooksCode.indexOf('const addForm'),
+      hooksCode.indexOf('const unlockForm')
+    );
+    const confirmUpdateBlock = hooksCode.slice(
+      hooksCode.indexOf('const confirmUpdate'),
+      hooksCode.indexOf('const cancelUpdate')
+    );
+
+    expect(addFormBlock).not.toContain('FirebaseSync.syncForms(updatedForms)');
+    expect(confirmUpdateBlock).not.toContain('FirebaseSync.syncForms(updatedForms)');
+  });
+
+  it('should preserve pending status after a Firebase listener merge when the queue is not empty', () => {
+    const mergeBlock = hooksCode.slice(
+      hooksCode.indexOf('const applyRemoteForms'),
+      hooksCode.indexOf('const unsubForms')
+    );
+
+    expect(mergeBlock).toContain('pendingAfterMerge');
+    expect(mergeBlock).toContain("setSyncStatus(pendingAfterMerge > 0 ? 'pending' : 'synced')");
+  });
+
+  it('should not throttle away real remote mutations during the listener cooldown window', () => {
+    const mergeBlock = hooksCode.slice(
+      hooksCode.indexOf('const applyRemoteForms'),
+      hooksCode.indexOf('const unsubForms')
+    );
+
+    expect(mergeBlock).toContain('hasRemoteMutation');
+    expect(mergeBlock).toContain('!options.skipThrottle && !hasRemoteMutation && !hasRemoteDeletion');
+  });
+
+  it('should listen for storage events so same-browser tabs stay in sync', () => {
+    const storageBlock = hooksCode.slice(
+      hooksCode.indexOf('const syncSitesEffect'),
+      hooksCode.indexOf('// Online/Offline detection')
+    );
+
+    expect(storageBlock).toContain("window.addEventListener('storage', handleStorage)");
+    expect(storageBlock).toContain("event.key === 'jmart-safety-forms'");
+    expect(storageBlock).toContain('formsFromStorageRef.current = true');
+    expect(storageBlock).toContain("event.key === 'jmart-deleted-form-ids'");
+    expect(storageBlock).toContain('deletedFormIdsRef.current = nextDeletedIds');
+  });
+});
+
+// ==========================================================================
 // REGRESSION #2: useDeviceAuth cleanup pattern
 // ==========================================================================
 describe('useDeviceAuth — Firebase listener cleanup [REGRESSION]', () => {

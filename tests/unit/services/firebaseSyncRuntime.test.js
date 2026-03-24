@@ -222,6 +222,17 @@ describe('FirebaseSync (runtime)', () => {
       expect(cb).toHaveBeenCalledWith('queued', expect.objectContaining({ pending: 1 }));
     });
 
+    it('schedules queue processing when a write is queued while online', () => {
+      FirebaseSync.addToQueue('forms', []);
+      expect(IntervalRegistry.setTimeout).toHaveBeenCalledWith(expect.any(Function), 250, 'FirebaseSync-kick');
+    });
+
+    it('does not schedule queue processing while offline', () => {
+      navigator.onLine = false;
+      FirebaseSync.addToQueue('forms', []);
+      expect(IntervalRegistry.setTimeout).not.toHaveBeenCalled();
+    });
+
     it('blocked when circuit breaker open', () => {
       FirebaseSync.circuitOpen = true;
       const id = FirebaseSync.addToQueue('forms', []);
