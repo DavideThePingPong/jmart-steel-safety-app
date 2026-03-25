@@ -400,3 +400,164 @@ The 401 handler replaces `this.tokenClient.callback` temporarily. If two API cal
 **7 bugs fixed**, **5 low-priority issues documented**. The critical bugs (queue replay using `set()`) could cause silent data loss across devices. The medium bugs (daily backup, Drive search, API timeout) caused degraded functionality but no data loss.
 
 The app's core sync architecture is sound — the issues were implementation mismatches between the live write path and the queue replay path, and between the storage layer (stripped) and the backup layer (needs full data).
+
+---
+
+## Work Log — Session 2026-03-25
+
+### Branch: `claude/review-safety-sync-LBQe1`
+### PR: https://github.com/DavideThePingPong/jmart-steel-safety-app/pull/17
+
+### Commits (oldest first)
+
+1. **`d2b6277`** — Fix critical sync bugs: queue replay set→update, daily backup stripped data, stale app-core delete
+2. **`0535388`** — Fix training queue replay set→update, Drive search scope, and API retry timeout
+3. **`66e6bfe`** — Add comprehensive safety sync audit document
+
+### Files Changed (vs master)
+
+| File | Lines Changed | What Changed |
+|------|--------------|-------------|
+| `js/firebaseSync.js` | +12 -3 | `executeSync()` forms+training: `set()` → `update()` |
+| `js/dailyBackupScheduler.js` | +55 -14 | `performBackup()`: fetch from Firebase instead of stripped localStorage |
+| `js/app-core.js` | +59 -8 | `deleteForm()`: granular delete + `deletedFormIdsRef`. `applyRemoteForms()`: filter deleted IDs, guard local merge, guard empty-Firebase push |
+| `js/googleDriveSync.js` | +27 -4 | `deleteOldFormPDFs()`: search all folders. `apiCall()`: retry with timeout |
+| `sw.js` | +3 -3 | CACHE_VERSION v79 → v81 |
+| `AUDIT-SAFETY-SYNC.md` | +402 new | This document |
+
+### Audit Process (3 passes)
+
+**Pass 1 — Initial exploration (background agent)**
+- Mapped the entire form sync system: React state → localStorage → Firebase → Google Drive
+- Identified the three-layer storage architecture and anti-loop mechanism
+- Found the `set()` vs `update()` mismatch in queue replay
+- Found the daily backup stripped data issue
+- Found the stale `app-core.js` delete flow
+
+**Pass 2 — Direct file review + fixes**
+- Read `firebaseSync.js` end-to-end (775 lines)
+- Read `app.js` useFormManager + useDataSync (lines 750-1700)
+- Read `dailyBackupScheduler.js` (153 lines)
+- Read `storageQuotaManager.js` (400+ lines)
+- Read `formAssetStore.js` (111 lines)
+- Implemented fixes for bugs 1-4 and committed
+
+**Pass 3 — Triple-check deep audit**
+- Re-read all previously audited files
+- Read `googleDriveSync.js` end-to-end (500+ lines)
+- Read `config.js` (Firebase config, auth, REST fallback)
+- Read `deviceAuth.js` + `deviceAuthManager.js`
+- Read `firebase.rules.json` (179 lines)
+- Read `index.html` (loading sequence)
+- Read `src/services/` files (confirmed dead code)
+- Read `.github/workflows/firebase-deploy.yml`
+- Read `offlinePhotoQueue.js` + `photoUploadManager.js`
+- Read `googleDriveConfig.js`
+- Found 3 more bugs (training queue, Drive search scope, API retry timeout)
+- Implemented fixes and committed
+- Verified `app-core.js` `deletedFormIdsRef` references are all null-guarded
+- Confirmed Firebase rules properly gate all write paths
+- Confirmed `src/services/` and `app-core.js` are dead code
+
+### Exact Code Changes (Diffs)
+
+#### 1. firebaseSync.js — Queue replay forms: set → update
+
+```diff
+-        await this.writeWithFallback('jmart-safety/forms', 'set', formUpdates);
+-        await this.writeWithFallback('jmart-safety/formAssets', 'set', assetUpdates);
++        // FIXED: Use update() not set()
++        await this.writeWithFallback('jmart-safety/forms', 'update', formUpdates);
++        await this.writeWithFallback('jmart-safety/formAssets', 'update', assetUpdates);
+```
+
+#### 2. firebaseSync.js — Queue replay training: set → update
+
+```diff
+       case 'training':
+-        await this.writeWithFallback('jmart-safety/training', 'set', item.data);
++        // FIXED: Use update() not set()
++        await this.writeWithFallback('jmart-safety/training', 'update', item.data);
+```
+
+#### 3. dailyBackupScheduler.js — Fetch from Firebase instead of localStorage
+
+```diff
+-    // Get forms from localStorage
+-    var formsJson = localStorage.getItem('jmart-safety-forms');
++    // FIXED: Fetch full form data from Firebase (with photos/signatures)
++    var forms;
++    var source = 'localStorage';
++    try {
++      if (typeof firebaseDb !== 'undefined' && firebaseDb && ...) {
++        var formsSnap = await firebaseDb.ref('jmart-safety/forms').once('value');
++        // ... merge assets from /formAssets ...
++        forms = formsArray.filter(Boolean);
++        source = 'Firebase';
++      }
++    } catch (fbErr) { /* fallback to localStorage */ }
+```
+
+#### 4. googleDriveSync.js — Search all folders, not just root
+
+```diff
+-      const files = await this.searchFiles(siteName);
++      // FIXED: Search across all folders by formId
++      const query = `name contains '${this._escapeQuery(formId)}' and mimeType='application/pdf' and trashed=false`;
++      const resp = await this.apiCall(`https://www.googleapis.com/drive/v3/files?q=...`);
+```
+
+#### 5. googleDriveSync.js — API retry with timeout
+
+```diff
+-          const retryResponse = await fetch(url, options);
++          const retryController = new AbortController();
++          const retryTimeout = setTimeout(() => retryController.abort(), 30000);
++          const retryResponse = await fetch(url, { ...options, signal: retryController.signal });
++          // ... finally { clearTimeout(retryTimeout); }
+```
+
+#### 6. app-core.js — Granular delete instead of syncForms(all)
+
+```diff
+-        FirebaseSync.syncForms(updatedForms).then(() => {
+-          console.log('Deletion synced to Firebase');
++        FirebaseSync.deleteForm(formId).then(result => {
++          // ... handle success/queued/error ...
+```
+
+#### 7. app-core.js — Filter deleted IDs + guard local merge
+
+```diff
++          const deletedIds = deletedFormIdsRef ? deletedFormIdsRef.current : new Set();
+           formsArray.forEach(form => {
++            if (deletedIds.has(form.id)) return;
+             formMap.set(form.id, { ...form, source: 'firebase' });
+           });
++          const preserveLocalOnly = /* check pending queue */;
+           currentLocalForms.forEach(localForm => {
++            if (!localForm || deletedIds.has(localForm.id)) return;
+             if (!formMap.has(localForm.id)) {
++              if (!preserveLocalOnly) return;
+```
+
+---
+
+## Instructions for Codex
+
+### What to verify
+
+1. **Read each file listed in the "File-by-File Checklist" section above** and confirm every checkbox item
+2. **Compare `executeSync()` operations with their live counterparts** — every queue replay operation should use the same Firebase method (`set` vs `update`) as the live sync function
+3. **Trace the daily backup data path** — confirm forms passed to `PDFGenerator.generate()` have actual photo data, not `[in-firebase]` placeholders
+4. **Check the Drive search scope** — confirm `deleteOldFormPDFs` can find PDFs in subfolders
+5. **Verify anti-loop flags** — confirm that every code path that calls `setForms()` from external data (Firebase, localStorage event) sets the appropriate flag BEFORE calling `setForms()`
+6. **Check the 5 known low-priority issues** — confirm they exist and assess whether any should be upgraded to higher priority
+
+### What NOT to worry about
+
+- `app-core.js` is dead code — `index.html` line 277 only loads `js/app.js`
+- `src/services/` files are dead code — never imported
+- Firebase API key in `config.js` is intentionally public (client-side Firebase)
+- Sites using `set()` in queue replay is correct (full-replace array)
+- `deletedFormIdsRef` null-guards in `app-core.js` are intentional (ref doesn't exist there)
