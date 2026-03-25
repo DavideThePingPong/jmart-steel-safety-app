@@ -87,24 +87,57 @@ const DailyBackupScheduler = {
       return;
     }
 
-    // Get forms from localStorage
-    var formsJson = localStorage.getItem('jmart-safety-forms');
-    if (!formsJson) {
-      console.log('No forms to backup');
-      return;
+    // FIXED: Fetch full form data from Firebase (with photos/signatures) instead of
+    // localStorage which has stripped data ([in-firebase] placeholders).
+    // Fall back to localStorage if Firebase is unavailable.
+    var forms;
+    var source = 'localStorage';
+    try {
+      if (typeof firebaseDb !== 'undefined' && firebaseDb && typeof isFirebaseConfigured !== 'undefined' && isFirebaseConfigured) {
+        var formsSnap = await firebaseDb.ref('jmart-safety/forms').once('value');
+        var formsData = formsSnap.val();
+        if (formsData) {
+          var formsArray = Array.isArray(formsData) ? formsData : Object.values(formsData);
+          // Merge assets (signatures) from separate node
+          if (typeof FormAssetStore !== 'undefined' && FormAssetStore.mergeAssetMapIntoForms) {
+            try {
+              var assetsSnap = await firebaseDb.ref('jmart-safety/formAssets').once('value');
+              var assetsData = assetsSnap.val();
+              if (assetsData) {
+                formsArray = FormAssetStore.mergeAssetMapIntoForms(formsArray, assetsData);
+              }
+            } catch (assetErr) {
+              console.warn('Daily backup: could not fetch assets, PDFs may lack signatures:', assetErr.message);
+            }
+          }
+          forms = formsArray.filter(Boolean);
+          source = 'Firebase';
+        }
+      }
+    } catch (fbErr) {
+      console.warn('Daily backup: Firebase fetch failed, falling back to localStorage:', fbErr.message);
     }
 
-    var forms;
-    try {
-      forms = JSON.parse(formsJson);
-    } catch (e) {
-      console.error('Daily backup: corrupt forms data in localStorage:', e.message);
-      return;
+    // Fallback to localStorage if Firebase didn't return data
+    if (!forms || forms.length === 0) {
+      var formsJson = localStorage.getItem('jmart-safety-forms');
+      if (!formsJson) {
+        console.log('No forms to backup');
+        return;
+      }
+      try {
+        forms = JSON.parse(formsJson);
+      } catch (e) {
+        console.error('Daily backup: corrupt forms data in localStorage:', e.message);
+        return;
+      }
+      source = 'localStorage (fallback)';
     }
     if (!Array.isArray(forms) || forms.length === 0) {
       console.log('No valid forms to backup');
       return;
     }
+    console.log('Daily backup: using ' + forms.length + ' forms from ' + source);
     var result;
     try {
       result = await GoogleDriveSync.uploadDailyForms(forms);
