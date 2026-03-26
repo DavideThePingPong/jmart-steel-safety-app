@@ -6388,7 +6388,7 @@
                         }
                     ]
                 }],
-                { model: 'claude-3-5-haiku-20241022', maxTokens: 1024 }
+                { model: 'claude-haiku-4-5-20251001', maxTokens: 1024 }
             );
 
             // Extract text from response
@@ -7519,7 +7519,7 @@
         }
 
         const body = {
-            model: options.model || 'claude-3-5-haiku-20241022',
+            model: options.model || 'claude-haiku-4-5-20251001',
             max_tokens: options.maxTokens || 1024,
             messages: messages
         };
@@ -7532,7 +7532,7 @@
             headers: {
                 'Content-Type': 'application/json',
                 'x-api-key': apiKey,
-                'anthropic-version': '2025-01-01',
+                'anthropic-version': '2025-04-14',
                 'anthropic-dangerous-direct-browser-access': 'true'
             },
             body: JSON.stringify(body)
@@ -8092,7 +8092,7 @@
 
             const result = await callClaudeAPI(
                 [{ role: 'user', content: searchPrompt }],
-                { model: 'claude-3-5-haiku-20241022', maxTokens: 1024, tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 8 }] }
+                { model: 'claude-haiku-4-5-20251001', maxTokens: 1024, tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 8 }] }
             );
 
             let text = '';
@@ -8314,7 +8314,7 @@
             const result = await callClaudeAPI(
                 [{ role: 'user', content: searchPrompt }],
                 {
-                    model: 'claude-3-5-haiku-20241022',
+                    model: 'claude-haiku-4-5-20251001',
                     maxTokens: 1024,
                     tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 8 }]
                 }
@@ -8498,7 +8498,7 @@
                         }
                     ]
                 }],
-                { model: 'claude-3-5-haiku-20241022', maxTokens: 1024, temperature: 0 }
+                { model: 'claude-haiku-4-5-20251001', maxTokens: 1024, temperature: 0 }
             );
 
             let text = '';
@@ -8987,7 +8987,7 @@
                             'environmental conditions, and any builder/client specific requirements.\n\n' +
                             'Return a plain text summary organized by category. Be thorough — every detail matters for the SWMS.' }
                     ]}],
-                    { model: 'claude-3-5-haiku-20241022', maxTokens: 2048, temperature: 0 }
+                    { model: 'claude-haiku-4-5-20251001', maxTokens: 2048, temperature: 0 }
                 );
 
                 if (result && result.content) {
@@ -9050,7 +9050,7 @@
                         '{"changes":[{"title":"...","description":"short description","effective_date":"YYYY-MM or unknown","relevance":"high/medium/low"}]}\n' +
                         'If no changes found, return {"changes":[]}. Return ONLY JSON.' }],
                     {
-                        model: 'claude-3-5-haiku-20241022', maxTokens: 1024, temperature: 0,
+                        model: 'claude-haiku-4-5-20251001', maxTokens: 1024, temperature: 0,
                         tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 4 }]
                     }
                 );
