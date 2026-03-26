@@ -1,5 +1,5 @@
 // Artsteel Hub Service Worker
-const CACHE_NAME = 'hub-v18';
+const CACHE_NAME = 'hub-v19';
 const ASSETS = [
     './artsteel-hub.html',
     './hub-manifest.json',
