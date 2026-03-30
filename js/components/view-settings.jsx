@@ -404,14 +404,33 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
   };
 
   const lastBackup = localStorage.getItem('last-drive-backup-date');
+  const openResetTool = () => {
+    const url = new URL('./reset.html', window.location.href);
+    url.searchParams.set('from', 'safety-settings');
+    window.location.assign(url.toString());
+  };
+
 
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-xl p-4 shadow-sm">
-        <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">⚙️ Settings</h2>
-        {isDeviceAdmin && (
-          <p className="text-xs text-green-600 mt-1">🛡️ Admin Mode - You can manage device access</p>
-        )}
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">Settings</h2>
+            {isDeviceAdmin && (
+              <p className="text-xs text-green-600 mt-1">Admin Mode - You can manage device access</p>
+            )}
+          </div>
+          <button
+            onClick={openResetTool}
+            className="shrink-0 inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-orange-50 text-orange-700 active:bg-orange-100 font-semibold text-sm"
+            aria-label="Open reset tool"
+            title="Open reset tool"
+          >
+            <span aria-hidden="true">{"\u21BB"}</span>
+            <span>Reset</span>
+          </button>
+        </div>
       </div>
 
       {/* Current Device Info (for all users) */}

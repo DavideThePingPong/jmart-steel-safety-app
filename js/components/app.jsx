@@ -7,6 +7,7 @@ function JMartSteelSafetyApp({ isAdmin = false }) {
   const [forms, setForms] = useState([]);
   const [sites, setSites] = useState([]);
   const [editingForm, setEditingForm] = useState(null);
+  const [templateToLoad, setTemplateToLoad] = useState(null);
 
   // Device Authorization
   const {
@@ -56,6 +57,9 @@ function JMartSteelSafetyApp({ isAdmin = false }) {
     syncSitesEffect
   } = useDataSync({ setForms, setSites, deletingFormRef, deletedFormIdsRef, suppressNextFormsSyncRef });
 
+  // Prestart Templates (shared across dashboard, prestart form, camera)
+  const { templates: prestartTemplates, templateJobNames, upsertTemplate, deleteTemplate } = usePrestartTemplates();
+
   // PWA Install
   const { showInstallPrompt, handleInstall, dismissInstall } = usePWAInstall();
 
@@ -80,6 +84,12 @@ function JMartSteelSafetyApp({ isAdmin = false }) {
     { id: 'emergency', label: 'Emergency Info', emoji: '📞' },
     { id: 'settings', label: 'Settings', emoji: '⚙️' },
   ];
+
+  const openResetTool = () => {
+    const url = new URL('./reset.html', window.location.href);
+    url.searchParams.set('from', 'safety-app');
+    window.location.assign(url.toString());
+  };
 
   // Show loading while checking device authorization
   if (deviceAuthStatus === 'checking') {
@@ -242,6 +252,14 @@ function JMartSteelSafetyApp({ isAdmin = false }) {
           </div>
         </div>
         <div className="flex items-center gap-1">
+          <button
+            onClick={openResetTool}
+            className="p-2 hover:bg-orange-700 rounded-lg text-lg leading-none"
+            aria-label="Open reset tool"
+            title="Open reset tool"
+          >
+            🔄
+          </button>
           {pendingPhotoCount > 0 && <span className="text-blue-300 text-sm animate-pulse">●</span>}
           {syncStatus === 'synced' && pendingPhotoCount === 0 && <span className="text-green-300 text-sm">●</span>}
           {syncStatus === 'syncing' && <span className="text-yellow-300 text-sm animate-pulse">●</span>}
@@ -273,9 +291,9 @@ function JMartSteelSafetyApp({ isAdmin = false }) {
       )}
 
       <main className="flex-1 p-4 pb-20">
-        {currentView === 'dashboard' && <Dashboard setCurrentView={setCurrentView} forms={forms} onViewForm={setViewFormModal} isFormBackedUp={isFormBackedUp} sites={sites} />}
+        {currentView === 'dashboard' && <Dashboard setCurrentView={setCurrentView} forms={forms} onViewForm={setViewFormModal} isFormBackedUp={isFormBackedUp} sites={sites} prestartTemplates={prestartTemplates} templateJobNames={templateJobNames} onDeleteTemplate={deleteTemplate} onSelectTemplate={(template) => { setTemplateToLoad(template); setCurrentView('prestart'); }} />}
         {currentView === 'training' && <TrainingView />}
-        {currentView === 'prestart' && <PrestartView onSubmit={(data) => addForm('prestart', data)} onUpdate={updateForm} editingForm={editingForm?.type === 'prestart' ? editingForm : null} previousPrestarts={previousPrestarts} sites={sites} />}
+        {currentView === 'prestart' && <PrestartView onSubmit={(data, options) => addForm('prestart', data, options)} onUpdate={updateForm} editingForm={editingForm?.type === 'prestart' ? editingForm : null} previousPrestarts={previousPrestarts} sites={sites} savedTemplates={prestartTemplates} onUpsertTemplate={upsertTemplate} templateToLoad={templateToLoad} onTemplateLoaded={() => setTemplateToLoad(null)} />}
         {currentView === 'steel-itp' && <SteelITPView onSubmit={(data) => addForm('steel-itp', data)} onUpdate={updateForm} editingForm={editingForm?.type === 'steel-itp' ? editingForm : null} sites={sites} />}
         {currentView === 'inspection' && <SubcontractorInspectionView onSubmit={(data) => addForm('inspection', data)} onUpdate={updateForm} editingForm={editingForm?.type === 'inspection' ? editingForm : null} sites={sites} />}
         {currentView === 'itp' && <ITPFormView onSubmit={(data) => addForm('itp', data)} onUpdate={updateForm} editingForm={editingForm?.type === 'itp' ? editingForm : null} sites={sites} />}

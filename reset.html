@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>JMart Safety - Reset</title>
+  <title>JMart Reset Tool</title>
   <style>
     body { margin: 0; font-family: system-ui, sans-serif; background: #f3f4f6; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 16px; }
     .card { background: white; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); max-width: 420px; width: 100%; overflow: hidden; }
@@ -33,9 +33,9 @@
   </script>
   <div class="card">
     <div class="header">
-      <div style="font-size:48px;margin-bottom:8px;">🔧</div>
-      <h2 style="margin:0;font-size:20px;">Reset &amp; Fix Storage</h2>
-      <p style="margin:4px 0 0;font-size:14px;opacity:0.9;">Fixes storage full, sync broken, loading errors</p>
+      <div id="headerIcon" style="font-size:48px;margin-bottom:8px;">🔧</div>
+      <h2 id="headerTitle" style="margin:0;font-size:20px;">Reset &amp; Fix Storage</h2>
+      <p id="headerSubtitle" style="margin:4px 0 0;font-size:14px;opacity:0.9;">Fixes storage full, sync broken, loading errors</p>
     </div>
     <div class="body">
       <div id="meter-label" style="font-size:13px;font-weight:600;color:#374151;">Storage: calculating...</div>
@@ -47,11 +47,72 @@
         • Your forms, credentials, and saved signatures are preserved
       </div>
       <button class="btn-reset" id="resetBtn" onclick="doReset()">Fix Everything</button>
-      <button class="btn-go" id="goBtn" onclick="window.location.href='./'" disabled>Open App</button>
-      <div class="small">Device name, password, and saved signatures are preserved. Forms are in Firebase.</div>
+      <button class="btn-go" id="goBtn" disabled>Open App</button>
+      <div class="small" id="smallNote">Device name, password, and saved signatures are preserved. Forms are in Firebase.</div>
     </div>
   </div>
   <script>
+    var resetSource = new URLSearchParams(window.location.search).get('from') || '';
+    var isHubReset = /^hub(?:-|$)/i.test(resetSource);
+    var resetConfig = isHubReset ? {
+      title: 'Reset Hub Cache',
+      subtitle: 'Fixes stale hub bundle, Victor, Frank, Hanna, and settings issues',
+      icon: '🧭',
+      resetLabel: 'Reset Hub',
+      goLabel: 'Open Hub',
+      goHref: './artsteel-hub.html?v=20260328-frankfix',
+      readyHtml: 'Ready. Tap "Reset Hub" to:<br>' +
+        '• Remove hub service workers &amp; caches<br>' +
+        '• Clear Victor, Frank, Hanna, and Drive cache data<br>' +
+        '• Reset Firebase connection state<br>' +
+        '• Safety app forms, password, and saved signatures stay untouched',
+      smallNote: 'Hub reset keeps the safety app form cache, password, and saved signatures untouched.',
+      stepThree: 'Step 3/7: Clearing hub local data...',
+      stepFour: 'Step 4/7: Removing hub temp data...',
+      donePrompt: 'Tap "Open Hub" to load the fixed hub.'
+    } : {
+      title: 'Reset & Fix Storage',
+      subtitle: 'Fixes storage full, sync broken, loading errors',
+      icon: '🔧',
+      resetLabel: 'Fix Everything',
+      goLabel: 'Open App',
+      goHref: './',
+      readyHtml: 'Ready. Tap "Fix Everything" to:<br>' +
+        '• Strip photos from local cache (they\'re safe in Firebase)<br>' +
+        '• Clear old sync queue &amp; temp data<br>' +
+        '• Remove service worker &amp; caches<br>' +
+        '• Your forms, credentials, and saved signatures are preserved',
+      smallNote: 'Device name, password, and saved signatures are preserved. Forms are in Firebase.',
+      stepThree: 'Step 3/7: Stripping photos from forms...',
+      stepFour: 'Step 4/7: Clearing sync queue & temp data...',
+      donePrompt: 'Tap "Open App" to load the fixed version.'
+    };
+
+    function isHubLocalKey(key) {
+      return key === 'steel-api-key' ||
+        key === 'hub-drive-token' ||
+        /^hub-/i.test(key) ||
+        /^victor/i.test(key) ||
+        /^frank/i.test(key) ||
+        /^hanna/i.test(key) ||
+        /^igor/i.test(key);
+    }
+
+    function configureResetPage() {
+      document.title = isHubReset ? 'JMart Hub - Reset' : 'JMart Safety - Reset';
+      document.getElementById('headerIcon').textContent = resetConfig.icon;
+      document.getElementById('headerTitle').textContent = resetConfig.title;
+      document.getElementById('headerSubtitle').textContent = resetConfig.subtitle;
+      document.getElementById('status').innerHTML = resetConfig.readyHtml;
+      document.getElementById('resetBtn').textContent = resetConfig.resetLabel;
+      var goBtn = document.getElementById('goBtn');
+      goBtn.textContent = resetConfig.goLabel;
+      goBtn.onclick = function() { window.location.href = resetConfig.goHref; };
+      document.getElementById('smallNote').textContent = resetConfig.smallNote;
+    }
+
+    configureResetPage();
+
     // ---- Storage meter ----
     function getStorageInfo() {
       var total = 0;
@@ -103,46 +164,83 @@
         for (var n of cacheNames) { await caches.delete(n); }
         steps.push('Deleted ' + cacheNames.length + ' cache(s)');
 
-        // 3. STRIP BASE64 from forms (the #1 storage bomb)
-        el.textContent = 'Step 3/7: Stripping photos from forms...';
-        var strippedCount = 0;
-        try {
-          var formsRaw = localStorage.getItem('jmart-safety-forms');
-          if (formsRaw && formsRaw.length > 10000) {
-            var forms = JSON.parse(formsRaw);
-            var stripped = JSON.parse(JSON.stringify(forms, function(key, value) {
-              if (typeof value !== 'string') return value;
-              if (value.length > 500 &&
-                  (value.indexOf('data:') === 0 || value.indexOf('/9j/') === 0 ||
-                   value.indexOf('iVBOR') === 0 || value.indexOf('JVBER') === 0)) {
-                strippedCount++;
-                return '[in-firebase]';
-              }
-              if (value.length > 5000) return value.substring(0, 200) + '...[truncated]';
-              return value;
-            }));
-            // Also trim to 50 most recent
-            stripped.sort(function(a, b) { return new Date(b.createdAt || 0) - new Date(a.createdAt || 0); });
-            if (stripped.length > 50) stripped = stripped.slice(0, 50);
-            localStorage.setItem('jmart-safety-forms', JSON.stringify(stripped));
-            steps.push('Stripped ' + strippedCount + ' photos, kept ' + stripped.length + ' forms');
-          } else {
-            steps.push('Forms already small (' + (formsRaw ? Math.round(formsRaw.length / 1024) + 'KB' : 'none') + ')');
+        // 3. Clear target-specific local data
+        el.textContent = resetConfig.stepThree;
+        if (isHubReset) {
+          var clearedHubKeys = 0;
+          var hubKeys = [];
+          for (var h = 0; h < localStorage.length; h++) {
+            var hubKey = localStorage.key(h);
+            if (hubKey && isHubLocalKey(hubKey)) hubKeys.push(hubKey);
           }
-        } catch (e) {
-          steps.push('Forms strip error: ' + e.message);
+          hubKeys.forEach(function(k) {
+            try {
+              if (localStorage.getItem(k) !== null) { localStorage.removeItem(k); clearedHubKeys++; }
+            } catch(e) {}
+          });
+          steps.push('Cleared ' + clearedHubKeys + ' hub cache key(s)');
+        } else {
+          var strippedCount = 0;
+          try {
+            var formsRaw = localStorage.getItem('jmart-safety-forms');
+            if (formsRaw && formsRaw.length > 10000) {
+              var forms = JSON.parse(formsRaw);
+              var stripped = JSON.parse(JSON.stringify(forms, function(key, value) {
+                if (typeof value !== 'string') return value;
+                if (value.length > 500 &&
+                    (value.indexOf('data:') === 0 || value.indexOf('/9j/') === 0 ||
+                     value.indexOf('iVBOR') === 0 || value.indexOf('JVBER') === 0)) {
+                  strippedCount++;
+                  return '[in-firebase]';
+                }
+                if (value.length > 5000) return value.substring(0, 200) + '...[truncated]';
+                return value;
+              }));
+              stripped.sort(function(a, b) { return new Date(b.createdAt || 0) - new Date(a.createdAt || 0); });
+              if (stripped.length > 50) stripped = stripped.slice(0, 50);
+              localStorage.setItem('jmart-safety-forms', JSON.stringify(stripped));
+              steps.push('Stripped ' + strippedCount + ' photos, kept ' + stripped.length + ' forms');
+            } else {
+              steps.push('Forms already small (' + (formsRaw ? Math.round(formsRaw.length / 1024) + 'KB' : 'none') + ')');
+            }
+          } catch (e) {
+            steps.push('Forms strip error: ' + e.message);
+          }
         }
 
-        // 4. Nuke sync queue, audit log, photo queue, recordings
-        el.textContent = 'Step 4/7: Clearing sync queue & temp data...';
-        var nuked = 0;
-        ['jmart-sync-queue', 'jmart-audit-log', 'jmart-photo-queue', 'jmart-job-recordings',
-         'jmart-backed-up-forms'].forEach(function(k) {
-          try {
-            if (localStorage.getItem(k)) { localStorage.removeItem(k); nuked++; }
-          } catch(e) {}
-        });
-        steps.push('Cleared ' + nuked + ' data store(s)');
+        // 4. Remove queue/temp data for the selected surface
+        el.textContent = resetConfig.stepFour;
+        if (isHubReset) {
+          var removedHubTemp = 0;
+          var tempHubKeys = [];
+          for (var t = localStorage.length - 1; t >= 0; t--) {
+            var localKey = localStorage.key(t);
+            if (localKey && (
+              isHubLocalKey(localKey) ||
+              localKey.includes('temp') ||
+              localKey.includes('cache') ||
+              localKey.includes('draft') ||
+              localKey.includes('backup')
+            )) {
+              tempHubKeys.push(localKey);
+            }
+          }
+          tempHubKeys.forEach(function(k) {
+            try {
+              if (localStorage.getItem(k) !== null) { localStorage.removeItem(k); removedHubTemp++; }
+            } catch(e) {}
+          });
+          steps.push('Removed ' + removedHubTemp + ' hub temp key(s)');
+        } else {
+          var nuked = 0;
+          ['jmart-sync-queue', 'jmart-audit-log', 'jmart-photo-queue', 'jmart-job-recordings',
+           'jmart-backed-up-forms'].forEach(function(k) {
+            try {
+              if (localStorage.getItem(k)) { localStorage.removeItem(k); nuked++; }
+            } catch(e) {}
+          });
+          steps.push('Cleared ' + nuked + ' data store(s)');
+        }
 
         // 5. Clear temp/cache/draft/backup keys
         el.textContent = 'Step 5/7: Removing temp keys...';
@@ -176,7 +274,7 @@
         el.innerHTML = '<strong>Done! Freed ' + freedMB + ' MB</strong><br>' +
           'Before: ' + beforeInfo.totalMB + ' MB → After: ' + afterInfo.totalMB + ' MB<br><br>' +
           steps.join('<br>') +
-          '<br><br><strong>Tap "Open App" to load the fixed version.</strong>';
+          '<br><br><strong>' + resetConfig.donePrompt + '</strong>';
         document.getElementById('goBtn').disabled = false;
         btn.textContent = 'Done ✓';
       } catch (e) {
@@ -184,7 +282,7 @@
         el.textContent = 'Error: ' + e.message + ' — Steps completed: ' + steps.join(', ');
         document.getElementById('goBtn').disabled = false;
         btn.disabled = false;
-        btn.textContent = 'Fix Everything';
+        btn.textContent = resetConfig.resetLabel;
       }
     }
   </script>

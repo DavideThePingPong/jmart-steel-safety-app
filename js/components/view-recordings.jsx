@@ -6,6 +6,7 @@ function RecordingsView({ forms, sites }) {
   const [showJobSelector, setShowJobSelector] = useState(false);
   const [photos, setPhotos] = useState([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState('');
   const [savedRecordings, setSavedRecordings] = useState(() => {
     try {
@@ -201,13 +202,54 @@ function RecordingsView({ forms, sites }) {
       setUploadStatus('Upload error: ' + error.message);
     }
 
-    setIsUploading(false);
-    setTimeout(() => setUploadStatus(''), 5000);
+  setIsUploading(false);
+  setTimeout(() => setUploadStatus(''), 5000);
+  };
+
+  const getDownloadablePhotos = (photoList) => (
+    Array.isArray(photoList)
+      ? photoList.filter(photo => photo?.data && photo.data !== '[in-firebase]')
+      : []
+  );
+
+  const pauseBetweenDownloads = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+  // Download photos in a paced batch so mobile browsers do not lock up on a burst of downloads.
+  const downloadPhotoBatch = async (photoList, filenamePrefix) => {
+    if (isDownloading) return;
+
+    const downloadable = getDownloadablePhotos(photoList);
+    const skipped = Array.isArray(photoList) ? photoList.length - downloadable.length : 0;
+
+    if (downloadable.length === 0) {
+      ToastNotifier.info('No photos available for local download - they are in the cloud');
+      return;
+    }
+
+    setIsDownloading(true);
+    setUploadStatus(downloadable.length > 1 ? `Preparing ${downloadable.length} downloads...` : 'Preparing download...');
+
+    try {
+      for (let idx = 0; idx < downloadable.length; idx += 1) {
+        const photo = downloadable[idx];
+        downloadPhotoFile(photo.data, `${filenamePrefix}-photo-${idx + 1}.jpg`);
+        if (idx < downloadable.length - 1) {
+          await pauseBetweenDownloads(200);
+        }
+      }
+
+      const skippedMessage = skipped > 0 ? ` Skipped ${skipped} cloud photo${skipped === 1 ? '' : 's'}.` : '';
+      setUploadStatus(`Downloaded ${downloadable.length} photo${downloadable.length === 1 ? '' : 's'}!${skippedMessage}`);
+    } finally {
+      setIsDownloading(false);
+      setTimeout(() => setUploadStatus(''), 4000);
+    }
   };
 
   // Download photos individually
   const downloadPhotos = () => {
-    const downloadable = photos.filter(p => p.data && p.data !== '[in-firebase]');
+    return void downloadPhotoBatch(photos, selectedJob?.name || 'job');
+    /* const downloadable = photos.filter(p => p.data && p.data !== '[in-firebase]');
     if (downloadable.length === 0) {
       ToastNotifier.info('No photos available for local download — they are in the cloud');
       return;
@@ -216,7 +258,7 @@ function RecordingsView({ forms, sites }) {
       downloadPhotoFile(photo.data, `${selectedJob?.name || 'job'}-photo-${idx + 1}.jpg`);
     });
     setUploadStatus(`Downloaded ${downloadable.length} photos!`);
-    setTimeout(() => setUploadStatus(''), 3000);
+    setTimeout(() => setUploadStatus(''), 3000); */
   };
 
   // Delete saved recording
@@ -359,9 +401,10 @@ function RecordingsView({ forms, sites }) {
 
           <button
             onClick={downloadPhotos}
+            disabled={isDownloading}
             className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium flex items-center justify-center gap-2"
           >
-            <span>📥</span> Download to Phone
+            <span>📥</span> {isDownloading ? 'Preparing Downloads...' : 'Download to Phone'}
           </button>
 
           <button
@@ -494,13 +537,12 @@ function RecordingsView({ forms, sites }) {
             <div className="p-4 border-t border-gray-200 space-y-2">
               <button
                 onClick={() => {
-                  viewingRecording.photos.forEach((photo, idx) => {
-                    downloadPhotoFile(photo.data, `${viewingRecording.jobName}-photo-${idx + 1}.jpg`);
-                  });
+                  void downloadPhotoBatch(viewingRecording.photos, viewingRecording.jobName);
                 }}
+                disabled={isDownloading}
                 className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold flex items-center justify-center gap-2"
               >
-                <span>📥</span> Download All Photos
+                <span>📥</span> {isDownloading ? 'Preparing Downloads...' : 'Download All Photos'}
               </button>
               <button
                 onClick={() => deleteRecording(viewingRecording.id)}

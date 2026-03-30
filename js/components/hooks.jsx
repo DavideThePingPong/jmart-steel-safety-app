@@ -116,7 +116,7 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
   }, []);
 
   // Add a new form
-  const addForm = (formType, formData) => {
+  const addForm = (formType, formData, options = {}) => {
     try {
       const uniqueId = Date.now().toString(36) + '-' + Math.random().toString(36).substr(2, 9);
       const newForm = {
@@ -180,7 +180,7 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
         action: 'Form created'
       });
 
-      setSuccessModal({ form: newForm, type: formType });
+      setSuccessModal({ form: newForm, type: formType, ...(options.successModalProps || {}) });
     } catch (err) {
       console.error('Error saving form:', err);
       ToastNotifier.error('Error saving form: ' + err.message + '. Please try again.');
@@ -1217,6 +1217,101 @@ function useBeforeUnload(hasUnsavedData) {
   }, [hasUnsavedData]);
 }
 
+// =============================================
+// Prestart Template Utilities (shared across components)
+// =============================================
+const PRESTART_TEMPLATE_STORAGE_KEY = 'jmart-prestart-templates';
+
+function normalizePrestartTemplateValue(value) {
+  return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function getPrestartTemplateKey(data) {
+  const typeKey = normalizePrestartTemplateValue(data?.type || 'prestart');
+  const siteKey = normalizePrestartTemplateValue(data?.siteConducted);
+  const builderKey = normalizePrestartTemplateValue(data?.builder);
+  const addressKey = normalizePrestartTemplateValue(data?.address);
+  const jobKey = siteKey || builderKey || addressKey;
+  return jobKey ? `${typeKey}::${jobKey}` : '';
+}
+
+function readSavedPrestartTemplates() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PRESTART_TEMPLATE_STORAGE_KEY) || '[]');
+    return Array.isArray(saved) ? saved : [];
+  } catch (error) {
+    console.warn('Failed to load saved prestart templates:', error);
+    return [];
+  }
+}
+
+function writeSavedTemplates(nextTemplates) {
+  try {
+    localStorage.setItem(PRESTART_TEMPLATE_STORAGE_KEY, JSON.stringify(nextTemplates));
+  } catch (error) {
+    console.warn('Failed to save prestart templates:', error);
+  }
+}
+
+// =============================================
+// usePrestartTemplates - Shared template state
+// =============================================
+function usePrestartTemplates() {
+  const [templates, setTemplates] = useState(() => readSavedPrestartTemplates());
+
+  // Derive unique job/site names from templates for camera and dashboard
+  const templateJobNames = useMemo(() => {
+    const names = templates
+      .map(t => t.data?.siteConducted || t.data?.builder || t.data?.address || '')
+      .filter(Boolean);
+    return [...new Set(names)];
+  }, [templates]);
+
+  // Upsert (create or update) a template
+  const upsertTemplate = useCallback((templateData) => {
+    const templateKey = getPrestartTemplateKey(templateData);
+    if (!templateKey) return '';
+
+    const now = new Date().toISOString();
+    setTemplates((currentTemplates) => {
+      const existingTemplate = currentTemplates.find(t => t.templateKey === templateKey);
+      const nextTemplates = currentTemplates.filter(t => t.templateKey !== templateKey);
+      nextTemplates.unshift({
+        id: `prestart-template-${templateKey}`,
+        templateKey,
+        createdAt: existingTemplate?.createdAt || now,
+        updatedAt: now,
+        data: JSON.parse(JSON.stringify(templateData))
+      });
+      writeSavedTemplates(nextTemplates);
+      return nextTemplates;
+    });
+
+    return templateKey;
+  }, []);
+
+  // Delete a template by key
+  const deleteTemplate = useCallback((templateKey) => {
+    setTemplates((currentTemplates) => {
+      const nextTemplates = currentTemplates.filter(t => t.templateKey !== templateKey);
+      writeSavedTemplates(nextTemplates);
+      return nextTemplates;
+    });
+  }, []);
+
+  // Cross-tab sync via storage event
+  useEffect(() => {
+    const handleStorageChange = (event) => {
+      if (event.storageArea !== localStorage || event.key !== PRESTART_TEMPLATE_STORAGE_KEY) return;
+      setTemplates(readSavedPrestartTemplates());
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
+  return { templates, templateJobNames, upsertTemplate, deleteTemplate };
+}
+
 // Export to window for cross-file access
 window.useFormManager = useFormManager;
 window.useDataSync = useDataSync;
@@ -1224,3 +1319,6 @@ window.useDeviceAuth = useDeviceAuth;
 window.usePWAInstall = usePWAInstall;
 window.useAutoSave = useAutoSave;
 window.useBeforeUnload = useBeforeUnload;
+window.usePrestartTemplates = usePrestartTemplates;
+window.getPrestartTemplateKey = getPrestartTemplateKey;
+window.readSavedPrestartTemplates = readSavedPrestartTemplates;

@@ -247,53 +247,12 @@ const DeviceAuth = {
         return await applyApprovedDevice(approvedResult.val);
       }
 
-      // Check if any devices exist (first device becomes admin)
-      const allApprovedResult = await firebaseRead('jmart-safety/devices/approved', authReadTimeout);
-      const allApprovedVal = allApprovedResult.val;
-      const allApprovedExists = allApprovedResult.exists && allApprovedVal && Object.keys(allApprovedVal).length > 0;
-      if (!allApprovedExists) {
-        // First device - auto approve as admin
-        console.log('First device - auto-approving as admin');
-        await this.registerAsApproved(true);
+      // Attempt first-device bootstrap without reading the full approved-device list.
+      // Firebase rules allow this write only when no approved devices exist.
+      const bootstrapped = await this.registerAsApproved(true);
+      if (bootstrapped) {
+        console.log('First device - auto-approved as admin');
         return { approved: true, admin: true, firstDevice: true };
-      }
-
-      // SAFER RECOVERY: detect orphaned admins, but require explicit manual recovery.
-      const approvedDevices = allApprovedVal;
-      const now = Date.now();
-      const ORPHAN_THRESHOLD = 7 * 24 * 60 * 60 * 1000;
-      let hasActiveAdmin = false;
-
-      if (approvedDevices) {
-        Object.values(approvedDevices).forEach(dev => {
-          if (dev && dev.isAdmin) {
-            const lastSeen = dev.lastSeen ? new Date(dev.lastSeen).getTime() : 0;
-            if ((now - lastSeen) < ORPHAN_THRESHOLD) {
-              hasActiveAdmin = true;
-            }
-          }
-        });
-      }
-
-      if (!hasActiveAdmin) {
-        console.warn('ADMIN RECOVERY REQUIRED: No active admin devices found. Automatic browser-based recovery is disabled.');
-        const pendingResult = await firebaseRead('jmart-safety/devices/pending/' + this.deviceId, authReadTimeout);
-        if (!pendingResult.exists) {
-          await this.registerAsPending();
-        }
-        if (typeof AuditLogManager !== 'undefined') {
-          try {
-            AuditLogManager.log('admin_recovery_required', {
-              deviceId: this.deviceId,
-              deviceType: this.deviceInfo && this.deviceInfo.type ? this.deviceInfo.type : 'Unknown',
-              orphanedAdminCount: approvedDevices ? Object.values(approvedDevices).filter(function(d) { return d && d.isAdmin; }).length : 0,
-              action: 'Manual admin recovery required'
-            });
-          } catch (e) { /* non-fatal */ }
-        }
-        this.isApproved = false;
-        this.notifyStatusListeners();
-        return { approved: false, pending: true, recoveryRequired: true };
       }
 
       // Check if already pending
@@ -391,7 +350,7 @@ const DeviceAuth = {
 
   // Register device as approved
   registerAsApproved: async function(isAdmin = false) {
-    if (!firebaseDb) return;
+    if (!firebaseDb) return false;
 
     try {
       const deviceData = {
@@ -402,6 +361,12 @@ const DeviceAuth = {
         approvedBy: isAdmin ? 'SYSTEM (First Device)' : 'Admin',
         lastSeen: new Date().toISOString()
       };
+
+      // Seed adminAuthUids before the first approved-device write so bootstrap
+      // still works under locked-down rules.
+      if (isAdmin && firebaseAuthUid) {
+        await firebaseDb.ref('jmart-safety/adminAuthUids/' + firebaseAuthUid).set(true);
+      }
 
       await firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId).set(typeof sanitizeForFirebase === 'function' ? sanitizeForFirebase(deviceData) : deviceData);
 
@@ -426,13 +391,14 @@ const DeviceAuth = {
       await firebaseDb.ref('jmart-safety/devices/pending/' + this.deviceId).remove();
     } catch (e) {
       console.error('[DeviceAuth] registerAsApproved failed:', e.message);
-      return;
+      return false;
     }
 
     this.isApproved = true;
     this.isAdmin = isAdmin;
     this.notifyStatusListeners();
     console.log('Device registered as approved, admin:', isAdmin);
+    return true;
   },
 
   // Approve a pending device (admin only)

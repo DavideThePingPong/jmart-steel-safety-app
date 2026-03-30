@@ -865,7 +865,7 @@ function useFormManager({
   }, []);
 
   // Add a new form
-  const addForm = (formType, formData) => {
+  const addForm = (formType, formData, options = {}) => {
     try {
       const uniqueId = Date.now().toString(36) + '-' + Math.random().toString(36).substr(2, 9);
       const newForm = {
@@ -934,7 +934,8 @@ function useFormManager({
       });
       setSuccessModal({
         form: newForm,
-        type: formType
+        type: formType,
+        ...(options.successModalProps || {})
       });
     } catch (err) {
       console.error('Error saving form:', err);
@@ -1969,6 +1970,97 @@ function useBeforeUnload(hasUnsavedData) {
   }, [hasUnsavedData]);
 }
 
+// =============================================
+// Prestart Template Utilities (shared across components)
+// =============================================
+const PRESTART_TEMPLATE_STORAGE_KEY = 'jmart-prestart-templates';
+function normalizePrestartTemplateValue(value) {
+  return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+function getPrestartTemplateKey(data) {
+  const typeKey = normalizePrestartTemplateValue(data?.type || 'prestart');
+  const siteKey = normalizePrestartTemplateValue(data?.siteConducted);
+  const builderKey = normalizePrestartTemplateValue(data?.builder);
+  const addressKey = normalizePrestartTemplateValue(data?.address);
+  const jobKey = siteKey || builderKey || addressKey;
+  return jobKey ? `${typeKey}::${jobKey}` : '';
+}
+function readSavedPrestartTemplates() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PRESTART_TEMPLATE_STORAGE_KEY) || '[]');
+    return Array.isArray(saved) ? saved : [];
+  } catch (error) {
+    console.warn('Failed to load saved prestart templates:', error);
+    return [];
+  }
+}
+function writeSavedTemplates(nextTemplates) {
+  try {
+    localStorage.setItem(PRESTART_TEMPLATE_STORAGE_KEY, JSON.stringify(nextTemplates));
+  } catch (error) {
+    console.warn('Failed to save prestart templates:', error);
+  }
+}
+
+// =============================================
+// usePrestartTemplates - Shared template state
+// =============================================
+function usePrestartTemplates() {
+  const [templates, setTemplates] = useState(() => readSavedPrestartTemplates());
+
+  // Derive unique job/site names from templates for camera and dashboard
+  const templateJobNames = useMemo(() => {
+    const names = templates.map(t => t.data?.siteConducted || t.data?.builder || t.data?.address || '').filter(Boolean);
+    return [...new Set(names)];
+  }, [templates]);
+
+  // Upsert (create or update) a template
+  const upsertTemplate = useCallback(templateData => {
+    const templateKey = getPrestartTemplateKey(templateData);
+    if (!templateKey) return '';
+    const now = new Date().toISOString();
+    setTemplates(currentTemplates => {
+      const existingTemplate = currentTemplates.find(t => t.templateKey === templateKey);
+      const nextTemplates = currentTemplates.filter(t => t.templateKey !== templateKey);
+      nextTemplates.unshift({
+        id: `prestart-template-${templateKey}`,
+        templateKey,
+        createdAt: existingTemplate?.createdAt || now,
+        updatedAt: now,
+        data: JSON.parse(JSON.stringify(templateData))
+      });
+      writeSavedTemplates(nextTemplates);
+      return nextTemplates;
+    });
+    return templateKey;
+  }, []);
+
+  // Delete a template by key
+  const deleteTemplate = useCallback(templateKey => {
+    setTemplates(currentTemplates => {
+      const nextTemplates = currentTemplates.filter(t => t.templateKey !== templateKey);
+      writeSavedTemplates(nextTemplates);
+      return nextTemplates;
+    });
+  }, []);
+
+  // Cross-tab sync via storage event
+  useEffect(() => {
+    const handleStorageChange = event => {
+      if (event.storageArea !== localStorage || event.key !== PRESTART_TEMPLATE_STORAGE_KEY) return;
+      setTemplates(readSavedPrestartTemplates());
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+  return {
+    templates,
+    templateJobNames,
+    upsertTemplate,
+    deleteTemplate
+  };
+}
+
 // Export to window for cross-file access
 window.useFormManager = useFormManager;
 window.useDataSync = useDataSync;
@@ -1976,6 +2068,9 @@ window.useDeviceAuth = useDeviceAuth;
 window.usePWAInstall = usePWAInstall;
 window.useAutoSave = useAutoSave;
 window.useBeforeUnload = useBeforeUnload;
+window.usePrestartTemplates = usePrestartTemplates;
+window.getPrestartTemplateKey = getPrestartTemplateKey;
+window.readSavedPrestartTemplates = readSavedPrestartTemplates;
 
 // === js/components/modals.jsx ===
 // Modal & Banner Components
@@ -1989,7 +2084,34 @@ function SuccessModal({
   onDownloadPDF,
   onClose
 }) {
+  const [templateStatus, setTemplateStatus] = useState(successModal?.templateStatus || null);
+  const [isApplyingTemplate, setIsApplyingTemplate] = useState(false);
+  useEffect(() => {
+    setTemplateStatus(successModal?.templateStatus || null);
+    setIsApplyingTemplate(false);
+  }, [successModal]);
   if (!successModal) return null;
+  const applySubmittedTemplate = async () => {
+    if (typeof successModal.onUseSubmittedTemplate !== 'function') return;
+    setIsApplyingTemplate(true);
+    try {
+      await successModal.onUseSubmittedTemplate();
+      setTemplateStatus('replaced');
+    } finally {
+      setIsApplyingTemplate(false);
+    }
+  };
+  const keepExistingTemplate = async () => {
+    setIsApplyingTemplate(true);
+    try {
+      if (typeof successModal.onKeepExistingTemplate === 'function') {
+        await successModal.onKeepExistingTemplate();
+      }
+      setTemplateStatus('kept');
+    } finally {
+      setIsApplyingTemplate(false);
+    }
+  };
   return /*#__PURE__*/React.createElement("div", {
     className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4"
   }, /*#__PURE__*/React.createElement("div", {
@@ -2006,7 +2128,41 @@ function SuccessModal({
     className: "p-6 space-y-4"
   }, /*#__PURE__*/React.createElement("p", {
     className: "text-gray-600 text-center text-sm"
-  }, "Your form has been saved", FirebaseSync.isConnected() ? ' and synced to the cloud' : '', "."), /*#__PURE__*/React.createElement("button", {
+  }, "Your form has been saved", FirebaseSync.isConnected() ? ' and synced to the cloud' : '', "."), successModal.templateJobName && templateStatus === 'auto-saved' && /*#__PURE__*/React.createElement("div", {
+    className: "bg-green-50 border border-green-200 rounded-xl p-4 text-left"
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "font-semibold text-green-800"
+  }, "Saved for reuse"), /*#__PURE__*/React.createElement("p", {
+    className: "text-sm text-green-700"
+  }, "This is now the first saved pre-start template for ", successModal.templateJobName, ".")), successModal.templateJobName && templateStatus === 'replaceable' && /*#__PURE__*/React.createElement("div", {
+    className: "bg-blue-50 border border-blue-200 rounded-xl p-4 text-left space-y-3"
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
+    className: "font-semibold text-blue-800"
+  }, "Saved pre-start already exists"), /*#__PURE__*/React.createElement("p", {
+    className: "text-sm text-blue-700"
+  }, "Choose whether to update the saved pre-start template for ", successModal.templateJobName, " or keep the old one.")), /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col gap-2"
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: applySubmittedTemplate,
+    disabled: isApplyingTemplate,
+    className: "w-full bg-blue-600 text-white py-3 rounded-xl font-semibold disabled:bg-blue-300"
+  }, isApplyingTemplate ? 'Updating Template...' : 'Update Prestart Template For This Job'), /*#__PURE__*/React.createElement("button", {
+    onClick: keepExistingTemplate,
+    disabled: isApplyingTemplate,
+    className: "w-full border border-blue-300 text-blue-700 py-3 rounded-xl font-semibold disabled:bg-gray-100"
+  }, "Keep Existing Job Template"))), successModal.templateJobName && templateStatus === 'replaced' && /*#__PURE__*/React.createElement("div", {
+    className: "bg-green-50 border border-green-200 rounded-xl p-4 text-left"
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "font-semibold text-green-800"
+  }, "Saved template updated"), /*#__PURE__*/React.createElement("p", {
+    className: "text-sm text-green-700"
+  }, "Future pre-starts for ", successModal.templateJobName, " will start from this version.")), successModal.templateJobName && templateStatus === 'kept' && /*#__PURE__*/React.createElement("div", {
+    className: "bg-gray-50 border border-gray-200 rounded-xl p-4 text-left"
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "font-semibold text-gray-800"
+  }, "Existing saved template kept"), /*#__PURE__*/React.createElement("p", {
+    className: "text-sm text-gray-600"
+  }, "The old saved pre-start for ", successModal.templateJobName, " will stay as the reusable version.")), /*#__PURE__*/React.createElement("button", {
     onClick: onDownloadPDF,
     className: "w-full bg-orange-600 text-white py-4 rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-orange-700 transition"
   }, /*#__PURE__*/React.createElement("span", {
@@ -2718,6 +2874,7 @@ function JMartSteelSafetyApp({
   const [forms, setForms] = useState([]);
   const [sites, setSites] = useState([]);
   const [editingForm, setEditingForm] = useState(null);
+  const [templateToLoad, setTemplateToLoad] = useState(null);
 
   // Device Authorization
   const {
@@ -2784,6 +2941,14 @@ function JMartSteelSafetyApp({
     suppressNextFormsSyncRef
   });
 
+  // Prestart Templates (shared across dashboard, prestart form, camera)
+  const {
+    templates: prestartTemplates,
+    templateJobNames,
+    upsertTemplate,
+    deleteTemplate
+  } = usePrestartTemplates();
+
   // PWA Install
   const {
     showInstallPrompt,
@@ -2846,6 +3011,11 @@ function JMartSteelSafetyApp({
     label: 'Settings',
     emoji: '⚙️'
   }];
+  const openResetTool = () => {
+    const url = new URL('./reset.html', window.location.href);
+    url.searchParams.set('from', 'safety-app');
+    window.location.assign(url.toString());
+  };
 
   // Show loading while checking device authorization
   if (deviceAuthStatus === 'checking') {
@@ -2999,7 +3169,12 @@ function JMartSteelSafetyApp({
     className: "text-xs text-orange-200"
   }, !isOnline ? '📴 Offline Mode' : syncStatus === 'error' ? '⚠️ Sync Error' : pendingPhotoCount > 0 ? '📷 ' + pendingPhotoCount + ' photo' + (pendingPhotoCount > 1 ? 's' : '') + ' queued' : syncStatus === 'pending' ? '🔄 ' + pendingSyncCount + ' pending' : syncStatus === 'synced' ? '☁️ Synced' : syncStatus === 'syncing' ? '🔄 Syncing...' : syncStatus === 'local' ? '💾 Local Only' : 'Safety Management'))), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-1"
-  }, pendingPhotoCount > 0 && /*#__PURE__*/React.createElement("span", {
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: openResetTool,
+    className: "p-2 hover:bg-orange-700 rounded-lg text-lg leading-none",
+    "aria-label": "Open reset tool",
+    title: "Open reset tool"
+  }, "\uD83D\uDD04"), pendingPhotoCount > 0 && /*#__PURE__*/React.createElement("span", {
     className: "text-blue-300 text-sm animate-pulse"
   }, "\u25CF"), syncStatus === 'synced' && pendingPhotoCount === 0 && /*#__PURE__*/React.createElement("span", {
     className: "text-green-300 text-sm"
@@ -3042,13 +3217,24 @@ function JMartSteelSafetyApp({
     forms: forms,
     onViewForm: setViewFormModal,
     isFormBackedUp: isFormBackedUp,
-    sites: sites
+    sites: sites,
+    prestartTemplates: prestartTemplates,
+    templateJobNames: templateJobNames,
+    onDeleteTemplate: deleteTemplate,
+    onSelectTemplate: template => {
+      setTemplateToLoad(template);
+      setCurrentView('prestart');
+    }
   }), currentView === 'training' && /*#__PURE__*/React.createElement(TrainingView, null), currentView === 'prestart' && /*#__PURE__*/React.createElement(PrestartView, {
-    onSubmit: data => addForm('prestart', data),
+    onSubmit: (data, options) => addForm('prestart', data, options),
     onUpdate: updateForm,
     editingForm: editingForm?.type === 'prestart' ? editingForm : null,
     previousPrestarts: previousPrestarts,
-    sites: sites
+    sites: sites,
+    savedTemplates: prestartTemplates,
+    onUpsertTemplate: upsertTemplate,
+    templateToLoad: templateToLoad,
+    onTemplateLoaded: () => setTemplateToLoad(null)
   }), currentView === 'steel-itp' && /*#__PURE__*/React.createElement(SteelITPView, {
     onSubmit: data => addForm('steel-itp', data),
     onUpdate: updateForm,
@@ -3132,7 +3318,11 @@ function Dashboard({
   forms,
   onViewForm,
   isFormBackedUp,
-  sites = []
+  sites = [],
+  prestartTemplates = [],
+  templateJobNames = [],
+  onDeleteTemplate,
+  onSelectTemplate
 }) {
   const todayDate = new Date().toLocaleDateString('en-AU', {
     weekday: 'long',
@@ -3180,7 +3370,9 @@ function Dashboard({
     }
   };
   const defaultSites = ['Site 1 - Sydney CBD', 'Site 2 - Parramatta', 'Site 3 - North Sydney'];
-  const allJobs = [...new Set(sites.length > 0 ? sites : defaultSites)];
+  // Camera job list: template jobs first, then Firebase sites not already covered, then defaults
+  const allJobs = [...new Set([...templateJobNames, ...(sites.length > 0 ? sites : defaultSites).filter(s => !templateJobNames.includes(s))])];
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
   const recentForms = forms.slice(0, 10); // Show last 10 forms
 
   const handleJobSelect = job => {
@@ -3430,7 +3622,79 @@ function Dashboard({
     className: "w-10 h-10 bg-red-500 rounded-full flex items-center justify-center text-lg"
   }, "\u26A0\uFE0F"), /*#__PURE__*/React.createElement("span", {
     className: "text-xs font-medium text-gray-700 text-center"
-  }, "Incident")))), recentForms.length > 0 && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h3", {
+  }, "Incident")))), prestartTemplates.length > 0 && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h3", {
+    className: "font-semibold text-gray-800 mb-3"
+  }, "Saved Pre-Start Templates"), /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-3 overflow-x-auto pb-2 -mx-1 px-1",
+    style: {
+      scrollbarWidth: 'thin'
+    }
+  }, prestartTemplates.slice().sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0)).map(template => {
+    const siteName = template.data?.siteConducted || template.data?.builder || template.data?.address || 'Unknown';
+    const checkType = template.data?.type || 'site';
+    const typeLabels = {
+      site: 'Site',
+      crane: 'Crane',
+      forklift: 'Forklift',
+      vehicle: 'Vehicle',
+      welding: 'Welding',
+      scaffold: 'Scaffold'
+    };
+    const typeColors = {
+      site: 'bg-green-100 text-green-700',
+      crane: 'bg-yellow-100 text-yellow-700',
+      forklift: 'bg-blue-100 text-blue-700',
+      vehicle: 'bg-purple-100 text-purple-700',
+      welding: 'bg-orange-100 text-orange-700',
+      scaffold: 'bg-red-100 text-red-700'
+    };
+    const updatedDate = template.updatedAt ? new Date(template.updatedAt).toLocaleDateString('en-AU', {
+      day: 'numeric',
+      month: 'short'
+    }) : '';
+    return /*#__PURE__*/React.createElement("div", {
+      key: template.id,
+      className: "flex-shrink-0 w-44 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition cursor-pointer"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "p-3",
+      onClick: () => onSelectTemplate && onSelectTemplate(template)
+    }, /*#__PURE__*/React.createElement("p", {
+      className: "font-medium text-gray-800 text-sm truncate",
+      title: siteName
+    }, siteName), /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center gap-2 mt-2"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: `text-xs px-2 py-0.5 rounded-full font-medium ${typeColors[checkType] || 'bg-gray-100 text-gray-700'}`
+    }, typeLabels[checkType] || checkType)), updatedDate && /*#__PURE__*/React.createElement("p", {
+      className: "text-xs text-gray-400 mt-2"
+    }, updatedDate)), /*#__PURE__*/React.createElement("div", {
+      className: "border-t border-gray-100 px-3 py-1.5 flex justify-end"
+    }, deleteConfirm === template.templateKey ? /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center gap-2"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "text-xs text-gray-500"
+    }, "Delete?"), /*#__PURE__*/React.createElement("button", {
+      onClick: e => {
+        e.stopPropagation();
+        onDeleteTemplate && onDeleteTemplate(template.templateKey);
+        setDeleteConfirm(null);
+      },
+      className: "text-xs text-red-600 font-medium hover:text-red-800"
+    }, "Yes"), /*#__PURE__*/React.createElement("button", {
+      onClick: e => {
+        e.stopPropagation();
+        setDeleteConfirm(null);
+      },
+      className: "text-xs text-gray-500 font-medium hover:text-gray-700"
+    }, "No")) : /*#__PURE__*/React.createElement("button", {
+      onClick: e => {
+        e.stopPropagation();
+        setDeleteConfirm(template.templateKey);
+      },
+      className: "text-gray-400 hover:text-red-500 text-sm",
+      title: "Delete template"
+    }, "\uD83D\uDDD1\uFE0F")));
+  }))), recentForms.length > 0 && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h3", {
     className: "font-semibold text-gray-800 mb-3"
   }, "Recent Forms"), /*#__PURE__*/React.createElement("div", {
     className: "space-y-2"
@@ -3896,12 +4160,19 @@ window.DebugErrorBoundary = DebugErrorBoundary;
 // Form views: Prestart, Incident, Toolbox, Inspection, ITP, SteelITP
 // Extracted from index.html
 
+// Template utilities are now in hooks.jsx (shared with dashboard/camera)
+// getPrestartTemplateKey is available via window.getPrestartTemplateKey
+
 function PrestartView({
   onSubmit,
   onUpdate,
   editingForm,
   previousPrestarts = [],
-  sites = []
+  sites = [],
+  savedTemplates = [],
+  onUpsertTemplate,
+  templateToLoad,
+  onTemplateLoaded
 }) {
   const isEditing = !!editingForm;
   const editData = editingForm?.data || {};
@@ -3918,6 +4189,11 @@ function PrestartView({
   const [address, setAddress] = useState(editData.address || '');
   const [isLocating, setIsLocating] = useState(false);
   const [formDate, setFormDate] = useState(editData.date ? new Date(editData.date) : new Date());
+  const [templateAction, setTemplateAction] = useState({
+    mode: null,
+    key: ''
+  });
+  const [lastSubmittedTemplate, setLastSubmittedTemplate] = useState(null);
 
   // Helper to ensure media fields have proper structure
   const ensureMediaStructure = data => ({
@@ -3969,6 +4245,11 @@ function PrestartView({
     setTranslatorSignature(data.translatorSignature || null);
     setTranslatorName(data.translatorName || '');
     setSignatures(data.signatures || FORM_CONSTANTS.emptySignatures());
+    setLastSubmittedTemplate(null);
+    setTemplateAction({
+      mode: null,
+      key: ''
+    });
     setSubmitted(false);
     setValidationErrors([]);
   }, [editingForm]);
@@ -3987,6 +4268,53 @@ function PrestartView({
   const teamMembers = FORM_CONSTANTS.teamMembers;
   const checklistTypes = FORM_CONSTANTS.checklistTypes;
   const checklistItems = FORM_CONSTANTS.checklistItems;
+  const availablePrestarts = [...savedTemplates.slice().sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0)).map(template => ({
+    ...template,
+    sourceLabel: 'Saved Template'
+  })), ...previousPrestarts.filter(form => {
+    const templateKey = getPrestartTemplateKey(form.data);
+    return !templateKey || !savedTemplates.some(template => template.templateKey === templateKey);
+  }).slice().sort((a, b) => new Date(b.data?.date || b.createdAt || 0) - new Date(a.data?.date || a.createdAt || 0)).map(form => ({
+    ...form,
+    sourceLabel: 'Previous Submission'
+  }))];
+  const clonePrestartValue = value => {
+    try {
+      return JSON.parse(JSON.stringify(value));
+    } catch (error) {
+      return value;
+    }
+  };
+  const buildReusableField = fieldData => {
+    const field = ensureMediaStructure(fieldData);
+    return {
+      value: field.value || '',
+      notes: clonePrestartValue(field.notes || []),
+      media: []
+    };
+  };
+  const buildReusableTemplate = data => ({
+    type: data.type,
+    checks: clonePrestartValue(data.checks || {}),
+    supervisorName: data.supervisorName || '',
+    siteConducted: data.siteConducted || '',
+    builder: data.builder || '',
+    address: data.address || '',
+    workAreas: buildReusableField(data.workAreas),
+    tasksThisShift: buildReusableField(data.tasksThisShift),
+    machineryControls: buildReusableField(data.machineryControls),
+    siteHazards: buildReusableField(data.siteHazards),
+    permitsRequired: buildReusableField(data.permitsRequired),
+    isPlantEquipmentUsed: data.isPlantEquipmentUsed ?? null,
+    highRiskWorks: data.highRiskWorks ?? null,
+    worksCoveredBySWMS: data.worksCoveredBySWMS ?? null
+  });
+
+  // upsertSavedTemplate delegates to the shared hook via props
+  const upsertSavedTemplate = templateData => {
+    if (onUpsertTemplate) return onUpsertTemplate(templateData);
+    return '';
+  };
   const getLocation = () => {
     setIsLocating(true);
     if (navigator.geolocation) {
@@ -4073,7 +4401,37 @@ function PrestartView({
       onUpdate(editingForm.id, 'prestart', formData);
       // Don't set submitted - the modal will handle navigation
     } else {
-      onSubmit(formData);
+      const reusableTemplate = buildReusableTemplate(formData);
+      const templateKey = getPrestartTemplateKey(reusableTemplate);
+      const matchingSavedTemplate = templateKey ? savedTemplates.find(template => template.templateKey === templateKey) : null;
+      const matchingPreviousPrestart = templateKey ? previousPrestarts.filter(form => getPrestartTemplateKey(form.data) === templateKey).sort((a, b) => new Date(b.data?.date || b.createdAt || 0) - new Date(a.data?.date || a.createdAt || 0))[0] : null;
+      const hasExistingTemplate = !!(matchingSavedTemplate || matchingPreviousPrestart);
+      onSubmit(formData, {
+        successModalProps: {
+          templateStatus: templateKey && !hasExistingTemplate ? 'auto-saved' : templateKey ? 'replaceable' : null,
+          templateJobName: reusableTemplate.siteConducted || reusableTemplate.builder || 'this job',
+          onUseSubmittedTemplate: templateKey ? () => upsertSavedTemplate(reusableTemplate) : null,
+          onKeepExistingTemplate: !matchingSavedTemplate && matchingPreviousPrestart ? () => upsertSavedTemplate(buildReusableTemplate(matchingPreviousPrestart.data)) : null
+        }
+      });
+      setLastSubmittedTemplate(reusableTemplate);
+      if (templateKey && !hasExistingTemplate) {
+        upsertSavedTemplate(reusableTemplate);
+        setTemplateAction({
+          mode: 'auto-saved',
+          key: templateKey
+        });
+      } else if (templateKey) {
+        setTemplateAction({
+          mode: 'replaceable',
+          key: templateKey
+        });
+      } else {
+        setTemplateAction({
+          mode: null,
+          key: ''
+        });
+      }
       setSubmitted(true);
     }
   };
@@ -4125,10 +4483,30 @@ function PrestartView({
     setTranslatorName('');
     setSigningTranslator(false);
     setSignatures(FORM_CONSTANTS.emptySignatures());
+    setLastSubmittedTemplate(null);
+    setTemplateAction({
+      mode: null,
+      key: ''
+    });
     setSubmitted(false);
+  };
+  const keepExistingTemplate = () => {
+    setTemplateAction(current => ({
+      ...current,
+      mode: 'kept'
+    }));
+  };
+  const replaceExistingTemplate = () => {
+    if (!lastSubmittedTemplate) return;
+    const templateKey = upsertSavedTemplate(lastSubmittedTemplate);
+    setTemplateAction({
+      mode: 'replaced',
+      key: templateKey
+    });
   };
   if (submitted) {
     const signedCount = Object.values(signatures).filter(s => s !== null).length;
+    const submittedJobName = lastSubmittedTemplate?.siteConducted || siteConducted || 'this job';
     return /*#__PURE__*/React.createElement("div", {
       className: "text-center py-12"
     }, /*#__PURE__*/React.createElement("div", {
@@ -4139,7 +4517,39 @@ function PrestartView({
       className: "text-gray-600 mb-2"
     }, isEditing ? 'Your changes have been saved.' : 'Your checklist has been recorded.'), /*#__PURE__*/React.createElement("p", {
       className: "text-sm text-gray-500 mb-6"
-    }, signedCount, " worker(s) signed on"), /*#__PURE__*/React.createElement("button", {
+    }, signedCount, " worker(s) signed on"), !isEditing && templateAction.mode === 'auto-saved' && /*#__PURE__*/React.createElement("div", {
+      className: "max-w-md mx-auto mb-4 bg-green-50 border border-green-200 rounded-xl p-4 text-left"
+    }, /*#__PURE__*/React.createElement("p", {
+      className: "font-semibold text-green-800"
+    }, "Saved for reuse"), /*#__PURE__*/React.createElement("p", {
+      className: "text-sm text-green-700"
+    }, "This is now the saved pre-start template for ", submittedJobName, ".")), !isEditing && templateAction.mode === 'replaceable' && /*#__PURE__*/React.createElement("div", {
+      className: "max-w-md mx-auto mb-4 bg-blue-50 border border-blue-200 rounded-xl p-4 text-left space-y-3"
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
+      className: "font-semibold text-blue-800"
+    }, "Saved pre-start already exists"), /*#__PURE__*/React.createElement("p", {
+      className: "text-sm text-blue-700"
+    }, "Choose whether to replace the saved pre-start for ", submittedJobName, " or keep the old one.")), /*#__PURE__*/React.createElement("div", {
+      className: "flex flex-col gap-2"
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: replaceExistingTemplate,
+      className: "bg-blue-600 text-white px-4 py-3 rounded-lg font-semibold"
+    }, "Use This As Saved Template"), /*#__PURE__*/React.createElement("button", {
+      onClick: keepExistingTemplate,
+      className: "border border-blue-300 text-blue-700 px-4 py-3 rounded-lg font-semibold"
+    }, "Keep Old Saved Template"))), !isEditing && templateAction.mode === 'replaced' && /*#__PURE__*/React.createElement("div", {
+      className: "max-w-md mx-auto mb-4 bg-green-50 border border-green-200 rounded-xl p-4 text-left"
+    }, /*#__PURE__*/React.createElement("p", {
+      className: "font-semibold text-green-800"
+    }, "Saved template updated"), /*#__PURE__*/React.createElement("p", {
+      className: "text-sm text-green-700"
+    }, "Future pre-starts for ", submittedJobName, " will start from this version.")), !isEditing && templateAction.mode === 'kept' && /*#__PURE__*/React.createElement("div", {
+      className: "max-w-md mx-auto mb-4 bg-gray-50 border border-gray-200 rounded-xl p-4 text-left"
+    }, /*#__PURE__*/React.createElement("p", {
+      className: "font-semibold text-gray-800"
+    }, "Existing saved template kept"), /*#__PURE__*/React.createElement("p", {
+      className: "text-sm text-gray-600"
+    }, "The old saved pre-start for ", submittedJobName, " will stay as the reusable version.")), /*#__PURE__*/React.createElement("button", {
       onClick: resetForm,
       className: "bg-orange-600 text-white px-6 py-3 rounded-lg font-semibold"
     }, isEditing ? 'Back to Dashboard' : 'Start Another Check'));
@@ -4191,6 +4601,14 @@ function PrestartView({
     setShowPreviousList(false);
     setStep(2);
   };
+
+  // Handle template loaded from dashboard card
+  useEffect(() => {
+    if (templateToLoad && !isEditing) {
+      loadFromPrevious(templateToLoad);
+      if (onTemplateLoaded) onTemplateLoaded();
+    }
+  }, [templateToLoad]);
   if (step === 1) {
     return /*#__PURE__*/React.createElement("div", {
       className: "space-y-4"
@@ -4207,15 +4625,15 @@ function PrestartView({
       className: "text-gray-500 text-xl"
     }, "\u2715")), /*#__PURE__*/React.createElement("div", {
       className: "overflow-y-auto flex-1 p-4"
-    }, previousPrestarts.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    }, availablePrestarts.length === 0 ? /*#__PURE__*/React.createElement("div", {
       className: "text-center py-8 text-gray-500"
-    }, /*#__PURE__*/React.createElement("p", null, "No previous prestarts found."), /*#__PURE__*/React.createElement("p", {
+    }, /*#__PURE__*/React.createElement("p", null, "No saved pre-starts found."), /*#__PURE__*/React.createElement("p", {
       className: "text-sm mt-2"
-    }, "Complete a prestart first to use this feature.")) : /*#__PURE__*/React.createElement("div", {
+    }, "Complete a pre-start first and it will stay here for reuse.")) : /*#__PURE__*/React.createElement("div", {
       className: "space-y-3"
     }, /*#__PURE__*/React.createElement("p", {
       className: "text-sm text-gray-600 mb-3"
-    }, "Select a previous prestart to copy. Signatures and date will be reset."), previousPrestarts.slice(0, 20).map(form => {
+    }, "Select a saved pre-start to copy. Signatures, notes, and date will be reset."), availablePrestarts.slice(0, 20).map(form => {
       const formDate = new Date(form.data.date || form.createdAt);
       const typeInfo = checklistTypes.find(t => t.id === form.data.type);
       return /*#__PURE__*/React.createElement("button", {
@@ -4233,6 +4651,8 @@ function PrestartView({
       }, form.data.siteConducted || 'Unknown Site'), /*#__PURE__*/React.createElement("p", {
         className: "text-sm text-gray-600 truncate"
       }, typeInfo?.label || 'Pre-Start', " \u2022 ", form.data.builder || 'No builder'), /*#__PURE__*/React.createElement("p", {
+        className: "text-xs text-blue-600 mt-1 font-medium"
+      }, form.sourceLabel), /*#__PURE__*/React.createElement("p", {
         className: "text-xs text-gray-400 mt-1"
       }, formDate.toLocaleDateString('en-AU', {
         weekday: 'short',
@@ -4246,7 +4666,7 @@ function PrestartView({
       className: "text-xl font-bold text-gray-800 flex items-center gap-2"
     }, "\uD83D\uDCCB Pre-Start Checklists"), /*#__PURE__*/React.createElement("p", {
       className: "text-gray-500 text-sm mt-1"
-    }, "Select the type of pre-start check")), previousPrestarts.length > 0 && /*#__PURE__*/React.createElement("button", {
+    }, "Select the type of pre-start check")), availablePrestarts.length > 0 && /*#__PURE__*/React.createElement("button", {
       onClick: () => setShowPreviousList(true),
       className: "w-full bg-blue-50 hover:bg-blue-100 border-2 border-dashed border-blue-300 hover:border-blue-400 rounded-xl p-4 flex items-center justify-center gap-3 transition-colors"
     }, /*#__PURE__*/React.createElement("span", {
@@ -4255,9 +4675,9 @@ function PrestartView({
       className: "text-left"
     }, /*#__PURE__*/React.createElement("p", {
       className: "font-semibold text-blue-700"
-    }, "Copy from Previous Prestart"), /*#__PURE__*/React.createElement("p", {
+    }, "Copy Saved Pre-Start"), /*#__PURE__*/React.createElement("p", {
       className: "text-sm text-blue-600"
-    }, "Same job, different day? Load previous details"))), /*#__PURE__*/React.createElement("div", {
+    }, "Reuse the saved setup for the same job on another day"))), /*#__PURE__*/React.createElement("div", {
       className: "grid grid-cols-2 gap-3"
     }, checklistTypes.map(type => /*#__PURE__*/React.createElement("button", {
       key: type.id,
@@ -7442,15 +7862,29 @@ function SettingsView({
     setIsFixing(false);
   };
   const lastBackup = localStorage.getItem('last-drive-backup-date');
+  const openResetTool = () => {
+    const url = new URL('./reset.html', window.location.href);
+    url.searchParams.set('from', 'safety-settings');
+    window.location.assign(url.toString());
+  };
   return /*#__PURE__*/React.createElement("div", {
     className: "space-y-4"
   }, /*#__PURE__*/React.createElement("div", {
     className: "bg-white rounded-xl p-4 shadow-sm"
-  }, /*#__PURE__*/React.createElement("h2", {
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-start justify-between gap-3"
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
     className: "text-xl font-bold text-gray-800 flex items-center gap-2"
-  }, "\u2699\uFE0F Settings"), isDeviceAdmin && /*#__PURE__*/React.createElement("p", {
+  }, "Settings"), isDeviceAdmin && /*#__PURE__*/React.createElement("p", {
     className: "text-xs text-green-600 mt-1"
-  }, "\uD83D\uDEE1\uFE0F Admin Mode - You can manage device access")), /*#__PURE__*/React.createElement("div", {
+  }, "Admin Mode - You can manage device access")), /*#__PURE__*/React.createElement("button", {
+    onClick: openResetTool,
+    className: "shrink-0 inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-orange-50 text-orange-700 active:bg-orange-100 font-semibold text-sm",
+    "aria-label": "Open reset tool",
+    title: "Open reset tool"
+  }, /*#__PURE__*/React.createElement("span", {
+    "aria-hidden": "true"
+  }, "\u21BB"), /*#__PURE__*/React.createElement("span", null, "Reset")))), /*#__PURE__*/React.createElement("div", {
     className: "bg-white rounded-xl shadow-sm p-4"
   }, /*#__PURE__*/React.createElement("h3", {
     className: "font-semibold text-gray-800 mb-3 flex items-center gap-2"
@@ -7781,6 +8215,7 @@ function RecordingsView({
   const [showJobSelector, setShowJobSelector] = useState(false);
   const [photos, setPhotos] = useState([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState('');
   const [savedRecordings, setSavedRecordings] = useState(() => {
     try {
@@ -7966,10 +8401,40 @@ function RecordingsView({
     setIsUploading(false);
     setTimeout(() => setUploadStatus(''), 5000);
   };
+  const getDownloadablePhotos = photoList => Array.isArray(photoList) ? photoList.filter(photo => photo?.data && photo.data !== '[in-firebase]') : [];
+  const pauseBetweenDownloads = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+  // Download photos in a paced batch so mobile browsers do not lock up on a burst of downloads.
+  const downloadPhotoBatch = async (photoList, filenamePrefix) => {
+    if (isDownloading) return;
+    const downloadable = getDownloadablePhotos(photoList);
+    const skipped = Array.isArray(photoList) ? photoList.length - downloadable.length : 0;
+    if (downloadable.length === 0) {
+      ToastNotifier.info('No photos available for local download - they are in the cloud');
+      return;
+    }
+    setIsDownloading(true);
+    setUploadStatus(downloadable.length > 1 ? `Preparing ${downloadable.length} downloads...` : 'Preparing download...');
+    try {
+      for (let idx = 0; idx < downloadable.length; idx += 1) {
+        const photo = downloadable[idx];
+        downloadPhotoFile(photo.data, `${filenamePrefix}-photo-${idx + 1}.jpg`);
+        if (idx < downloadable.length - 1) {
+          await pauseBetweenDownloads(200);
+        }
+      }
+      const skippedMessage = skipped > 0 ? ` Skipped ${skipped} cloud photo${skipped === 1 ? '' : 's'}.` : '';
+      setUploadStatus(`Downloaded ${downloadable.length} photo${downloadable.length === 1 ? '' : 's'}!${skippedMessage}`);
+    } finally {
+      setIsDownloading(false);
+      setTimeout(() => setUploadStatus(''), 4000);
+    }
+  };
 
   // Download photos individually
   const downloadPhotos = () => {
-    const downloadable = photos.filter(p => p.data && p.data !== '[in-firebase]');
+    return void downloadPhotoBatch(photos, selectedJob?.name || 'job');
+    /* const downloadable = photos.filter(p => p.data && p.data !== '[in-firebase]');
     if (downloadable.length === 0) {
       ToastNotifier.info('No photos available for local download — they are in the cloud');
       return;
@@ -7978,7 +8443,7 @@ function RecordingsView({
       downloadPhotoFile(photo.data, `${selectedJob?.name || 'job'}-photo-${idx + 1}.jpg`);
     });
     setUploadStatus(`Downloaded ${downloadable.length} photos!`);
-    setTimeout(() => setUploadStatus(''), 3000);
+    setTimeout(() => setUploadStatus(''), 3000); */
   };
 
   // Delete saved recording
@@ -8099,8 +8564,9 @@ function RecordingsView({
     className: "font-semibold text-gray-800"
   }, "Save Photos"), /*#__PURE__*/React.createElement("button", {
     onClick: downloadPhotos,
+    disabled: isDownloading,
     className: "w-full bg-blue-600 text-white py-3 rounded-lg font-medium flex items-center justify-center gap-2"
-  }, /*#__PURE__*/React.createElement("span", null, "\uD83D\uDCE5"), " Download to Phone"), /*#__PURE__*/React.createElement("button", {
+  }, /*#__PURE__*/React.createElement("span", null, "\uD83D\uDCE5"), " ", isDownloading ? 'Preparing Downloads...' : 'Download to Phone'), /*#__PURE__*/React.createElement("button", {
     onClick: saveRecordingLocally,
     className: "w-full bg-green-600 text-white py-3 rounded-lg font-medium flex items-center justify-center gap-2"
   }, /*#__PURE__*/React.createElement("span", null, "\uD83D\uDCBE"), " Save in App"), /*#__PURE__*/React.createElement("button", {
@@ -8192,12 +8658,11 @@ function RecordingsView({
     className: "p-4 border-t border-gray-200 space-y-2"
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => {
-      viewingRecording.photos.forEach((photo, idx) => {
-        downloadPhotoFile(photo.data, `${viewingRecording.jobName}-photo-${idx + 1}.jpg`);
-      });
+      void downloadPhotoBatch(viewingRecording.photos, viewingRecording.jobName);
     },
+    disabled: isDownloading,
     className: "w-full bg-blue-600 text-white py-3 rounded-xl font-semibold flex items-center justify-center gap-2"
-  }, /*#__PURE__*/React.createElement("span", null, "\uD83D\uDCE5"), " Download All Photos"), /*#__PURE__*/React.createElement("button", {
+  }, /*#__PURE__*/React.createElement("span", null, "\uD83D\uDCE5"), " ", isDownloading ? 'Preparing Downloads...' : 'Download All Photos'), /*#__PURE__*/React.createElement("button", {
     onClick: () => deleteRecording(viewingRecording.id),
     className: "w-full bg-red-100 text-red-600 py-3 rounded-xl font-semibold flex items-center justify-center gap-2"
   }, /*#__PURE__*/React.createElement("span", null, "\uD83D\uDDD1\uFE0F"), " Delete Recording")))), /*#__PURE__*/React.createElement("div", {

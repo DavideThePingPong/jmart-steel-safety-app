@@ -8,8 +8,9 @@
       // Admin Auth UIDs — maps Firebase auth UIDs to admin status
       // Only writable by existing admins or during first-device setup (no approved devices yet)
       "adminAuthUids": {
-        ".read": "auth != null",
+        ".read": "auth != null && root.child('jmart-safety/adminAuthUids/' + auth.uid).exists()",
         "$uid": {
+          ".read": "auth != null && (auth.uid === $uid || root.child('jmart-safety/adminAuthUids/' + auth.uid).exists())",
           // Allow write only if: (a) writer is existing admin in adminAuthUids, OR
           // (b) no approved devices exist yet (first-device setup)
           ".write": "auth != null && (root.child('jmart-safety/adminAuthUids/' + auth.uid).exists() || !root.child('jmart-safety/devices/approved').exists())",
@@ -35,9 +36,9 @@
       // Devices - hierarchical structure: devices/approved/{id}, devices/pending/{id}, devices/denied/{id}
       "devices": {
         "approved": {
-          ".read": "auth != null",
+          ".read": "auth != null && (root.child('jmart-safety/adminAuthUids/' + auth.uid).exists() || !data.exists())",
           "$deviceId": {
-            ".read": "auth != null",
+            ".read": "auth != null && (root.child('jmart-safety/adminAuthUids/' + auth.uid).exists() || !data.exists() || data.child('authUid').val() === auth.uid)",
             // Allow write ONLY if:
             //   (a) No approved devices exist yet (first-device setup), OR
             //   (b) Writer is an existing admin (auth.uid in adminAuthUids), OR
@@ -46,9 +47,9 @@
           }
         },
         "pending": {
-          ".read": "auth != null",
+          ".read": "auth != null && root.child('jmart-safety/adminAuthUids/' + auth.uid).exists()",
           "$deviceId": {
-            ".read": "auth != null",
+            ".read": "auth != null && (root.child('jmart-safety/adminAuthUids/' + auth.uid).exists() || !data.exists() || data.child('authUid').val() === auth.uid)",
             // Allow write for:
             //   (a) Self-registration (new data where authUid matches auth.uid), OR
             //   (b) Admin operations (approve/deny/cleanup/deletion), OR
@@ -57,16 +58,16 @@
           }
         },
         "denied": {
-          ".read": "auth != null",
+          ".read": "auth != null && root.child('jmart-safety/adminAuthUids/' + auth.uid).exists()",
           "$deviceId": {
-            ".read": "auth != null",
+            ".read": "auth != null && root.child('jmart-safety/adminAuthUids/' + auth.uid).exists()",
             // Only admins can deny devices
             ".write": "auth != null && root.child('jmart-safety/adminAuthUids/' + auth.uid).exists()"
           }
         },
         // Legacy flat device entries (for migration) - admin or self-migration only
         "$deviceId": {
-          ".read": "auth != null",
+          ".read": "auth != null && (root.child('jmart-safety/adminAuthUids/' + auth.uid).exists() || !data.exists() || data.child('authUid').val() === auth.uid)",
           ".write": "auth != null && (root.child('jmart-safety/adminAuthUids/' + auth.uid).exists() || (data.exists() && data.child('authUid').val() === auth.uid) || !root.child('jmart-safety/devices/approved').exists())"
         }
       },
@@ -120,15 +121,18 @@
       "frank": {
         "history": {
           ".read": "auth != null && root.child('jmart-safety/authDevices/' + auth.uid).child('approvedAt').exists()",
-          ".write": "auth != null && root.child('jmart-safety/authDevices/' + auth.uid).child('approvedAt').exists()"
+          "$recordId": {
+            ".write": "auth != null && root.child('jmart-safety/authDevices/' + auth.uid).child('approvedAt').exists()",
+            ".validate": "newData.hasChildren(['jobDesc', 'date', 'createdAt', 'swmsData']) && !newData.hasChild('html') && newData.child('jobDesc').isString() && newData.child('jobDesc').val().length < 500 && newData.child('date').isString() && newData.child('createdAt').isString() && newData.child('swmsData').hasChildren(['title', 'steps'])"
+          }
         },
         "memory": {
-          ".read": "auth != null && root.child('jmart-safety/authDevices/' + auth.uid).child('approvedAt').exists()",
-          ".write": "auth != null && root.child('jmart-safety/authDevices/' + auth.uid).child('approvedAt').exists()"
+          ".read": "auth != null && root.child('jmart-safety/adminAuthUids/' + auth.uid).exists()",
+          ".write": "auth != null && root.child('jmart-safety/adminAuthUids/' + auth.uid).exists()"
         },
         "regulation-updates": {
-          ".read": "auth != null && root.child('jmart-safety/authDevices/' + auth.uid).child('approvedAt').exists()",
-          ".write": "auth != null && root.child('jmart-safety/authDevices/' + auth.uid).child('approvedAt').exists()"
+          ".read": "auth != null && root.child('jmart-safety/adminAuthUids/' + auth.uid).exists()",
+          ".write": "auth != null && root.child('jmart-safety/adminAuthUids/' + auth.uid).exists()"
         }
       },
 

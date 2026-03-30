@@ -1,7 +1,7 @@
 // Dashboard
 // Extracted from index.html
 
-function Dashboard({ setCurrentView, forms, onViewForm, isFormBackedUp, sites = [] }) {
+function Dashboard({ setCurrentView, forms, onViewForm, isFormBackedUp, sites = [], prestartTemplates = [], templateJobNames = [], onDeleteTemplate, onSelectTemplate }) {
   const todayDate = new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const [showPhotoMenu, setShowPhotoMenu] = useState(false);
   const [selectedJob, setSelectedJob] = useState(null);
@@ -21,7 +21,12 @@ function Dashboard({ setCurrentView, forms, onViewForm, isFormBackedUp, sites = 
   };
 
   const defaultSites = ['Site 1 - Sydney CBD', 'Site 2 - Parramatta', 'Site 3 - North Sydney'];
-  const allJobs = [...new Set(sites.length > 0 ? sites : defaultSites)];
+  // Camera job list: template jobs first, then Firebase sites not already covered, then defaults
+  const allJobs = [...new Set([
+    ...templateJobNames,
+    ...(sites.length > 0 ? sites : defaultSites).filter(s => !templateJobNames.includes(s))
+  ])];
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
 
   const recentForms = forms.slice(0, 10); // Show last 10 forms
 
@@ -279,6 +284,63 @@ function Dashboard({ setCurrentView, forms, onViewForm, isFormBackedUp, sites = 
           </button>
         </div>
       </div>
+
+      {/* Saved Pre-Start Templates */}
+      {prestartTemplates.length > 0 && (
+        <div>
+          <h3 className="font-semibold text-gray-800 mb-3">Saved Pre-Start Templates</h3>
+          <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1" style={{ scrollbarWidth: 'thin' }}>
+            {prestartTemplates
+              .slice()
+              .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))
+              .map((template) => {
+                const siteName = template.data?.siteConducted || template.data?.builder || template.data?.address || 'Unknown';
+                const checkType = template.data?.type || 'site';
+                const typeLabels = { site: 'Site', crane: 'Crane', forklift: 'Forklift', vehicle: 'Vehicle', welding: 'Welding', scaffold: 'Scaffold' };
+                const typeColors = { site: 'bg-green-100 text-green-700', crane: 'bg-yellow-100 text-yellow-700', forklift: 'bg-blue-100 text-blue-700', vehicle: 'bg-purple-100 text-purple-700', welding: 'bg-orange-100 text-orange-700', scaffold: 'bg-red-100 text-red-700' };
+                const updatedDate = template.updatedAt ? new Date(template.updatedAt).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }) : '';
+                return (
+                  <div
+                    key={template.id}
+                    className="flex-shrink-0 w-44 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition cursor-pointer"
+                  >
+                    <div className="p-3" onClick={() => onSelectTemplate && onSelectTemplate(template)}>
+                      <p className="font-medium text-gray-800 text-sm truncate" title={siteName}>{siteName}</p>
+                      <div className="flex items-center gap-2 mt-2">
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${typeColors[checkType] || 'bg-gray-100 text-gray-700'}`}>
+                          {typeLabels[checkType] || checkType}
+                        </span>
+                      </div>
+                      {updatedDate && <p className="text-xs text-gray-400 mt-2">{updatedDate}</p>}
+                    </div>
+                    <div className="border-t border-gray-100 px-3 py-1.5 flex justify-end">
+                      {deleteConfirm === template.templateKey ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-500">Delete?</span>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onDeleteTemplate && onDeleteTemplate(template.templateKey); setDeleteConfirm(null); }}
+                            className="text-xs text-red-600 font-medium hover:text-red-800"
+                          >Yes</button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setDeleteConfirm(null); }}
+                            className="text-xs text-gray-500 font-medium hover:text-gray-700"
+                          >No</button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setDeleteConfirm(template.templateKey); }}
+                          className="text-gray-400 hover:text-red-500 text-sm"
+                          title="Delete template"
+                        >🗑️</button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            }
+          </div>
+        </div>
+      )}
 
       {/* Recent Forms */}
       {recentForms.length > 0 && (

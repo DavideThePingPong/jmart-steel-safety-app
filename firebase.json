@@ -1,4 +1,7 @@
 {
+  "functions": {
+    "source": "functions"
+  },
   "database": {
     "rules": "firebase.rules.json"
   },
@@ -9,6 +12,56 @@
       "firebase.rules.json",
       "**/.*",
       "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "api/hanna/scan-receipt",
+        "function": {
+          "functionId": "hannaScanReceipt",
+          "region": "australia-southeast1",
+          "pinTag": true
+        }
+      },
+      {
+        "source": "api/victor/search-msds",
+        "function": {
+          "functionId": "victorSearchMsds",
+          "region": "australia-southeast1",
+          "pinTag": true
+        }
+      },
+      {
+        "source": "api/victor/analyze-sds",
+        "function": {
+          "functionId": "victorAnalyzeSds",
+          "region": "australia-southeast1",
+          "pinTag": true
+        }
+      },
+      {
+        "source": "api/frank/search-regulations",
+        "function": {
+          "functionId": "frankSearchRegulations",
+          "region": "australia-southeast1",
+          "pinTag": true
+        }
+      },
+      {
+        "source": "api/frank/generate-swms",
+        "function": {
+          "functionId": "frankGenerateSwms",
+          "region": "australia-southeast1",
+          "pinTag": true
+        }
+      },
+      {
+        "source": "api/frank/extract-requirements",
+        "function": {
+          "functionId": "frankAttachmentExtract",
+          "region": "australia-southeast1",
+          "pinTag": true
+        }
+      }
     ],
     "headers": [
       {

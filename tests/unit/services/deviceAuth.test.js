@@ -345,47 +345,41 @@ describe('DeviceAuth', () => {
       global.firebaseDb = mockDb;
       DeviceAuth.deviceId = 'DEV-NEW';
       DeviceAuth.deviceInfo = { type: 'iPhone', browser: 'Safari' };
-
-      const otherAdmin = {
-        'DEV-ADMIN': { isAdmin: true, lastSeen: new Date().toISOString() }
-      };
+      const bootstrapSpy = jest.spyOn(DeviceAuth, 'registerAsApproved').mockResolvedValue(false);
 
       global.firebaseRead = jest.fn()
         .mockResolvedValueOnce({ exists: false, val: null }) // approved/<deviceId>
         .mockResolvedValueOnce({ exists: false, val: null }) // migration
         .mockResolvedValueOnce({ exists: false, val: null }) // approved/<deviceId> after migration
-        .mockResolvedValueOnce({ exists: true, val: otherAdmin }) // all approved
         .mockResolvedValueOnce({ exists: false, val: null }); // pending/<deviceId>
 
       const result = await DeviceAuth.checkDeviceStatus();
       expect(result.approved).toBe(false);
       expect(result.pending).toBe(true);
       expect(DeviceAuth.isApproved).toBe(false);
+      expect(bootstrapSpy).toHaveBeenCalledWith(true);
+      bootstrapSpy.mockRestore();
     });
 
-    it('requires manual recovery instead of auto-promoting when all admins are inactive', async () => {
+    it('falls back to pending when bootstrap write is denied', async () => {
       const mockDb = createMockFirebaseDb();
       global.firebaseDb = mockDb;
       DeviceAuth.deviceId = 'DEV-RECOVERY';
       DeviceAuth.deviceInfo = { type: 'Mac', browser: 'Chrome' };
-
-      const staleAdmin = {
-        'DEV-ADMIN': { isAdmin: true, lastSeen: '2020-01-01T00:00:00.000Z' }
-      };
+      const promoteSpy = jest.spyOn(DeviceAuth, 'registerAsApproved').mockResolvedValue(false);
 
       global.firebaseRead = jest.fn()
         .mockResolvedValueOnce({ exists: false, val: null }) // approved/<deviceId>
         .mockResolvedValueOnce({ exists: false, val: null }) // migration
         .mockResolvedValueOnce({ exists: false, val: null }) // approved/<deviceId> after migration
-        .mockResolvedValueOnce({ exists: true, val: staleAdmin }) // all approved
         .mockResolvedValueOnce({ exists: false, val: null }); // pending/<deviceId>
 
-      const promoteSpy = jest.spyOn(DeviceAuth, 'registerAsApproved');
       const result = await DeviceAuth.checkDeviceStatus();
 
       expect(result.approved).toBe(false);
-      expect(result.recoveryRequired).toBe(true);
-      expect(promoteSpy).not.toHaveBeenCalled();
+      expect(result.pending).toBe(true);
+      expect(result.recoveryRequired).toBeUndefined();
+      expect(promoteSpy).toHaveBeenCalledWith(true);
       promoteSpy.mockRestore();
     });
 
