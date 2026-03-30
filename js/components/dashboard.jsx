@@ -301,7 +301,7 @@ function Dashboard({ setCurrentView, forms, onViewForm, isFormBackedUp, sites = 
                 const updatedDate = template.updatedAt ? new Date(template.updatedAt).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }) : '';
                 return (
                   <div
-                    key={template.id}
+                    key={template.templateKey}
                     className="flex-shrink-0 w-44 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition cursor-pointer"
                   >
                     <div className="p-3" onClick={() => onSelectTemplate && onSelectTemplate(template)}>

@@ -1270,9 +1270,10 @@ function usePrestartTemplates() {
   // Upsert (create or update) a template
   const upsertTemplate = useCallback((templateData) => {
     const templateKey = getPrestartTemplateKey(templateData);
-    if (!templateKey) return '';
+    if (!templateKey) return null;
 
     const now = new Date().toISOString();
+    let nextSnapshot;
     setTemplates((currentTemplates) => {
       const existingTemplate = currentTemplates.find(t => t.templateKey === templateKey);
       const nextTemplates = currentTemplates.filter(t => t.templateKey !== templateKey);
@@ -1281,22 +1282,26 @@ function usePrestartTemplates() {
         templateKey,
         createdAt: existingTemplate?.createdAt || now,
         updatedAt: now,
-        data: JSON.parse(JSON.stringify(templateData))
+        data: { ...templateData }
       });
-      writeSavedTemplates(nextTemplates);
+      nextSnapshot = nextTemplates;
       return nextTemplates;
     });
+    // Write to localStorage outside the state updater to avoid sync issues
+    if (nextSnapshot) writeSavedTemplates(nextSnapshot);
 
     return templateKey;
   }, []);
 
   // Delete a template by key
   const deleteTemplate = useCallback((templateKey) => {
+    let nextSnapshot;
     setTemplates((currentTemplates) => {
       const nextTemplates = currentTemplates.filter(t => t.templateKey !== templateKey);
-      writeSavedTemplates(nextTemplates);
+      nextSnapshot = nextTemplates;
       return nextTemplates;
     });
+    if (nextSnapshot) writeSavedTemplates(nextSnapshot);
   }, []);
 
   // Cross-tab sync via storage event

@@ -150,7 +150,7 @@ function PrestartView({ onSubmit, onUpdate, editingForm, previousPrestarts = [],
   // upsertSavedTemplate delegates to the shared hook via props
   const upsertSavedTemplate = (templateData) => {
     if (onUpsertTemplate) return onUpsertTemplate(templateData);
-    return '';
+    return null;
   };
 
   const getLocation = () => {
@@ -377,7 +377,7 @@ function PrestartView({ onSubmit, onUpdate, editingForm, previousPrestarts = [],
       loadFromPrevious(templateToLoad);
       if (onTemplateLoaded) onTemplateLoaded();
     }
-  }, [templateToLoad]);
+  }, [templateToLoad, isEditing]);
 
   if (step === 1) {
     return (

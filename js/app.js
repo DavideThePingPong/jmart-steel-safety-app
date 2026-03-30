@@ -2017,8 +2017,9 @@ function usePrestartTemplates() {
   // Upsert (create or update) a template
   const upsertTemplate = useCallback(templateData => {
     const templateKey = getPrestartTemplateKey(templateData);
-    if (!templateKey) return '';
+    if (!templateKey) return null;
     const now = new Date().toISOString();
+    let nextSnapshot;
     setTemplates(currentTemplates => {
       const existingTemplate = currentTemplates.find(t => t.templateKey === templateKey);
       const nextTemplates = currentTemplates.filter(t => t.templateKey !== templateKey);
@@ -2027,21 +2028,27 @@ function usePrestartTemplates() {
         templateKey,
         createdAt: existingTemplate?.createdAt || now,
         updatedAt: now,
-        data: JSON.parse(JSON.stringify(templateData))
+        data: {
+          ...templateData
+        }
       });
-      writeSavedTemplates(nextTemplates);
+      nextSnapshot = nextTemplates;
       return nextTemplates;
     });
+    // Write to localStorage outside the state updater to avoid sync issues
+    if (nextSnapshot) writeSavedTemplates(nextSnapshot);
     return templateKey;
   }, []);
 
   // Delete a template by key
   const deleteTemplate = useCallback(templateKey => {
+    let nextSnapshot;
     setTemplates(currentTemplates => {
       const nextTemplates = currentTemplates.filter(t => t.templateKey !== templateKey);
-      writeSavedTemplates(nextTemplates);
+      nextSnapshot = nextTemplates;
       return nextTemplates;
     });
+    if (nextSnapshot) writeSavedTemplates(nextSnapshot);
   }, []);
 
   // Cross-tab sync via storage event
@@ -3653,7 +3660,7 @@ function Dashboard({
       month: 'short'
     }) : '';
     return /*#__PURE__*/React.createElement("div", {
-      key: template.id,
+      key: template.templateKey,
       className: "flex-shrink-0 w-44 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition cursor-pointer"
     }, /*#__PURE__*/React.createElement("div", {
       className: "p-3",
@@ -4313,7 +4320,7 @@ function PrestartView({
   // upsertSavedTemplate delegates to the shared hook via props
   const upsertSavedTemplate = templateData => {
     if (onUpsertTemplate) return onUpsertTemplate(templateData);
-    return '';
+    return null;
   };
   const getLocation = () => {
     setIsLocating(true);
@@ -4608,7 +4615,7 @@ function PrestartView({
       loadFromPrevious(templateToLoad);
       if (onTemplateLoaded) onTemplateLoaded();
     }
-  }, [templateToLoad]);
+  }, [templateToLoad, isEditing]);
   if (step === 1) {
     return /*#__PURE__*/React.createElement("div", {
       className: "space-y-4"
