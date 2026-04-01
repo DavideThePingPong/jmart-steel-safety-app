@@ -890,6 +890,11 @@ function useFormManager({
         // Firebase sync is handled centrally by useDataSync.
         return updatedForms;
       });
+      if (FirebaseSync.isConnected()) {
+        FirebaseSync.syncForms([newForm]).catch(err => {
+          console.warn('Immediate form sync queued:', err && err.message ? err.message : err);
+        });
+      }
 
       // Auto-download PDF + upload to Drive
       setTimeout(() => {
@@ -1134,6 +1139,59 @@ function useFormManager({
     setEditingForm(null);
     setCurrentView('dashboard');
   };
+  const archiveForm = async formId => {
+    const existingForm = (forms || []).find(form => form && form.id === formId);
+    if (!existingForm) return false;
+    const now = new Date().toISOString();
+    const archivedForm = {
+      ...existingForm,
+      status: 'archived',
+      archivedAt: now,
+      archivedBy: DeviceAuthManager.deviceId || 'unknown',
+      archivedByName: localStorage.getItem('jmart-user-name') || 'Unknown User',
+      updatedAt: now,
+      modifiedBy: DeviceAuthManager.deviceId || 'unknown',
+      modifiedByName: localStorage.getItem('jmart-user-name') || 'Unknown User',
+      version: (existingForm.version || 1) + 1
+    };
+    setForms(prevForms => {
+      const updatedForms = prevForms.map(form => form.id === formId ? archivedForm : form);
+      StorageQuotaManager.safeFormsWrite(updatedForms);
+      return updatedForms;
+    });
+    try {
+      if (!window.__JMART_E2E__ && typeof PDFGenerator !== 'undefined' && typeof GoogleDriveSync !== 'undefined') {
+        const generated = PDFGenerator.generate(archivedForm);
+        if (generated && generated.doc) {
+          const pdfBlob = generated.doc.output('blob');
+          const archiveFilename = String(generated.filename || `prestart-${formId}.pdf`).replace(/\.pdf$/i, '-archive.pdf');
+          if (GoogleDriveSync.isConnected()) {
+            const uploadResult = await GoogleDriveSync.uploadPDF(pdfBlob, archiveFilename, archivedForm.type);
+            if (uploadResult) {
+              markAsBackedUp(formId);
+            }
+          } else if (typeof ToastNotifier !== 'undefined') {
+            ToastNotifier.warning('Archived in Firebase. Connect Google Drive to upload the archive PDF.');
+          }
+        }
+      }
+    } catch (archiveError) {
+      console.error('Archive upload error:', archiveError);
+      if (typeof ToastNotifier !== 'undefined') {
+        ToastNotifier.warning('Archived in Firebase, but Drive upload failed.');
+      }
+    }
+    AuditLogManager.log('archive', {
+      formId: archivedForm.id,
+      formType: archivedForm.type,
+      site: archivedForm.data?.siteConducted || archivedForm.data?.site || 'Unknown',
+      action: 'Form archived'
+    });
+    if (typeof ToastNotifier !== 'undefined') {
+      ToastNotifier.success('Pre-Start archived');
+    }
+    return true;
+  };
 
   // Delete form (with backup check) — uses setForms callback to avoid stale closure
   const deleteForm = formId => {
@@ -1209,6 +1267,7 @@ function useFormManager({
     continueEditing,
     cancelUpdate,
     deleteForm,
+    archiveForm,
     handleDownloadPDF,
     closeSuccessModal,
     markAsBackedUp,
@@ -1235,7 +1294,9 @@ function useDataSync({
   const [pendingSyncCount, setPendingSyncCount] = useState(FirebaseSync.getPendingCount());
   const [pendingPhotoCount, setPendingPhotoCount] = useState(OfflinePhotoQueue.getCount());
   const [syncError, setSyncError] = useState(null);
-  const [showSyncBanner, setShowSyncBanner] = useState(!FirebaseSync.isConnected());
+  const [showSyncBanner, setShowSyncBanner] = useState(() => {
+    return !(typeof isFirebaseConfigured !== 'undefined' && isFirebaseConfigured);
+  });
   const isInitialLoad = useRef(true);
   const formsFromFirebaseRef = useRef(false); // Anti-loop: skip syncing back to Firebase when data came FROM Firebase
   const formsFromStorageRef = useRef(false);
@@ -1262,6 +1323,11 @@ function useDataSync({
     if (typeof item.path === 'string' && item.path.indexOf('jmart-safety/forms') === 0) return true;
     return false;
   });
+  useEffect(() => {
+    if (FirebaseSync.isConnected() || syncStatus === 'synced' || syncStatus === 'syncing' || syncStatus === 'pending') {
+      setShowSyncBanner(false);
+    }
+  }, [syncStatus, pendingSyncCount, isOnline]);
 
   // Load saved data from localStorage first, then listen to Firebase
   useEffect(() => {
@@ -1683,6 +1749,9 @@ function useDataSync({
   useEffect(() => {
     const unsubscribe = FirebaseSync.onSyncStatusChange((status, details) => {
       setPendingSyncCount(details?.pending || 0);
+      if (FirebaseSync.isConnected()) {
+        setShowSyncBanner(false);
+      }
       if (status === 'synced' && details?.pending === 0) {
         setSyncStatus('synced');
         setSyncError(null);
@@ -1974,6 +2043,7 @@ function useBeforeUnload(hasUnsavedData) {
 // Prestart Template Utilities (shared across components)
 // =============================================
 const PRESTART_TEMPLATE_STORAGE_KEY = 'jmart-prestart-templates';
+const PRESTART_TEMPLATE_PENDING_KEY = 'jmart-prestart-template-pending';
 function normalizePrestartTemplateValue(value) {
   return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
@@ -1985,6 +2055,7 @@ function getPrestartTemplateKey(data) {
   const jobKey = siteKey || builderKey || addressKey;
   return jobKey ? `${typeKey}::${jobKey}` : '';
 }
+const FIREBASE_TEMPLATES_PATH = 'jmart-safety/prestartTemplates';
 function readSavedPrestartTemplates() {
   try {
     const saved = JSON.parse(localStorage.getItem(PRESTART_TEMPLATE_STORAGE_KEY) || '[]');
@@ -2001,12 +2072,137 @@ function writeSavedTemplates(nextTemplates) {
     console.warn('Failed to save prestart templates:', error);
   }
 }
+function readPendingPrestartTemplateOps() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PRESTART_TEMPLATE_PENDING_KEY) || '[]');
+    return Array.isArray(saved) ? saved.filter(op => op && op.templateKey && (op.type === 'upsert' || op.type === 'delete')) : [];
+  } catch (error) {
+    console.warn('Failed to load pending prestart template operations:', error);
+    return [];
+  }
+}
+function writePendingPrestartTemplateOps(nextOps) {
+  try {
+    if (!Array.isArray(nextOps) || nextOps.length === 0) {
+      localStorage.removeItem(PRESTART_TEMPLATE_PENDING_KEY);
+      return;
+    }
+    localStorage.setItem(PRESTART_TEMPLATE_PENDING_KEY, JSON.stringify(nextOps));
+  } catch (error) {
+    console.warn('Failed to save pending prestart template operations:', error);
+  }
+}
+function sortPrestartTemplates(nextTemplates) {
+  return nextTemplates.filter(template => template && template.templateKey).slice().sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
+}
+function mergePrestartTemplatesByKey(nextTemplates) {
+  const templateMap = new Map();
+  nextTemplates.forEach(template => {
+    if (template && template.templateKey) {
+      templateMap.set(template.templateKey, template);
+    }
+  });
+  return sortPrestartTemplates(Array.from(templateMap.values()));
+}
+function applyPendingPrestartTemplateOps(remoteTemplates, pendingOps) {
+  const templateMap = new Map();
+  remoteTemplates.forEach(template => {
+    if (template && template.templateKey) {
+      templateMap.set(template.templateKey, template);
+    }
+  });
+  pendingOps.forEach(op => {
+    if (!op || !op.templateKey) return;
+    if (op.type === 'delete') {
+      templateMap.delete(op.templateKey);
+      return;
+    }
+    if (op.type === 'upsert' && op.template) {
+      templateMap.set(op.templateKey, op.template);
+    }
+  });
+  return sortPrestartTemplates(Array.from(templateMap.values()));
+}
+function firebaseTemplateId(templateKey) {
+  // Firebase keys can't contain . # $ [ ] /
+  return templateKey.replace(/[.#$\[\]/]/g, '_');
+}
+function queuePrestartTemplateOp(nextOp) {
+  const currentOps = readPendingPrestartTemplateOps();
+  const dedupedOps = currentOps.filter(op => op.templateKey !== nextOp.templateKey);
+  const queuedOp = {
+    ...nextOp,
+    queuedAt: nextOp.queuedAt || new Date().toISOString()
+  };
+  dedupedOps.push(queuedOp);
+  writePendingPrestartTemplateOps(dedupedOps);
+  return dedupedOps;
+}
 
 // =============================================
-// usePrestartTemplates - Shared template state
+// usePrestartTemplates - Shared template state (Firebase + localStorage)
 // =============================================
 function usePrestartTemplates() {
   const [templates, setTemplates] = useState(() => readSavedPrestartTemplates());
+  const templatesRef = useRef(templates);
+  const templateFlushInFlightRef = useRef(false);
+  useEffect(() => {
+    templatesRef.current = templates;
+  }, [templates]);
+  const flushPendingPrestartTemplateOps = useCallback(async () => {
+    if (typeof firebaseDb === 'undefined' || !firebaseDb || templateFlushInFlightRef.current) return;
+    templateFlushInFlightRef.current = true;
+    try {
+      let pendingOps = readPendingPrestartTemplateOps();
+      while (pendingOps.length > 0) {
+        const [nextOp, ...remainingOps] = pendingOps;
+        const templateRef = firebaseDb.ref(`${FIREBASE_TEMPLATES_PATH}/${firebaseTemplateId(nextOp.templateKey)}`);
+        if (nextOp.type === 'delete') {
+          await templateRef.remove();
+        } else if (nextOp.type === 'upsert' && nextOp.template) {
+          await templateRef.set(nextOp.template);
+        }
+        writePendingPrestartTemplateOps(remainingOps);
+        pendingOps = readPendingPrestartTemplateOps();
+      }
+    } catch (error) {
+      console.warn('Failed to flush prestart template operations to Firebase:', error);
+    } finally {
+      templateFlushInFlightRef.current = false;
+    }
+  }, []);
+
+  // On mount, reconcile local templates + pending ops against Firebase.
+  useEffect(() => {
+    if (typeof firebaseDb === 'undefined' || !firebaseDb) return;
+    let cancelled = false;
+    const templatesRefPath = firebaseDb.ref(FIREBASE_TEMPLATES_PATH);
+    const applyRemoteSnapshot = value => {
+      const remoteTemplates = value ? sortPrestartTemplates(Object.values(value).filter(template => template && template.templateKey)) : [];
+      const pendingOps = readPendingPrestartTemplateOps();
+      const mergedTemplates = applyPendingPrestartTemplateOps(remoteTemplates, pendingOps);
+      if (cancelled) return;
+      templatesRef.current = mergedTemplates;
+      setTemplates(mergedTemplates);
+      writeSavedTemplates(mergedTemplates);
+    };
+    const handler = snap => {
+      if (cancelled) return;
+      applyRemoteSnapshot(snap.val());
+    };
+    templatesRefPath.on('value', handler);
+    templatesRefPath.once('value').then(snap => {
+      if (cancelled) return;
+      applyRemoteSnapshot(snap.val());
+      return flushPendingPrestartTemplateOps();
+    }).catch(error => {
+      console.warn('Failed to load templates from Firebase:', error);
+    });
+    return () => {
+      cancelled = true;
+      templatesRefPath.off('value', handler);
+    };
+  }, [flushPendingPrestartTemplateOps]);
 
   // Derive unique job/site names from templates for camera and dashboard
   const templateJobNames = useMemo(() => {
@@ -2019,43 +2215,51 @@ function usePrestartTemplates() {
     const templateKey = getPrestartTemplateKey(templateData);
     if (!templateKey) return null;
     const now = new Date().toISOString();
-    let nextSnapshot;
-    setTemplates(currentTemplates => {
-      const existingTemplate = currentTemplates.find(t => t.templateKey === templateKey);
-      const nextTemplates = currentTemplates.filter(t => t.templateKey !== templateKey);
-      nextTemplates.unshift({
-        id: `prestart-template-${templateKey}`,
-        templateKey,
-        createdAt: existingTemplate?.createdAt || now,
-        updatedAt: now,
-        data: {
-          ...templateData
-        }
-      });
-      nextSnapshot = nextTemplates;
-      return nextTemplates;
+    const currentTemplates = templatesRef.current || [];
+    const existingTemplate = currentTemplates.find(template => template.templateKey === templateKey);
+    const nextTemplate = {
+      id: `prestart-template-${templateKey}`,
+      templateKey,
+      createdAt: existingTemplate?.createdAt || now,
+      updatedAt: now,
+      data: {
+        ...templateData
+      }
+    };
+    const nextTemplates = mergePrestartTemplatesByKey([nextTemplate, ...currentTemplates.filter(template => template.templateKey !== templateKey)]);
+    templatesRef.current = nextTemplates;
+    setTemplates(nextTemplates);
+    writeSavedTemplates(nextTemplates);
+    queuePrestartTemplateOp({
+      type: 'upsert',
+      templateKey,
+      template: nextTemplate
     });
-    // Write to localStorage outside the state updater to avoid sync issues
-    if (nextSnapshot) writeSavedTemplates(nextSnapshot);
+    flushPendingPrestartTemplateOps();
     return templateKey;
-  }, []);
+  }, [flushPendingPrestartTemplateOps]);
 
   // Delete a template by key
   const deleteTemplate = useCallback(templateKey => {
-    let nextSnapshot;
-    setTemplates(currentTemplates => {
-      const nextTemplates = currentTemplates.filter(t => t.templateKey !== templateKey);
-      nextSnapshot = nextTemplates;
-      return nextTemplates;
+    const nextTemplates = sortPrestartTemplates((templatesRef.current || []).filter(template => template.templateKey !== templateKey));
+    templatesRef.current = nextTemplates;
+    setTemplates(nextTemplates);
+    writeSavedTemplates(nextTemplates);
+    queuePrestartTemplateOp({
+      type: 'delete',
+      templateKey
     });
-    if (nextSnapshot) writeSavedTemplates(nextSnapshot);
-  }, []);
+    flushPendingPrestartTemplateOps();
+  }, [flushPendingPrestartTemplateOps]);
 
   // Cross-tab sync via storage event
   useEffect(() => {
     const handleStorageChange = event => {
-      if (event.storageArea !== localStorage || event.key !== PRESTART_TEMPLATE_STORAGE_KEY) return;
-      setTemplates(readSavedPrestartTemplates());
+      if (event.storageArea !== localStorage) return;
+      if (event.key !== PRESTART_TEMPLATE_STORAGE_KEY && event.key !== PRESTART_TEMPLATE_PENDING_KEY) return;
+      const nextTemplates = readSavedPrestartTemplates();
+      templatesRef.current = nextTemplates;
+      setTemplates(nextTemplates);
     };
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
@@ -2092,33 +2296,10 @@ function SuccessModal({
   onClose
 }) {
   const [templateStatus, setTemplateStatus] = useState(successModal?.templateStatus || null);
-  const [isApplyingTemplate, setIsApplyingTemplate] = useState(false);
   useEffect(() => {
     setTemplateStatus(successModal?.templateStatus || null);
-    setIsApplyingTemplate(false);
   }, [successModal]);
   if (!successModal) return null;
-  const applySubmittedTemplate = async () => {
-    if (typeof successModal.onUseSubmittedTemplate !== 'function') return;
-    setIsApplyingTemplate(true);
-    try {
-      await successModal.onUseSubmittedTemplate();
-      setTemplateStatus('replaced');
-    } finally {
-      setIsApplyingTemplate(false);
-    }
-  };
-  const keepExistingTemplate = async () => {
-    setIsApplyingTemplate(true);
-    try {
-      if (typeof successModal.onKeepExistingTemplate === 'function') {
-        await successModal.onKeepExistingTemplate();
-      }
-      setTemplateStatus('kept');
-    } finally {
-      setIsApplyingTemplate(false);
-    }
-  };
   return /*#__PURE__*/React.createElement("div", {
     className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4"
   }, /*#__PURE__*/React.createElement("div", {
@@ -2135,41 +2316,13 @@ function SuccessModal({
     className: "p-6 space-y-4"
   }, /*#__PURE__*/React.createElement("p", {
     className: "text-gray-600 text-center text-sm"
-  }, "Your form has been saved", FirebaseSync.isConnected() ? ' and synced to the cloud' : '', "."), successModal.templateJobName && templateStatus === 'auto-saved' && /*#__PURE__*/React.createElement("div", {
+  }, "Your form has been saved", FirebaseSync.isConnected() ? ' and synced to the cloud' : '', "."), successModal.templateJobName && (templateStatus === 'updated' || templateStatus === 'auto-saved' || templateStatus === 'replaced') && /*#__PURE__*/React.createElement("div", {
     className: "bg-green-50 border border-green-200 rounded-xl p-4 text-left"
   }, /*#__PURE__*/React.createElement("p", {
     className: "font-semibold text-green-800"
-  }, "Saved for reuse"), /*#__PURE__*/React.createElement("p", {
+  }, "Job template refreshed"), /*#__PURE__*/React.createElement("p", {
     className: "text-sm text-green-700"
-  }, "This is now the first saved pre-start template for ", successModal.templateJobName, ".")), successModal.templateJobName && templateStatus === 'replaceable' && /*#__PURE__*/React.createElement("div", {
-    className: "bg-blue-50 border border-blue-200 rounded-xl p-4 text-left space-y-3"
-  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
-    className: "font-semibold text-blue-800"
-  }, "Saved pre-start already exists"), /*#__PURE__*/React.createElement("p", {
-    className: "text-sm text-blue-700"
-  }, "Choose whether to update the saved pre-start template for ", successModal.templateJobName, " or keep the old one.")), /*#__PURE__*/React.createElement("div", {
-    className: "flex flex-col gap-2"
-  }, /*#__PURE__*/React.createElement("button", {
-    onClick: applySubmittedTemplate,
-    disabled: isApplyingTemplate,
-    className: "w-full bg-blue-600 text-white py-3 rounded-xl font-semibold disabled:bg-blue-300"
-  }, isApplyingTemplate ? 'Updating Template...' : 'Update Prestart Template For This Job'), /*#__PURE__*/React.createElement("button", {
-    onClick: keepExistingTemplate,
-    disabled: isApplyingTemplate,
-    className: "w-full border border-blue-300 text-blue-700 py-3 rounded-xl font-semibold disabled:bg-gray-100"
-  }, "Keep Existing Job Template"))), successModal.templateJobName && templateStatus === 'replaced' && /*#__PURE__*/React.createElement("div", {
-    className: "bg-green-50 border border-green-200 rounded-xl p-4 text-left"
-  }, /*#__PURE__*/React.createElement("p", {
-    className: "font-semibold text-green-800"
-  }, "Saved template updated"), /*#__PURE__*/React.createElement("p", {
-    className: "text-sm text-green-700"
-  }, "Future pre-starts for ", successModal.templateJobName, " will start from this version.")), successModal.templateJobName && templateStatus === 'kept' && /*#__PURE__*/React.createElement("div", {
-    className: "bg-gray-50 border border-gray-200 rounded-xl p-4 text-left"
-  }, /*#__PURE__*/React.createElement("p", {
-    className: "font-semibold text-gray-800"
-  }, "Existing saved template kept"), /*#__PURE__*/React.createElement("p", {
-    className: "text-sm text-gray-600"
-  }, "The old saved pre-start for ", successModal.templateJobName, " will stay as the reusable version.")), /*#__PURE__*/React.createElement("button", {
+  }, "The latest completed pre-start for ", successModal.templateJobName, " is now the reusable template for that job.")), /*#__PURE__*/React.createElement("button", {
     onClick: onDownloadPDF,
     className: "w-full bg-orange-600 text-white py-4 rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-orange-700 transition"
   }, /*#__PURE__*/React.createElement("span", {
@@ -2404,9 +2557,11 @@ function SyncStatusBanner({
   syncStatus,
   pendingSyncCount,
   syncError,
-  onRetry
+  onRetry,
+  isOnline = true
 }) {
-  if (syncStatus !== 'error' && !(syncStatus === 'pending' && pendingSyncCount > 0)) return null;
+  const shouldShowPendingBanner = syncStatus === 'pending' && pendingSyncCount > 0 && !isOnline;
+  if (syncStatus !== 'error' && !shouldShowPendingBanner) return null;
   return /*#__PURE__*/React.createElement("div", {
     className: `fixed bottom-20 left-3 right-3 ${syncStatus === 'error' ? 'bg-red-600' : 'bg-yellow-600'} text-white p-3 rounded-xl shadow-lg z-50`
   }, /*#__PURE__*/React.createElement("div", {
@@ -2921,6 +3076,7 @@ function JMartSteelSafetyApp({
     continueEditing,
     cancelUpdate,
     deleteForm,
+    archiveForm,
     handleDownloadPDF,
     closeSuccessModal,
     markAsBackedUp,
@@ -2950,11 +3106,139 @@ function JMartSteelSafetyApp({
 
   // Prestart Templates (shared across dashboard, prestart form, camera)
   const {
-    templates: prestartTemplates,
-    templateJobNames,
+    templates: savedPrestartTemplates,
     upsertTemplate,
     deleteTemplate
   } = usePrestartTemplates();
+  const recentPrestartForms = useMemo(() => {
+    const sortedActiveForms = forms.filter(form => form?.type === 'prestart' && form?.data && form?.status !== 'archived').slice().sort((a, b) => new Date(b.updatedAt || b.createdAt || b.data?.date || 0) - new Date(a.updatedAt || a.createdAt || a.data?.date || 0));
+    const countsByJob = new Map();
+    return sortedActiveForms.filter(form => {
+      const jobKey = getPrestartTemplateKey(form?.data) || String(form?.data?.siteConducted || form?.data?.builder || form?.data?.address || '').trim() || form.id;
+      const nextCount = (countsByJob.get(jobKey) || 0) + 1;
+      countsByJob.set(jobKey, nextCount);
+      return nextCount <= 5;
+    });
+  }, [forms]);
+  const prestartTemplates = useMemo(() => {
+    const latestTemplateByJob = new Map();
+    savedPrestartTemplates.forEach(template => {
+      if (!template?.templateKey || !template?.data) return;
+      latestTemplateByJob.set(template.templateKey, {
+        ...template,
+        sourceType: 'template',
+        sourceLabel: 'Saved Template',
+        isSavedTemplate: true
+      });
+    });
+    recentPrestartForms.forEach(form => {
+      const templateKey = getPrestartTemplateKey(form?.data);
+      if (!templateKey) return;
+      const fallbackTemplate = {
+        id: `recent-template-${form.id}`,
+        formId: form.id,
+        templateKey,
+        createdAt: form.createdAt || form.data?.date || new Date().toISOString(),
+        updatedAt: form.updatedAt || form.createdAt || form.data?.date || new Date().toISOString(),
+        data: {
+          ...form.data
+        },
+        sourceType: 'form',
+        sourceLabel: 'Recent Form',
+        isSavedTemplate: false
+      };
+      const existing = latestTemplateByJob.get(templateKey);
+      if (!existing) {
+        latestTemplateByJob.set(templateKey, fallbackTemplate);
+        return;
+      }
+      const existingTime = new Date(existing.updatedAt || existing.createdAt || existing.data?.date || 0).getTime();
+      const fallbackTime = new Date(fallbackTemplate.updatedAt || fallbackTemplate.createdAt || fallbackTemplate.data?.date || 0).getTime();
+      if (!existing.isSavedTemplate && fallbackTime > existingTime) {
+        latestTemplateByJob.set(templateKey, fallbackTemplate);
+      }
+    });
+    return Array.from(latestTemplateByJob.values()).sort((a, b) => new Date(b.updatedAt || b.createdAt || b.data?.date || 0) - new Date(a.updatedAt || a.createdAt || a.data?.date || 0));
+  }, [savedPrestartTemplates, recentPrestartForms]);
+  const templateJobNames = useMemo(() => {
+    const names = prestartTemplates.map(template => template?.data?.siteConducted || template?.data?.builder || template?.data?.address || '').filter(Boolean);
+    return [...new Set(names)];
+  }, [prestartTemplates]);
+  const reusablePrestarts = useMemo(() => {
+    const sourceMap = new Map();
+    prestartTemplates.forEach(template => {
+      if (!template?.templateKey) return;
+      sourceMap.set(template.templateKey, {
+        ...template,
+        sourceType: template.sourceType || (template.isSavedTemplate ? 'template' : 'form'),
+        sourceLabel: template.sourceLabel || (template.isSavedTemplate ? 'Saved Template' : 'Recent Form')
+      });
+    });
+    recentPrestartForms.forEach(form => {
+      const templateKey = getPrestartTemplateKey(form?.data);
+      if (!templateKey || sourceMap.has(templateKey)) return;
+      sourceMap.set(templateKey, {
+        id: form.id,
+        formId: form.id,
+        templateKey,
+        createdAt: form.createdAt || form.data?.date || new Date().toISOString(),
+        updatedAt: form.updatedAt || form.createdAt || form.data?.date || new Date().toISOString(),
+        data: {
+          ...form.data
+        },
+        sourceType: 'form',
+        sourceLabel: 'Previous Form'
+      });
+    });
+    return Array.from(sourceMap.values()).sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
+  }, [prestartTemplates, recentPrestartForms]);
+  const handleDeletePrestartTemplate = useCallback(item => {
+    if (!item?.templateKey) return;
+    if (!item.isSavedTemplate) {
+      const sourceFormId = item.formId || item.id;
+      if (sourceFormId) {
+        deleteForm(sourceFormId);
+        return;
+      }
+    }
+    deleteTemplate(item.templateKey);
+  }, [deleteForm, deleteTemplate]);
+  const handleDeleteRecentPrestart = useCallback(item => {
+    if (!item) return;
+    const sourceFormId = item.formId || item.id;
+    if (sourceFormId) {
+      deleteForm(sourceFormId);
+    }
+  }, [deleteForm]);
+  const handleEditRecentPrestart = useCallback((formId, newDate, newTime) => {
+    if (!formId) return;
+    setForms(prev => {
+      const updated = prev.map(f => {
+        if (f.id !== formId) return f;
+        const dateTimeISO = new Date(`${newDate}T${newTime || '00:00'}`).toISOString();
+        const updatedForm = {
+          ...f,
+          data: {
+            ...f.data,
+            date: dateTimeISO
+          },
+          updatedAt: new Date().toISOString(),
+          modifiedBy: DeviceAuthManager.deviceId || 'unknown',
+          modifiedByName: localStorage.getItem('jmart-user-name') || 'Unknown User'
+        };
+        return updatedForm;
+      });
+      StorageQuotaManager.safeFormsWrite(updated);
+      // Sync modified form to Firebase
+      const changedForm = updated.find(f => f.id === formId);
+      if (changedForm && FirebaseSync.isConnected()) {
+        FirebaseSync.syncForms([changedForm]).catch(err => {
+          console.warn('Edit prestart sync error:', err?.message || err);
+        });
+      }
+      return updated;
+    });
+  }, [setForms]);
 
   // PWA Install
   const {
@@ -2972,7 +3256,6 @@ function JMartSteelSafetyApp({
   useEffect(() => {
     syncSitesEffect(sites);
   }, [sites, isOnline, syncSitesEffect]);
-  const previousPrestarts = forms.filter(f => f.type === 'prestart');
   const navItems = [{
     id: 'dashboard',
     label: 'Dashboard',
@@ -3145,6 +3428,7 @@ function JMartSteelSafetyApp({
     syncStatus: syncStatus,
     pendingSyncCount: pendingSyncCount,
     syncError: syncError,
+    isOnline: isOnline,
     onRetry: () => {
       FirebaseSync.retryAll();
       setSyncStatus('syncing');
@@ -3174,7 +3458,7 @@ function JMartSteelSafetyApp({
     className: "font-bold text-lg leading-tight"
   }, "J&M Artsteel"), /*#__PURE__*/React.createElement("p", {
     className: "text-xs text-orange-200"
-  }, !isOnline ? '📴 Offline Mode' : syncStatus === 'error' ? '⚠️ Sync Error' : pendingPhotoCount > 0 ? '📷 ' + pendingPhotoCount + ' photo' + (pendingPhotoCount > 1 ? 's' : '') + ' queued' : syncStatus === 'pending' ? '🔄 ' + pendingSyncCount + ' pending' : syncStatus === 'synced' ? '☁️ Synced' : syncStatus === 'syncing' ? '🔄 Syncing...' : syncStatus === 'local' ? '💾 Local Only' : 'Safety Management'))), /*#__PURE__*/React.createElement("div", {
+  }, !isOnline ? '📴 Offline Mode' : syncStatus === 'error' ? '⚠️ Sync Error' : pendingPhotoCount > 0 ? '📷 ' + pendingPhotoCount + ' photo' + (pendingPhotoCount > 1 ? 's' : '') + ' queued' : syncStatus === 'pending' ? isOnline ? '☁️ Background Sync' : '🔄 ' + pendingSyncCount + ' pending' : syncStatus === 'synced' ? '☁️ Synced' : syncStatus === 'syncing' ? '🔄 Syncing...' : syncStatus === 'local' ? '💾 Local Only' : 'Safety Management'))), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-1"
   }, /*#__PURE__*/React.createElement("button", {
     onClick: openResetTool,
@@ -3226,8 +3510,12 @@ function JMartSteelSafetyApp({
     isFormBackedUp: isFormBackedUp,
     sites: sites,
     prestartTemplates: prestartTemplates,
+    recentPrestartForms: recentPrestartForms,
     templateJobNames: templateJobNames,
-    onDeleteTemplate: deleteTemplate,
+    onDeleteTemplate: handleDeletePrestartTemplate,
+    onDeleteRecentPrestart: handleDeleteRecentPrestart,
+    onArchivePrestart: archiveForm,
+    onEditRecentPrestart: handleEditRecentPrestart,
     onSelectTemplate: template => {
       setTemplateToLoad(template);
       setCurrentView('prestart');
@@ -3236,9 +3524,8 @@ function JMartSteelSafetyApp({
     onSubmit: (data, options) => addForm('prestart', data, options),
     onUpdate: updateForm,
     editingForm: editingForm?.type === 'prestart' ? editingForm : null,
-    previousPrestarts: previousPrestarts,
     sites: sites,
-    savedTemplates: prestartTemplates,
+    savedTemplates: reusablePrestarts,
     onUpsertTemplate: upsertTemplate,
     templateToLoad: templateToLoad,
     onTemplateLoaded: () => setTemplateToLoad(null)
@@ -3323,12 +3610,13 @@ window.JMartSteelSafetyApp = JMartSteelSafetyApp;
 function Dashboard({
   setCurrentView,
   forms,
-  onViewForm,
-  isFormBackedUp,
-  sites = [],
   prestartTemplates = [],
+  recentPrestartForms = [],
   templateJobNames = [],
   onDeleteTemplate,
+  onDeleteRecentPrestart,
+  onArchivePrestart,
+  onEditRecentPrestart,
   onSelectTemplate
 }) {
   const todayDate = new Date().toLocaleDateString('en-AU', {
@@ -3341,31 +3629,35 @@ function Dashboard({
   const [selectedJob, setSelectedJob] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(null);
   const [uploadStatus, setUploadStatus] = useState(null);
-  const [menuStep, setMenuStep] = useState('jobs'); // 'jobs' or 'capture'
+  const [menuStep, setMenuStep] = useState('jobs');
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [archivingIds, setArchivingIds] = useState([]);
+  const [deletingRecentIds, setDeletingRecentIds] = useState([]);
+  const [editDateTimeModal, setEditDateTimeModal] = useState(null);
   const cameraInputRef = useRef(null);
   const galleryInputRef = useRef(null);
   const formTypeLabels = {
-    'prestart': {
+    prestart: {
       label: 'Pre-Start',
       emoji: '📋',
       color: 'bg-green-500'
     },
-    'inspection': {
+    inspection: {
       label: 'Site Inspection',
       emoji: '🔍',
       color: 'bg-blue-500'
     },
-    'itp': {
+    itp: {
       label: 'ITP Form',
       emoji: '📝',
       color: 'bg-indigo-500'
     },
-    'incident': {
+    incident: {
       label: 'Incident',
       emoji: '⚠️',
       color: 'bg-red-500'
     },
-    'toolbox': {
+    toolbox: {
       label: 'Toolbox Talk',
       emoji: '👥',
       color: 'bg-purple-500'
@@ -3376,12 +3668,26 @@ function Dashboard({
       color: 'bg-slate-600'
     }
   };
-  const defaultSites = ['Site 1 - Sydney CBD', 'Site 2 - Parramatta', 'Site 3 - North Sydney'];
-  // Camera job list: template jobs first, then Firebase sites not already covered, then defaults
-  const allJobs = [...new Set([...templateJobNames, ...(sites.length > 0 ? sites : defaultSites).filter(s => !templateJobNames.includes(s))])];
-  const [deleteConfirm, setDeleteConfirm] = useState(null);
-  const recentForms = forms.slice(0, 10); // Show last 10 forms
-
+  const templateTypeLabels = {
+    site: 'Site Pre-Start',
+    crane: 'Crane',
+    forklift: 'Forklift',
+    vehicle: 'Vehicle',
+    welding: 'Welding',
+    scaffold: 'Scaffold'
+  };
+  const templateTypeColors = {
+    site: 'bg-green-100 text-green-700',
+    crane: 'bg-yellow-100 text-yellow-700',
+    forklift: 'bg-blue-100 text-blue-700',
+    vehicle: 'bg-purple-100 text-purple-700',
+    welding: 'bg-orange-100 text-orange-700',
+    scaffold: 'bg-red-100 text-red-700'
+  };
+  const sortedTemplates = prestartTemplates.slice().sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
+  const sortedRecentPrestartForms = recentPrestartForms.slice().sort((a, b) => new Date(b.updatedAt || b.createdAt || b.data?.date || 0) - new Date(a.updatedAt || a.createdAt || a.data?.date || 0));
+  const allJobs = templateJobNames;
+  const activePrestartCount = forms.filter(form => form.type === 'prestart' && form.status !== 'archived').length;
   const handleJobSelect = job => {
     setSelectedJob(job);
     setMenuStep('capture');
@@ -3398,6 +3704,49 @@ function Dashboard({
     setMenuStep('jobs');
     setSelectedJob(null);
   };
+  const handleArchivePrestart = async (form, siteName) => {
+    if (!onArchivePrestart || !form?.id) return;
+    const confirmed = window.confirm(`Archive "${siteName}"? This keeps it in Firebase and uploads an archive PDF to Google Drive when connected.`);
+    if (!confirmed) return;
+    setArchivingIds(prev => [...prev, form.id]);
+    try {
+      await onArchivePrestart(form.id);
+    } finally {
+      setArchivingIds(prev => prev.filter(id => id !== form.id));
+    }
+  };
+  const handleDeleteRecentPrestart = async (form, siteName) => {
+    if (!onDeleteRecentPrestart || !form?.id) return;
+    const confirmed = window.confirm(`Delete "${siteName}" from Recent Pre-Starts? This also removes its reusable job template.`);
+    if (!confirmed) return;
+    setDeletingRecentIds(prev => [...prev, form.id]);
+    try {
+      await onDeleteRecentPrestart(form);
+    } finally {
+      setDeletingRecentIds(prev => prev.filter(id => id !== form.id));
+    }
+  };
+  const handleModifyPrestart = (form, siteName) => {
+    const formDate = form.data?.date ? new Date(form.data.date) : new Date(form.updatedAt || form.createdAt);
+    const dateStr = formDate.toISOString().split('T')[0];
+    const timeStr = formDate.toTimeString().slice(0, 5);
+    setEditDateTimeModal({
+      form,
+      siteName,
+      date: dateStr,
+      time: timeStr
+    });
+  };
+  const handleSaveDateTime = () => {
+    if (!editDateTimeModal || !onEditRecentPrestart) return;
+    const {
+      form,
+      date,
+      time
+    } = editDateTimeModal;
+    onEditRecentPrestart(form.id, date, time);
+    setEditDateTimeModal(null);
+  };
   const handlePhotoCapture = async e => {
     const files = e.target.files;
     if (!files || files.length === 0 || !selectedJob) {
@@ -3411,51 +3760,44 @@ function Dashboard({
     setUploadStatus(null);
     let successCount = 0;
     let failCount = 0;
-    let errorMessages = [];
-    for (let i = 0; i < files.length; i++) {
+    const errorMessages = [];
+    for (let i = 0; i < files.length; i += 1) {
       const file = files[i];
       try {
         setUploadProgress(`Uploading ${i + 1}/${files.length}: ${file.name}`);
-        const result = await PhotoUploadManager.uploadPhoto(file, selectedJob, (message, percent) => setUploadProgress(`${i + 1}/${files.length}: ${message}`));
-        console.log('Upload result:', result);
+        const result = await PhotoUploadManager.uploadPhoto(file, selectedJob, message => setUploadProgress(`${i + 1}/${files.length}: ${message}`));
         if (result.success) {
-          successCount++;
+          successCount += 1;
         } else {
-          failCount++;
+          failCount += 1;
           errorMessages.push(`${file.name}: Upload failed`);
         }
       } catch (error) {
         console.error('Upload error:', error);
-        failCount++;
+        failCount += 1;
         errorMessages.push(`${file.name}: ${error.message}`);
       }
     }
-
-    // Show result
     if (successCount > 0 && failCount === 0) {
       setUploadStatus({
         type: 'success',
-        message: `✅ ${successCount} photo(s) uploaded to ${selectedJob}`
+        message: `Uploaded ${successCount} photo(s) to ${selectedJob}`
       });
     } else if (successCount > 0 && failCount > 0) {
       setUploadStatus({
         type: 'warning',
-        message: `⚠️ ${successCount} uploaded, ${failCount} failed`
+        message: `${successCount} uploaded, ${failCount} failed`
       });
     } else {
       setUploadStatus({
         type: 'error',
-        message: `❌ Upload failed. ${errorMessages[0] || 'Check console for details'}`
+        message: `Upload failed. ${errorMessages[0] || 'Check console for details'}`
       });
     }
     setUploadProgress(null);
     setSelectedJob(null);
     setMenuStep('jobs');
-
-    // Clear file input
     e.target.value = '';
-
-    // Auto-hide status after 8 seconds
     setTimeout(() => setUploadStatus(null), 8000);
   };
   return /*#__PURE__*/React.createElement("div", {
@@ -3493,18 +3835,19 @@ function Dashboard({
       setShowPhotoMenu(!showPhotoMenu);
       setMenuStep('jobs');
     },
-    className: "w-10 h-10 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center text-xl backdrop-blur-sm"
+    className: "w-10 h-10 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center text-xl backdrop-blur-sm",
+    "aria-label": "Upload site photos"
   }, "\uD83D\uDCF7"), showPhotoMenu && /*#__PURE__*/React.createElement("div", {
     className: "absolute top-12 right-0 bg-white rounded-xl shadow-lg border border-gray-200 w-72 max-h-96 overflow-y-auto z-50"
   }, menuStep === 'jobs' ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "p-3 border-b border-gray-100"
   }, /*#__PURE__*/React.createElement("p", {
     className: "text-sm font-semibold text-gray-800"
-  }, "\uD83D\uDCF7 Upload Site Photos"), /*#__PURE__*/React.createElement("p", {
+  }, "Upload Site Photos"), /*#__PURE__*/React.createElement("p", {
     className: "text-xs text-gray-500"
   }, "Select which job these photos belong to")), /*#__PURE__*/React.createElement("div", {
     className: "p-2 max-h-60 overflow-y-auto"
-  }, allJobs.map(job => /*#__PURE__*/React.createElement("button", {
+  }, allJobs.length > 0 ? allJobs.map(job => /*#__PURE__*/React.createElement("button", {
     key: job,
     onClick: () => handleJobSelect(job),
     className: "w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-orange-50 rounded-lg flex items-center gap-2"
@@ -3514,7 +3857,9 @@ function Dashboard({
     className: "truncate"
   }, job), /*#__PURE__*/React.createElement("span", {
     className: "ml-auto text-gray-400"
-  }, "\u2192"))))) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+  }, "\u2192"))) : /*#__PURE__*/React.createElement("p", {
+    className: "text-sm text-gray-400 text-center py-4 px-3"
+  }, "No pre-start templates yet. Complete a Pre-Start first."))) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "p-3 border-b border-gray-100"
   }, /*#__PURE__*/React.createElement("button", {
     onClick: handleBackToJobs,
@@ -3549,7 +3894,7 @@ function Dashboard({
     className: "w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center mb-1"
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-white font-bold text-xs"
-  }, forms.filter(f => f.type === 'prestart').length)), /*#__PURE__*/React.createElement("p", {
+  }, activePrestartCount)), /*#__PURE__*/React.createElement("p", {
     className: "text-gray-600 text-xs"
   }, "Pre-Start")), /*#__PURE__*/React.createElement("div", {
     className: "bg-white rounded-xl p-2 shadow-sm"
@@ -3557,7 +3902,7 @@ function Dashboard({
     className: "w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center mb-1"
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-white font-bold text-xs"
-  }, forms.filter(f => f.type === 'inspection').length)), /*#__PURE__*/React.createElement("p", {
+  }, forms.filter(form => form.type === 'inspection').length)), /*#__PURE__*/React.createElement("p", {
     className: "text-gray-600 text-xs"
   }, "Inspect")), /*#__PURE__*/React.createElement("div", {
     className: "bg-white rounded-xl p-2 shadow-sm"
@@ -3565,7 +3910,7 @@ function Dashboard({
     className: "w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center mb-1"
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-white font-bold text-xs"
-  }, forms.filter(f => f.type === 'itp').length)), /*#__PURE__*/React.createElement("p", {
+  }, forms.filter(form => form.type === 'itp').length)), /*#__PURE__*/React.createElement("p", {
     className: "text-gray-600 text-xs"
   }, "ITP")), /*#__PURE__*/React.createElement("div", {
     className: "bg-white rounded-xl p-2 shadow-sm"
@@ -3573,7 +3918,7 @@ function Dashboard({
     className: "w-8 h-8 bg-red-500 rounded-lg flex items-center justify-center mb-1"
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-white font-bold text-xs"
-  }, forms.filter(f => f.type === 'incident').length)), /*#__PURE__*/React.createElement("p", {
+  }, forms.filter(form => form.type === 'incident').length)), /*#__PURE__*/React.createElement("p", {
     className: "text-gray-600 text-xs"
   }, "Incident")), /*#__PURE__*/React.createElement("div", {
     className: "bg-white rounded-xl p-2 shadow-sm"
@@ -3581,7 +3926,7 @@ function Dashboard({
     className: "w-8 h-8 bg-purple-500 rounded-lg flex items-center justify-center mb-1"
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-white font-bold text-xs"
-  }, forms.filter(f => f.type === 'toolbox').length)), /*#__PURE__*/React.createElement("p", {
+  }, forms.filter(form => form.type === 'toolbox').length)), /*#__PURE__*/React.createElement("p", {
     className: "text-gray-600 text-xs"
   }, "Toolbox"))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h3", {
     className: "font-semibold text-gray-800 mb-3"
@@ -3629,32 +3974,20 @@ function Dashboard({
     className: "w-10 h-10 bg-red-500 rounded-full flex items-center justify-center text-lg"
   }, "\u26A0\uFE0F"), /*#__PURE__*/React.createElement("span", {
     className: "text-xs font-medium text-gray-700 text-center"
-  }, "Incident")))), prestartTemplates.length > 0 && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h3", {
-    className: "font-semibold text-gray-800 mb-3"
-  }, "Saved Pre-Start Templates"), /*#__PURE__*/React.createElement("div", {
+  }, "Incident")))), sortedTemplates.length > 0 && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "mb-3"
+  }, /*#__PURE__*/React.createElement("h3", {
+    className: "font-semibold text-gray-800"
+  }, "Job Templates"), /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-gray-500 mt-1"
+  }, "Latest reusable pre-start for each job")), /*#__PURE__*/React.createElement("div", {
     className: "flex gap-3 overflow-x-auto pb-2 -mx-1 px-1",
     style: {
       scrollbarWidth: 'thin'
     }
-  }, prestartTemplates.slice().sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0)).map(template => {
+  }, sortedTemplates.map(template => {
     const siteName = template.data?.siteConducted || template.data?.builder || template.data?.address || 'Unknown';
     const checkType = template.data?.type || 'site';
-    const typeLabels = {
-      site: 'Site',
-      crane: 'Crane',
-      forklift: 'Forklift',
-      vehicle: 'Vehicle',
-      welding: 'Welding',
-      scaffold: 'Scaffold'
-    };
-    const typeColors = {
-      site: 'bg-green-100 text-green-700',
-      crane: 'bg-yellow-100 text-yellow-700',
-      forklift: 'bg-blue-100 text-blue-700',
-      vehicle: 'bg-purple-100 text-purple-700',
-      welding: 'bg-orange-100 text-orange-700',
-      scaffold: 'bg-red-100 text-red-700'
-    };
     const updatedDate = template.updatedAt ? new Date(template.updatedAt).toLocaleDateString('en-AU', {
       day: 'numeric',
       month: 'short'
@@ -3671,8 +4004,8 @@ function Dashboard({
     }, siteName), /*#__PURE__*/React.createElement("div", {
       className: "flex items-center gap-2 mt-2"
     }, /*#__PURE__*/React.createElement("span", {
-      className: `text-xs px-2 py-0.5 rounded-full font-medium ${typeColors[checkType] || 'bg-gray-100 text-gray-700'}`
-    }, typeLabels[checkType] || checkType)), updatedDate && /*#__PURE__*/React.createElement("p", {
+      className: `text-xs px-2 py-0.5 rounded-full font-medium ${templateTypeColors[checkType] || 'bg-gray-100 text-gray-700'}`
+    }, templateTypeLabels[checkType] || checkType)), updatedDate && /*#__PURE__*/React.createElement("p", {
       className: "text-xs text-gray-400 mt-2"
     }, updatedDate)), /*#__PURE__*/React.createElement("div", {
       className: "border-t border-gray-100 px-3 py-1.5 flex justify-end"
@@ -3683,7 +4016,7 @@ function Dashboard({
     }, "Delete?"), /*#__PURE__*/React.createElement("button", {
       onClick: e => {
         e.stopPropagation();
-        onDeleteTemplate && onDeleteTemplate(template.templateKey);
+        onDeleteTemplate && onDeleteTemplate(template);
         setDeleteConfirm(null);
       },
       className: "text-xs text-red-600 font-medium hover:text-red-800"
@@ -3700,39 +4033,67 @@ function Dashboard({
       },
       className: "text-gray-400 hover:text-red-500 text-sm",
       title: "Delete template"
-    }, "\uD83D\uDDD1\uFE0F")));
-  }))), recentForms.length > 0 && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h3", {
-    className: "font-semibold text-gray-800 mb-3"
-  }, "Recent Forms"), /*#__PURE__*/React.createElement("div", {
+    }, "Del")));
+  }))), sortedRecentPrestartForms.length > 0 && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "mb-3"
+  }, /*#__PURE__*/React.createElement("h3", {
+    className: "font-semibold text-gray-800"
+  }, "Recent Pre-Starts"), /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-gray-500 mt-1"
+  }, "Showing up to 5 latest pre-starts per job")), /*#__PURE__*/React.createElement("div", {
     className: "space-y-2"
-  }, recentForms.map(form => {
-    const typeInfo = formTypeLabels[form.type] || {
-      label: form.type,
-      emoji: '📄',
-      color: 'bg-gray-500'
-    };
-    const formDate = new Date(form.createdAt);
-    const isBackedUp = isFormBackedUp(form.id);
-    return /*#__PURE__*/React.createElement("button", {
+  }, sortedRecentPrestartForms.map(form => {
+    const siteName = form.data?.siteConducted || form.data?.builder || form.data?.address || 'Unknown';
+    const checkType = form.data?.type || 'site';
+    const sortDate = new Date(form.updatedAt || form.createdAt || form.data?.date || 0);
+    const isArchiving = archivingIds.includes(form.id);
+    const isDeleting = deletingRecentIds.includes(form.id);
+    const isBusy = isArchiving || isDeleting;
+    return /*#__PURE__*/React.createElement("div", {
       key: form.id,
-      onClick: () => onViewForm(form),
       className: "w-full bg-white rounded-xl p-3 shadow-sm flex items-center gap-3 hover:shadow-md transition text-left"
     }, /*#__PURE__*/React.createElement("div", {
-      className: `w-10 h-10 ${typeInfo.color} rounded-lg flex items-center justify-center text-lg`
-    }, typeInfo.emoji), /*#__PURE__*/React.createElement("div", {
-      className: "flex-1 min-w-0"
+      className: "w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center text-lg cursor-pointer",
+      onClick: () => onSelectTemplate && onSelectTemplate(form)
+    }, formTypeLabels.prestart.emoji), /*#__PURE__*/React.createElement("div", {
+      className: "flex-1 min-w-0 cursor-pointer",
+      onClick: () => onSelectTemplate && onSelectTemplate(form)
     }, /*#__PURE__*/React.createElement("p", {
       className: "font-medium text-gray-800 text-sm truncate"
-    }, form.data?.siteConducted || form.data?.site || form.data?.siteLocation || typeInfo.label), /*#__PURE__*/React.createElement("p", {
+    }, siteName), /*#__PURE__*/React.createElement("p", {
       className: "text-xs text-gray-500"
-    }, formDate.toLocaleDateString('en-AU'), " ", formDate.toLocaleTimeString('en-AU', {
-      hour: '2-digit',
-      minute: '2-digit'
-    }))), /*#__PURE__*/React.createElement("div", {
+    }, templateTypeLabels[checkType] || checkType, " \u2022 ", sortDate.toLocaleDateString('en-AU')), /*#__PURE__*/React.createElement("p", {
+      className: "text-[11px] text-blue-600 mt-1 font-medium"
+    }, "Recent Form")), /*#__PURE__*/React.createElement("div", {
       className: "flex items-center gap-2"
-    }, isBackedUp && /*#__PURE__*/React.createElement("span", {
-      className: "text-green-500 text-xs"
-    }, "\u2713 Saved"), /*#__PURE__*/React.createElement("span", {
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: e => {
+        e.stopPropagation();
+        handleModifyPrestart(form, siteName);
+      },
+      className: "text-gray-400 hover:text-blue-600 text-sm disabled:opacity-50",
+      title: "Modify date and time",
+      "aria-label": `Modify ${siteName}`,
+      disabled: isBusy
+    }, "\u270F\uFE0F"), /*#__PURE__*/React.createElement("button", {
+      onClick: e => {
+        e.stopPropagation();
+        handleArchivePrestart(form, siteName);
+      },
+      className: "text-gray-400 hover:text-orange-600 text-sm disabled:opacity-50",
+      title: "Archive to Firebase and Google Drive",
+      "aria-label": `Archive ${siteName}`,
+      disabled: isBusy
+    }, isArchiving ? '…' : '🗄️'), /*#__PURE__*/React.createElement("button", {
+      onClick: e => {
+        e.stopPropagation();
+        handleDeleteRecentPrestart(form, siteName);
+      },
+      className: "text-gray-400 hover:text-red-600 text-sm disabled:opacity-50",
+      title: "Delete recent pre-start",
+      "aria-label": `Delete ${siteName}`,
+      disabled: isBusy
+    }, isDeleting ? '…' : '🗑️'), /*#__PURE__*/React.createElement("span", {
       className: "text-gray-400"
     }, "\u203A")));
   }))), /*#__PURE__*/React.createElement("div", {
@@ -3745,7 +4106,45 @@ function Dashboard({
     className: "font-semibold text-yellow-800"
   }, "Daily Safety Reminder"), /*#__PURE__*/React.createElement("p", {
     className: "text-sm text-yellow-700 mt-1"
-  }, "Always wear appropriate PPE including safety glasses, steel-capped boots, and high-vis clothing when on site.")))));
+  }, "Always wear appropriate PPE including safety glasses, steel-capped boots, and high-vis clothing when on site.")))), editDateTimeModal && /*#__PURE__*/React.createElement("div", {
+    className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl"
+  }, /*#__PURE__*/React.createElement("h3", {
+    className: "font-semibold text-gray-800 text-lg mb-1"
+  }, "Modify Pre-Start"), /*#__PURE__*/React.createElement("p", {
+    className: "text-sm text-gray-500 mb-4 truncate"
+  }, editDateTimeModal.siteName), /*#__PURE__*/React.createElement("div", {
+    className: "space-y-3"
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    className: "block text-sm font-medium text-gray-700 mb-1"
+  }, "Date"), /*#__PURE__*/React.createElement("input", {
+    type: "date",
+    value: editDateTimeModal.date,
+    onChange: e => setEditDateTimeModal(prev => ({
+      ...prev,
+      date: e.target.value
+    })),
+    className: "w-full border border-gray-300 rounded-lg p-3 text-sm"
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    className: "block text-sm font-medium text-gray-700 mb-1"
+  }, "Time"), /*#__PURE__*/React.createElement("input", {
+    type: "time",
+    value: editDateTimeModal.time,
+    onChange: e => setEditDateTimeModal(prev => ({
+      ...prev,
+      time: e.target.value
+    })),
+    className: "w-full border border-gray-300 rounded-lg p-3 text-sm"
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-3 mt-5"
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => setEditDateTimeModal(null),
+    className: "flex-1 py-3 rounded-lg border border-gray-300 text-gray-700 font-medium text-sm"
+  }, "Cancel"), /*#__PURE__*/React.createElement("button", {
+    onClick: handleSaveDateTime,
+    className: "flex-1 py-3 rounded-lg bg-blue-600 text-white font-medium text-sm"
+  }, "Save")))));
 }
 
 // Training View Component
@@ -4174,7 +4573,6 @@ function PrestartView({
   onSubmit,
   onUpdate,
   editingForm,
-  previousPrestarts = [],
   sites = [],
   savedTemplates = [],
   onUpsertTemplate,
@@ -4201,13 +4599,14 @@ function PrestartView({
     key: ''
   });
   const [lastSubmittedTemplate, setLastSubmittedTemplate] = useState(null);
+  const [loadedTemplateMeta, setLoadedTemplateMeta] = useState(null);
 
   // Helper to ensure media fields have proper structure
-  const ensureMediaStructure = data => ({
+  const ensureMediaStructure = useCallback(data => ({
     value: data?.value || '',
     notes: Array.isArray(data?.notes) ? data.notes : [],
     media: Array.isArray(data?.media) ? data.media : []
-  });
+  }), []);
   const [workAreas, setWorkAreas] = useState(ensureMediaStructure(editData.workAreas));
   const [tasksThisShift, setTasksThisShift] = useState(ensureMediaStructure(editData.tasksThisShift));
   const [machineryControls, setMachineryControls] = useState(ensureMediaStructure(editData.machineryControls));
@@ -4257,9 +4656,10 @@ function PrestartView({
       mode: null,
       key: ''
     });
+    setLoadedTemplateMeta(null);
     setSubmitted(false);
     setValidationErrors([]);
-  }, [editingForm]);
+  }, [editingForm, ensureMediaStructure]);
   const displayDate = formDate.toLocaleDateString('en-AU', {
     weekday: 'long',
     day: 'numeric',
@@ -4275,16 +4675,11 @@ function PrestartView({
   const teamMembers = FORM_CONSTANTS.teamMembers;
   const checklistTypes = FORM_CONSTANTS.checklistTypes;
   const checklistItems = FORM_CONSTANTS.checklistItems;
-  const availablePrestarts = [...savedTemplates.slice().sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0)).map(template => ({
+  const availablePrestarts = savedTemplates.slice().sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0)).map(template => ({
     ...template,
-    sourceLabel: 'Saved Template'
-  })), ...previousPrestarts.filter(form => {
-    const templateKey = getPrestartTemplateKey(form.data);
-    return !templateKey || !savedTemplates.some(template => template.templateKey === templateKey);
-  }).slice().sort((a, b) => new Date(b.data?.date || b.createdAt || 0) - new Date(a.data?.date || a.createdAt || 0)).map(form => ({
-    ...form,
-    sourceLabel: 'Previous Submission'
-  }))];
+    sourceLabel: template.sourceLabel || 'Saved Template'
+  }));
+  const savedTemplateKeys = useMemo(() => new Set(savedTemplates.filter(template => template?.templateKey && (template?.sourceType === 'template' || template?.isSavedTemplate)).map(template => template.templateKey)), [savedTemplates]);
   const clonePrestartValue = value => {
     try {
       return JSON.parse(JSON.stringify(value));
@@ -4410,35 +4805,30 @@ function PrestartView({
     } else {
       const reusableTemplate = buildReusableTemplate(formData);
       const templateKey = getPrestartTemplateKey(reusableTemplate);
-      const matchingSavedTemplate = templateKey ? savedTemplates.find(template => template.templateKey === templateKey) : null;
-      const matchingPreviousPrestart = templateKey ? previousPrestarts.filter(form => getPrestartTemplateKey(form.data) === templateKey).sort((a, b) => new Date(b.data?.date || b.createdAt || 0) - new Date(a.data?.date || a.createdAt || 0))[0] : null;
-      const hasExistingTemplate = !!(matchingSavedTemplate || matchingPreviousPrestart);
+      const templateJobName = reusableTemplate.siteConducted || reusableTemplate.builder || 'this job';
+      let nextTemplateStatus = null;
+      const hasSavedTemplate = templateKey ? savedTemplateKeys.has(templateKey) : false;
+      if (templateKey && !hasSavedTemplate) {
+        upsertSavedTemplate(reusableTemplate);
+        nextTemplateStatus = 'created';
+      } else if (templateKey && loadedTemplateMeta?.templateKey === templateKey && loadedTemplateMeta?.sourceType === 'template') {
+        const shouldUpdateTemplate = window.confirm(`Use this pre-start as the new reusable template for ${templateJobName}?`);
+        if (shouldUpdateTemplate) {
+          upsertSavedTemplate(reusableTemplate);
+          nextTemplateStatus = 'updated';
+        }
+      }
       onSubmit(formData, {
         successModalProps: {
-          templateStatus: templateKey && !hasExistingTemplate ? 'auto-saved' : templateKey ? 'replaceable' : null,
-          templateJobName: reusableTemplate.siteConducted || reusableTemplate.builder || 'this job',
-          onUseSubmittedTemplate: templateKey ? () => upsertSavedTemplate(reusableTemplate) : null,
-          onKeepExistingTemplate: !matchingSavedTemplate && matchingPreviousPrestart ? () => upsertSavedTemplate(buildReusableTemplate(matchingPreviousPrestart.data)) : null
+          templateStatus: nextTemplateStatus,
+          templateJobName
         }
       });
       setLastSubmittedTemplate(reusableTemplate);
-      if (templateKey && !hasExistingTemplate) {
-        upsertSavedTemplate(reusableTemplate);
-        setTemplateAction({
-          mode: 'auto-saved',
-          key: templateKey
-        });
-      } else if (templateKey) {
-        setTemplateAction({
-          mode: 'replaceable',
-          key: templateKey
-        });
-      } else {
-        setTemplateAction({
-          mode: null,
-          key: ''
-        });
-      }
+      setTemplateAction({
+        mode: nextTemplateStatus,
+        key: templateKey || ''
+      });
       setSubmitted(true);
     }
   };
@@ -4495,23 +4885,10 @@ function PrestartView({
       mode: null,
       key: ''
     });
+    setLoadedTemplateMeta(null);
     setSubmitted(false);
   };
-  const keepExistingTemplate = () => {
-    setTemplateAction(current => ({
-      ...current,
-      mode: 'kept'
-    }));
-  };
-  const replaceExistingTemplate = () => {
-    if (!lastSubmittedTemplate) return;
-    const templateKey = upsertSavedTemplate(lastSubmittedTemplate);
-    setTemplateAction({
-      mode: 'replaced',
-      key: templateKey
-    });
-  };
-  if (submitted) {
+  const submittedView = submitted ? (() => {
     const signedCount = Object.values(signatures).filter(s => s !== null).length;
     const submittedJobName = lastSubmittedTemplate?.siteConducted || siteConducted || 'this job';
     return /*#__PURE__*/React.createElement("div", {
@@ -4524,47 +4901,28 @@ function PrestartView({
       className: "text-gray-600 mb-2"
     }, isEditing ? 'Your changes have been saved.' : 'Your checklist has been recorded.'), /*#__PURE__*/React.createElement("p", {
       className: "text-sm text-gray-500 mb-6"
-    }, signedCount, " worker(s) signed on"), !isEditing && templateAction.mode === 'auto-saved' && /*#__PURE__*/React.createElement("div", {
+    }, signedCount, " worker(s) signed on"), !isEditing && templateAction.mode === 'created' && /*#__PURE__*/React.createElement("div", {
       className: "max-w-md mx-auto mb-4 bg-green-50 border border-green-200 rounded-xl p-4 text-left"
     }, /*#__PURE__*/React.createElement("p", {
       className: "font-semibold text-green-800"
-    }, "Saved for reuse"), /*#__PURE__*/React.createElement("p", {
+    }, "Job template created"), /*#__PURE__*/React.createElement("p", {
       className: "text-sm text-green-700"
-    }, "This is now the saved pre-start template for ", submittedJobName, ".")), !isEditing && templateAction.mode === 'replaceable' && /*#__PURE__*/React.createElement("div", {
-      className: "max-w-md mx-auto mb-4 bg-blue-50 border border-blue-200 rounded-xl p-4 text-left space-y-3"
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
-      className: "font-semibold text-blue-800"
-    }, "Saved pre-start already exists"), /*#__PURE__*/React.createElement("p", {
-      className: "text-sm text-blue-700"
-    }, "Choose whether to replace the saved pre-start for ", submittedJobName, " or keep the old one.")), /*#__PURE__*/React.createElement("div", {
-      className: "flex flex-col gap-2"
-    }, /*#__PURE__*/React.createElement("button", {
-      onClick: replaceExistingTemplate,
-      className: "bg-blue-600 text-white px-4 py-3 rounded-lg font-semibold"
-    }, "Use This As Saved Template"), /*#__PURE__*/React.createElement("button", {
-      onClick: keepExistingTemplate,
-      className: "border border-blue-300 text-blue-700 px-4 py-3 rounded-lg font-semibold"
-    }, "Keep Old Saved Template"))), !isEditing && templateAction.mode === 'replaced' && /*#__PURE__*/React.createElement("div", {
+    }, "A reusable template has been created for ", submittedJobName, " from this pre-start.")), !isEditing && templateAction.mode === 'updated' && /*#__PURE__*/React.createElement("div", {
       className: "max-w-md mx-auto mb-4 bg-green-50 border border-green-200 rounded-xl p-4 text-left"
     }, /*#__PURE__*/React.createElement("p", {
       className: "font-semibold text-green-800"
-    }, "Saved template updated"), /*#__PURE__*/React.createElement("p", {
+    }, "Job template refreshed"), /*#__PURE__*/React.createElement("p", {
       className: "text-sm text-green-700"
-    }, "Future pre-starts for ", submittedJobName, " will start from this version.")), !isEditing && templateAction.mode === 'kept' && /*#__PURE__*/React.createElement("div", {
-      className: "max-w-md mx-auto mb-4 bg-gray-50 border border-gray-200 rounded-xl p-4 text-left"
-    }, /*#__PURE__*/React.createElement("p", {
-      className: "font-semibold text-gray-800"
-    }, "Existing saved template kept"), /*#__PURE__*/React.createElement("p", {
-      className: "text-sm text-gray-600"
-    }, "The old saved pre-start for ", submittedJobName, " will stay as the reusable version.")), /*#__PURE__*/React.createElement("button", {
+    }, "The latest completed pre-start for ", submittedJobName, " is now the reusable template for that job.")), /*#__PURE__*/React.createElement("button", {
       onClick: resetForm,
       className: "bg-orange-600 text-white px-6 py-3 rounded-lg font-semibold"
     }, isEditing ? 'Back to Dashboard' : 'Start Another Check'));
-  }
+  })() : null;
 
-  // Function to load data from a previous prestart
-  const loadFromPrevious = previousForm => {
+  // Function to load data from a saved reusable prestart template
+  const loadFromPrevious = useCallback(previousForm => {
     const data = previousForm.data;
+    const nextTemplateKey = previousForm.templateKey || getPrestartTemplateKey(data);
 
     // Set checklist type and move to step 2
     setCheckType(data.type);
@@ -4605,9 +4963,13 @@ function PrestartView({
     setSignatures(FORM_CONSTANTS.emptySignatures()); // Clear all signatures
 
     // Close modal and go to step 2
+    setLoadedTemplateMeta({
+      templateKey: nextTemplateKey,
+      sourceType: previousForm.sourceType || (previousForm.isSavedTemplate ? 'template' : 'form')
+    });
     setShowPreviousList(false);
     setStep(2);
-  };
+  }, [ensureMediaStructure]);
 
   // Handle template loaded from dashboard card
   useEffect(() => {
@@ -4615,7 +4977,10 @@ function PrestartView({
       loadFromPrevious(templateToLoad);
       if (onTemplateLoaded) onTemplateLoaded();
     }
-  }, [templateToLoad, isEditing]);
+  }, [templateToLoad, isEditing, loadFromPrevious, onTemplateLoaded]);
+  if (submittedView) {
+    return submittedView;
+  }
   if (step === 1) {
     return /*#__PURE__*/React.createElement("div", {
       className: "space-y-4"
@@ -4627,20 +4992,20 @@ function PrestartView({
       className: "p-4 border-b flex items-center justify-between"
     }, /*#__PURE__*/React.createElement("h3", {
       className: "text-lg font-bold text-gray-800"
-    }, "Load from Previous"), /*#__PURE__*/React.createElement("button", {
+    }, "Load Previous Pre-Start"), /*#__PURE__*/React.createElement("button", {
       onClick: () => setShowPreviousList(false),
       className: "text-gray-500 text-xl"
     }, "\u2715")), /*#__PURE__*/React.createElement("div", {
       className: "overflow-y-auto flex-1 p-4"
     }, availablePrestarts.length === 0 ? /*#__PURE__*/React.createElement("div", {
       className: "text-center py-8 text-gray-500"
-    }, /*#__PURE__*/React.createElement("p", null, "No saved pre-starts found."), /*#__PURE__*/React.createElement("p", {
+    }, /*#__PURE__*/React.createElement("p", null, "No reusable pre-starts found."), /*#__PURE__*/React.createElement("p", {
       className: "text-sm mt-2"
-    }, "Complete a pre-start first and it will stay here for reuse.")) : /*#__PURE__*/React.createElement("div", {
+    }, "Complete a pre-start first and it will appear here for reuse.")) : /*#__PURE__*/React.createElement("div", {
       className: "space-y-3"
     }, /*#__PURE__*/React.createElement("p", {
       className: "text-sm text-gray-600 mb-3"
-    }, "Select a saved pre-start to copy. Signatures, notes, and date will be reset."), availablePrestarts.slice(0, 20).map(form => {
+    }, "Select a saved template or previous pre-start to copy. Signatures, notes, and date will be reset."), availablePrestarts.slice(0, 20).map(form => {
       const formDate = new Date(form.data.date || form.createdAt);
       const typeInfo = checklistTypes.find(t => t.id === form.data.type);
       return /*#__PURE__*/React.createElement("button", {
@@ -4682,13 +5047,14 @@ function PrestartView({
       className: "text-left"
     }, /*#__PURE__*/React.createElement("p", {
       className: "font-semibold text-blue-700"
-    }, "Copy Saved Pre-Start"), /*#__PURE__*/React.createElement("p", {
+    }, "Copy Previous Pre-Start"), /*#__PURE__*/React.createElement("p", {
       className: "text-sm text-blue-600"
-    }, "Reuse the saved setup for the same job on another day"))), /*#__PURE__*/React.createElement("div", {
+    }, "Reuse a saved template or a previous job setup"))), /*#__PURE__*/React.createElement("div", {
       className: "grid grid-cols-2 gap-3"
     }, checklistTypes.map(type => /*#__PURE__*/React.createElement("button", {
       key: type.id,
       onClick: () => {
+        setLoadedTemplateMeta(null);
         setCheckType(type.id);
         setStep(2);
       },
