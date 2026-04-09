@@ -223,13 +223,17 @@ const GoogleDriveSync = {
           this._notifyConnectionChange(true, null);
           this.tokenClient.callback = originalCallback;
 
-          // Retry the original request
+          // Retry the original request with fresh timeout
           options.headers['Authorization'] = `Bearer ${this.accessToken}`;
+          const retryController = new AbortController();
+          const retryTimeout = setTimeout(() => retryController.abort(), 30000);
           try {
-            const retryResponse = await fetch(url, options);
+            const retryResponse = await fetch(url, { ...options, signal: retryController.signal });
             resolve(retryResponse);
           } catch (e) {
             reject(e);
+          } finally {
+            clearTimeout(retryTimeout);
           }
         };
         this.tokenClient.requestAccessToken({ prompt: '' }); // Silent refresh
@@ -484,8 +488,23 @@ const GoogleDriveSync = {
     if (!this.accessToken || !this.folderId) return { deleted: 0 };
 
     try {
-      // Search for files matching this form's pattern
-      const files = await this.searchFiles(siteName);
+      // FIXED: Search across all folders (not just root) using Drive-wide query.
+      // Previously used searchFiles() which only searched the root folder,
+      // but PDFs are uploaded to subfolders like 01_Safety_Compliance/Pre-Start_Checklists/.
+      let files = [];
+      try {
+        const query = `name contains '${this._escapeQuery(formId)}' and mimeType='application/pdf' and trashed=false`;
+        const resp = await this.apiCall(
+          `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name,createdTime)`
+        );
+        if (resp.ok) {
+          const data = await resp.json();
+          files = data.files || [];
+        }
+      } catch (searchErr) {
+        console.warn('deleteOldFormPDFs: Drive search failed, falling back to root search:', searchErr.message);
+        files = await this.searchFiles(siteName);
+      }
       let deleted = 0;
 
       // Only delete files that match this specific form ID to avoid deleting

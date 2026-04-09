@@ -1391,9 +1391,22 @@ function useFormManager({
   };
 
   // Delete form (with backup check) — uses setForms callback to avoid stale closure
+  // FIXED: Use granular FirebaseSync.deleteForm() instead of syncForms(all).
+  // syncForms(all) replaced the entire /forms node, which could resurrect deleted
+  // forms from other devices or lose forms created while this device had the form open.
   const deleteForm = formId => {
     setDeleteConfirmModal(null);
     setViewFormModal(null);
+
+    // Track deleted ID so Firebase listener won't merge it back
+    if (deletedFormIdsRef && deletedFormIdsRef.current) {
+      deletedFormIdsRef.current.add(formId);
+      try {
+        localStorage.setItem('jmart-deleted-form-ids', JSON.stringify([...deletedFormIdsRef.current]));
+      } catch (e) {
+        console.warn('Could not persist deleted form IDs:', e.message);
+      }
+    }
     setForms(prevForms => {
       const deletedForm = prevForms.find(f => f.id === formId);
       const updatedForms = prevForms.filter(f => f.id !== formId);
@@ -1411,9 +1424,21 @@ function useFormManager({
       console.log('Form deleted, saved to localStorage:', updatedForms.length, 'forms remaining');
       deletingFormRef.current = true;
       if (FirebaseSync.isConnected()) {
-        FirebaseSync.syncForms(updatedForms).then(() => {
-          console.log('Deletion synced to Firebase');
+        FirebaseSync.deleteForm(formId).then(result => {
           deletingFormRef.current = false;
+          if (result && result.success) {
+            console.log('Deletion synced to Firebase');
+            if (deletedFormIdsRef && deletedFormIdsRef.current) {
+              deletedFormIdsRef.current.delete(formId);
+              try {
+                localStorage.setItem('jmart-deleted-form-ids', JSON.stringify([...deletedFormIdsRef.current]));
+              } catch (e) {}
+            }
+          } else if (result && result.queued) {
+            console.warn('Deletion queued for Firebase retry:', result.error || 'queued');
+          } else {
+            console.error('Failed to sync deletion to Firebase:', result && result.error ? result.error : result);
+          }
         }).catch(err => {
           console.error('Failed to sync deletion to Firebase:', err);
           deletingFormRef.current = false;
@@ -1538,21 +1563,32 @@ function useDataSync({
         }
         if (formsArray.length > 0) {
           const formMap = new Map();
+
+          // FIXED: Filter out forms that were deleted locally but not yet purged from Firebase
+          const deletedIds = deletedFormIdsRef ? deletedFormIdsRef.current : new Set();
           formsArray.forEach(form => {
+            if (deletedIds.has(form.id)) return; // Skip forms deleted offline
             formMap.set(form.id, {
               ...form,
               source: 'firebase'
             });
           });
 
-          // Merge with local-only forms (forms not yet in Firebase)
+          // FIXED: Only preserve local-only forms if there's a queued sync pending.
+          // Without this check, all local forms are merged unconditionally, which
+          // can resurrect forms that were deleted on another device.
           let currentLocalForms = [];
           try {
             const freshLocal = localStorage.getItem(STORAGE_KEYS.FORMS);
             if (freshLocal) currentLocalForms = JSON.parse(freshLocal);
           } catch (e) {/* ignore */}
+          const preserveLocalOnly = Array.isArray(FirebaseSync.pendingQueue) && FirebaseSync.pendingQueue.some(function(item) {
+            return item && (item.type === 'forms' || (typeof item.path === 'string' && item.path.indexOf('jmart-safety/forms') === 0));
+          });
           currentLocalForms.forEach(localForm => {
+            if (!localForm || deletedIds.has(localForm.id)) return;
             if (!formMap.has(localForm.id)) {
+              if (!preserveLocalOnly) return; // Only keep if sync pending
               formMap.set(localForm.id, {
                 ...localForm,
                 source: 'local'
@@ -1571,16 +1607,25 @@ function useDataSync({
           StorageQuotaManager.safeFormsWrite(mergedForms);
           console.log('Forms synced:', mergedForms.length, 'total');
         } else {
-          // Firebase returned empty — check if we have local forms to push
-          // Read fresh from localStorage to avoid stale closure over initial localForms
+          // FIXED: Only push local forms to Firebase if there's a queued sync pending.
+          // Without this check, a remote "delete all" would be reversed by every device
+          // pushing its stale local cache back to Firebase.
           let freshLocalForms = [];
           try {
             const freshLocal = localStorage.getItem(STORAGE_KEYS.FORMS);
             if (freshLocal) freshLocalForms = JSON.parse(freshLocal);
           } catch (e) {/* ignore */}
-          if (freshLocalForms.length > 0) {
-            console.log('Firebase empty, pushing local forms to Firebase');
+          const hasQueuedSync = Array.isArray(FirebaseSync.pendingQueue) && FirebaseSync.pendingQueue.some(function(item) {
+            return item && (item.type === 'forms' || (typeof item.path === 'string' && item.path.indexOf('jmart-safety/forms') === 0));
+          });
+          if (freshLocalForms.length > 0 && hasQueuedSync) {
+            console.log('Firebase empty, pushing local forms to Firebase (queued sync pending)');
             FirebaseSync.syncForms(freshLocalForms);
+          } else {
+            formsFromFirebaseRef.current = true;
+            setForms([]);
+            StorageQuotaManager.safeFormsWrite([]);
+            console.log('Firebase empty, clearing local forms cache');
           }
         }
         setSyncStatus('synced');
