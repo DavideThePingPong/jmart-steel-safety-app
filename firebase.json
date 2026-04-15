@@ -13,6 +13,7 @@
       "**/.*",
       "**/node_modules/**",
       "**/js/components/*.jsx",
+      "**/js/vendor/**",
       "**/*.pdf"
     ],
     "rewrites": [
