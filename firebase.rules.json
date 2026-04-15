@@ -113,7 +113,10 @@
       "victor": {
         "products": {
           ".read": "auth != null && root.child('jmart-safety/authDevices/' + auth.uid).child('approvedAt').exists()",
-          ".write": "auth != null && root.child('jmart-safety/authDevices/' + auth.uid).child('approvedAt').exists()"
+          "$productId": {
+            ".write": "auth != null && root.child('jmart-safety/authDevices/' + auth.uid).child('approvedAt').exists()",
+            ".validate": "!newData.exists() || (newData.hasChildren(['name', 'manufacturer', 'msds_url']) && newData.child('name').isString() && newData.child('name').val().length < 300 && newData.child('manufacturer').isString() && newData.child('manufacturer').val().length < 300 && newData.child('msds_url').isString() && newData.child('msds_url').val().length < 2000)"
+          }
         }
       },
 
@@ -148,8 +151,17 @@
       "hanna": {
         "receipts": {
           ".read": "auth != null && root.child('jmart-safety/authDevices/' + auth.uid).child('approvedAt').exists()",
-          ".write": "auth != null && root.child('jmart-safety/authDevices/' + auth.uid).child('approvedAt').exists()"
+          "$receiptId": {
+            ".write": "auth != null && root.child('jmart-safety/authDevices/' + auth.uid).child('approvedAt').exists()",
+            ".validate": "!newData.exists() || (newData.hasChildren(['id', 'saved_at']) && newData.child('id').isNumber() && newData.child('saved_at').isString() && newData.child('saved_at').val().length < 100)"
+          }
         }
+      },
+
+      // Pre-Start Templates - synced across all approved devices
+      "prestartTemplates": {
+        ".read": "auth != null && root.child('jmart-safety/authDevices/' + auth.uid).child('approvedAt').exists()",
+        ".write": "auth != null && root.child('jmart-safety/authDevices/' + auth.uid).child('approvedAt').exists()"
       },
 
       // Notifications - authenticated devices can read/write

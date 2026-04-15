@@ -3,8 +3,6 @@
 // ========================================
 // FIREBASE CONFIGURATION
 // ========================================
-// TODO: Replace these values with your Firebase config from the Firebase Console
-// Follow the setup guide: Firebase-Setup-Guide.docx
 // ========================================
 const firebaseConfig = {
   apiKey: "AIzaSyAECfytYqggzmQ-Kxm_vqQWlEnBJMXz5H4",

@@ -143,6 +143,12 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
         return updatedForms;
       });
 
+      if (FirebaseSync.isConnected()) {
+        FirebaseSync.syncForms([newForm]).catch((err) => {
+          console.warn('Immediate form sync queued:', err && err.message ? err.message : err);
+        });
+      }
+
       // Auto-download PDF + upload to Drive
       setTimeout(() => {
         if (window.__JMART_E2E__) {
@@ -362,6 +368,66 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
     setCurrentView('dashboard');
   };
 
+  const archiveForm = async (formId) => {
+    const existingForm = (forms || []).find((form) => form && form.id === formId);
+    if (!existingForm) return false;
+
+    const now = new Date().toISOString();
+    const archivedForm = {
+      ...existingForm,
+      status: 'archived',
+      archivedAt: now,
+      archivedBy: DeviceAuthManager.deviceId || 'unknown',
+      archivedByName: localStorage.getItem('jmart-user-name') || 'Unknown User',
+      updatedAt: now,
+      modifiedBy: DeviceAuthManager.deviceId || 'unknown',
+      modifiedByName: localStorage.getItem('jmart-user-name') || 'Unknown User',
+      version: (existingForm.version || 1) + 1
+    };
+
+    setForms((prevForms) => {
+      const updatedForms = prevForms.map((form) => (form.id === formId ? archivedForm : form));
+      StorageQuotaManager.safeFormsWrite(updatedForms);
+      return updatedForms;
+    });
+
+    try {
+      if (!window.__JMART_E2E__ && typeof PDFGenerator !== 'undefined' && typeof GoogleDriveSync !== 'undefined') {
+        const generated = PDFGenerator.generate(archivedForm);
+        if (generated && generated.doc) {
+          const pdfBlob = generated.doc.output('blob');
+          const archiveFilename = String(generated.filename || `prestart-${formId}.pdf`).replace(/\.pdf$/i, '-archive.pdf');
+          if (GoogleDriveSync.isConnected()) {
+            const uploadResult = await GoogleDriveSync.uploadPDF(pdfBlob, archiveFilename, archivedForm.type);
+            if (uploadResult) {
+              markAsBackedUp(formId);
+            }
+          } else if (typeof ToastNotifier !== 'undefined') {
+            ToastNotifier.warning('Archived in Firebase. Connect Google Drive to upload the archive PDF.');
+          }
+        }
+      }
+    } catch (archiveError) {
+      console.error('Archive upload error:', archiveError);
+      if (typeof ToastNotifier !== 'undefined') {
+        ToastNotifier.warning('Archived in Firebase, but Drive upload failed.');
+      }
+    }
+
+    AuditLogManager.log('archive', {
+      formId: archivedForm.id,
+      formType: archivedForm.type,
+      site: archivedForm.data?.siteConducted || archivedForm.data?.site || 'Unknown',
+      action: 'Form archived'
+    });
+
+    if (typeof ToastNotifier !== 'undefined') {
+      ToastNotifier.success('Pre-Start archived');
+    }
+
+    return true;
+  };
+
   // Delete form (with backup check) — uses setForms callback to avoid stale closure
   const deleteForm = (formId) => {
     setDeleteConfirmModal(null);
@@ -437,6 +503,7 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
     continueEditing,
     cancelUpdate,
     deleteForm,
+    archiveForm,
     handleDownloadPDF,
     closeSuccessModal,
     markAsBackedUp,
@@ -457,7 +524,9 @@ function useDataSync({ setForms, setSites, deletingFormRef, deletedFormIdsRef, s
   const [pendingSyncCount, setPendingSyncCount] = useState(FirebaseSync.getPendingCount());
   const [pendingPhotoCount, setPendingPhotoCount] = useState(OfflinePhotoQueue.getCount());
   const [syncError, setSyncError] = useState(null);
-  const [showSyncBanner, setShowSyncBanner] = useState(!FirebaseSync.isConnected());
+  const [showSyncBanner, setShowSyncBanner] = useState(() => {
+    return !(typeof isFirebaseConfigured !== 'undefined' && isFirebaseConfigured);
+  });
 
   const isInitialLoad = useRef(true);
   const formsFromFirebaseRef = useRef(false);  // Anti-loop: skip syncing back to Firebase when data came FROM Firebase
@@ -493,6 +562,12 @@ function useDataSync({ setForms, setSites, deletingFormRef, deletedFormIdsRef, s
     if (typeof item.path === 'string' && item.path.indexOf('jmart-safety/forms') === 0) return true;
     return false;
   });
+
+  useEffect(() => {
+    if (FirebaseSync.isConnected() || syncStatus === 'synced' || syncStatus === 'syncing' || syncStatus === 'pending') {
+      setShowSyncBanner(false);
+    }
+  }, [syncStatus, pendingSyncCount, isOnline]);
 
   // Load saved data from localStorage first, then listen to Firebase
   useEffect(() => {
@@ -938,6 +1013,9 @@ function useDataSync({ setForms, setSites, deletingFormRef, deletedFormIdsRef, s
   useEffect(() => {
     const unsubscribe = FirebaseSync.onSyncStatusChange((status, details) => {
       setPendingSyncCount(details?.pending || 0);
+      if (FirebaseSync.isConnected()) {
+        setShowSyncBanner(false);
+      }
       if (status === 'synced' && details?.pending === 0) {
         setSyncStatus('synced');
         setSyncError(null);
@@ -1221,6 +1299,7 @@ function useBeforeUnload(hasUnsavedData) {
 // Prestart Template Utilities (shared across components)
 // =============================================
 const PRESTART_TEMPLATE_STORAGE_KEY = 'jmart-prestart-templates';
+const PRESTART_TEMPLATE_PENDING_KEY = 'jmart-prestart-template-pending';
 
 function normalizePrestartTemplateValue(value) {
   return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
@@ -1234,6 +1313,8 @@ function getPrestartTemplateKey(data) {
   const jobKey = siteKey || builderKey || addressKey;
   return jobKey ? `${typeKey}::${jobKey}` : '';
 }
+
+const FIREBASE_TEMPLATES_PATH = 'jmart-safety/prestartTemplates';
 
 function readSavedPrestartTemplates() {
   try {
@@ -1253,11 +1334,163 @@ function writeSavedTemplates(nextTemplates) {
   }
 }
 
+function readPendingPrestartTemplateOps() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PRESTART_TEMPLATE_PENDING_KEY) || '[]');
+    return Array.isArray(saved)
+      ? saved.filter((op) => op && op.templateKey && (op.type === 'upsert' || op.type === 'delete'))
+      : [];
+  } catch (error) {
+    console.warn('Failed to load pending prestart template operations:', error);
+    return [];
+  }
+}
+
+function writePendingPrestartTemplateOps(nextOps) {
+  try {
+    if (!Array.isArray(nextOps) || nextOps.length === 0) {
+      localStorage.removeItem(PRESTART_TEMPLATE_PENDING_KEY);
+      return;
+    }
+    localStorage.setItem(PRESTART_TEMPLATE_PENDING_KEY, JSON.stringify(nextOps));
+  } catch (error) {
+    console.warn('Failed to save pending prestart template operations:', error);
+  }
+}
+
+function sortPrestartTemplates(nextTemplates) {
+  return nextTemplates
+    .filter((template) => template && template.templateKey)
+    .slice()
+    .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
+}
+
+function mergePrestartTemplatesByKey(nextTemplates) {
+  const templateMap = new Map();
+  nextTemplates.forEach((template) => {
+    if (template && template.templateKey) {
+      templateMap.set(template.templateKey, template);
+    }
+  });
+  return sortPrestartTemplates(Array.from(templateMap.values()));
+}
+
+function applyPendingPrestartTemplateOps(remoteTemplates, pendingOps) {
+  const templateMap = new Map();
+  remoteTemplates.forEach((template) => {
+    if (template && template.templateKey) {
+      templateMap.set(template.templateKey, template);
+    }
+  });
+
+  pendingOps.forEach((op) => {
+    if (!op || !op.templateKey) return;
+    if (op.type === 'delete') {
+      templateMap.delete(op.templateKey);
+      return;
+    }
+    if (op.type === 'upsert' && op.template) {
+      templateMap.set(op.templateKey, op.template);
+    }
+  });
+
+  return sortPrestartTemplates(Array.from(templateMap.values()));
+}
+
+function firebaseTemplateId(templateKey) {
+  // Firebase keys can't contain . # $ [ ] /
+  return templateKey.replace(/[.#$\[\]/]/g, '_');
+}
+
+function queuePrestartTemplateOp(nextOp) {
+  const currentOps = readPendingPrestartTemplateOps();
+  const dedupedOps = currentOps.filter((op) => op.templateKey !== nextOp.templateKey);
+  const queuedOp = {
+    ...nextOp,
+    queuedAt: nextOp.queuedAt || new Date().toISOString()
+  };
+  dedupedOps.push(queuedOp);
+  writePendingPrestartTemplateOps(dedupedOps);
+  return dedupedOps;
+}
+
 // =============================================
-// usePrestartTemplates - Shared template state
+// usePrestartTemplates - Shared template state (Firebase + localStorage)
 // =============================================
 function usePrestartTemplates() {
   const [templates, setTemplates] = useState(() => readSavedPrestartTemplates());
+  const templatesRef = useRef(templates);
+  const templateFlushInFlightRef = useRef(false);
+
+  useEffect(() => {
+    templatesRef.current = templates;
+  }, [templates]);
+
+  const flushPendingPrestartTemplateOps = useCallback(async () => {
+    if (typeof firebaseDb === 'undefined' || !firebaseDb || templateFlushInFlightRef.current) return;
+
+    templateFlushInFlightRef.current = true;
+    try {
+      let pendingOps = readPendingPrestartTemplateOps();
+      while (pendingOps.length > 0) {
+        const [nextOp, ...remainingOps] = pendingOps;
+        const templateRef = firebaseDb.ref(`${FIREBASE_TEMPLATES_PATH}/${firebaseTemplateId(nextOp.templateKey)}`);
+
+        if (nextOp.type === 'delete') {
+          await templateRef.remove();
+        } else if (nextOp.type === 'upsert' && nextOp.template) {
+          await templateRef.set(nextOp.template);
+        }
+
+        writePendingPrestartTemplateOps(remainingOps);
+        pendingOps = readPendingPrestartTemplateOps();
+      }
+    } catch (error) {
+      console.warn('Failed to flush prestart template operations to Firebase:', error);
+    } finally {
+      templateFlushInFlightRef.current = false;
+    }
+  }, []);
+
+  // On mount, reconcile local templates + pending ops against Firebase.
+  useEffect(() => {
+    if (typeof firebaseDb === 'undefined' || !firebaseDb) return;
+    let cancelled = false;
+    const templatesRefPath = firebaseDb.ref(FIREBASE_TEMPLATES_PATH);
+
+    const applyRemoteSnapshot = (value) => {
+      const remoteTemplates = value
+        ? sortPrestartTemplates(Object.values(value).filter((template) => template && template.templateKey))
+        : [];
+      const pendingOps = readPendingPrestartTemplateOps();
+      const mergedTemplates = applyPendingPrestartTemplateOps(remoteTemplates, pendingOps);
+      if (cancelled) return;
+      templatesRef.current = mergedTemplates;
+      setTemplates(mergedTemplates);
+      writeSavedTemplates(mergedTemplates);
+    };
+
+    const handler = (snap) => {
+      if (cancelled) return;
+      applyRemoteSnapshot(snap.val());
+    };
+
+    templatesRefPath.on('value', handler);
+    templatesRefPath.once('value')
+      .then((snap) => {
+        if (cancelled) return;
+        applyRemoteSnapshot(snap.val());
+        return flushPendingPrestartTemplateOps();
+      })
+      .catch((error) => {
+        console.warn('Failed to load templates from Firebase:', error);
+      });
+
+    return () => {
+      cancelled = true;
+      templatesRefPath.off('value', handler);
+    };
+  }, [flushPendingPrestartTemplateOps]);
 
   // Derive unique job/site names from templates for camera and dashboard
   const templateJobNames = useMemo(() => {
@@ -1273,42 +1506,50 @@ function usePrestartTemplates() {
     if (!templateKey) return null;
 
     const now = new Date().toISOString();
-    let nextSnapshot;
-    setTemplates((currentTemplates) => {
-      const existingTemplate = currentTemplates.find(t => t.templateKey === templateKey);
-      const nextTemplates = currentTemplates.filter(t => t.templateKey !== templateKey);
-      nextTemplates.unshift({
-        id: `prestart-template-${templateKey}`,
-        templateKey,
-        createdAt: existingTemplate?.createdAt || now,
-        updatedAt: now,
-        data: { ...templateData }
-      });
-      nextSnapshot = nextTemplates;
-      return nextTemplates;
-    });
-    // Write to localStorage outside the state updater to avoid sync issues
-    if (nextSnapshot) writeSavedTemplates(nextSnapshot);
+    const currentTemplates = templatesRef.current || [];
+    const existingTemplate = currentTemplates.find((template) => template.templateKey === templateKey);
+    const nextTemplate = {
+      id: `prestart-template-${templateKey}`,
+      templateKey,
+      createdAt: existingTemplate?.createdAt || now,
+      updatedAt: now,
+      data: { ...templateData }
+    };
+    const nextTemplates = mergePrestartTemplatesByKey([
+      nextTemplate,
+      ...currentTemplates.filter((template) => template.templateKey !== templateKey)
+    ]);
+
+    templatesRef.current = nextTemplates;
+    setTemplates(nextTemplates);
+    writeSavedTemplates(nextTemplates);
+    queuePrestartTemplateOp({ type: 'upsert', templateKey, template: nextTemplate });
+    flushPendingPrestartTemplateOps();
 
     return templateKey;
-  }, []);
+  }, [flushPendingPrestartTemplateOps]);
 
   // Delete a template by key
   const deleteTemplate = useCallback((templateKey) => {
-    let nextSnapshot;
-    setTemplates((currentTemplates) => {
-      const nextTemplates = currentTemplates.filter(t => t.templateKey !== templateKey);
-      nextSnapshot = nextTemplates;
-      return nextTemplates;
-    });
-    if (nextSnapshot) writeSavedTemplates(nextSnapshot);
-  }, []);
+    const nextTemplates = sortPrestartTemplates(
+      (templatesRef.current || []).filter((template) => template.templateKey !== templateKey)
+    );
+
+    templatesRef.current = nextTemplates;
+    setTemplates(nextTemplates);
+    writeSavedTemplates(nextTemplates);
+    queuePrestartTemplateOp({ type: 'delete', templateKey });
+    flushPendingPrestartTemplateOps();
+  }, [flushPendingPrestartTemplateOps]);
 
   // Cross-tab sync via storage event
   useEffect(() => {
     const handleStorageChange = (event) => {
-      if (event.storageArea !== localStorage || event.key !== PRESTART_TEMPLATE_STORAGE_KEY) return;
-      setTemplates(readSavedPrestartTemplates());
+      if (event.storageArea !== localStorage) return;
+      if (event.key !== PRESTART_TEMPLATE_STORAGE_KEY && event.key !== PRESTART_TEMPLATE_PENDING_KEY) return;
+      const nextTemplates = readSavedPrestartTemplates();
+      templatesRef.current = nextTemplates;
+      setTemplates(nextTemplates);
     };
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);

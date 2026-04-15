@@ -6,37 +6,12 @@
 // =============================================
 function SuccessModal({ successModal, onDownloadPDF, onClose }) {
   const [templateStatus, setTemplateStatus] = useState(successModal?.templateStatus || null);
-  const [isApplyingTemplate, setIsApplyingTemplate] = useState(false);
 
   useEffect(() => {
     setTemplateStatus(successModal?.templateStatus || null);
-    setIsApplyingTemplate(false);
   }, [successModal]);
 
   if (!successModal) return null;
-
-  const applySubmittedTemplate = async () => {
-    if (typeof successModal.onUseSubmittedTemplate !== 'function') return;
-    setIsApplyingTemplate(true);
-    try {
-      await successModal.onUseSubmittedTemplate();
-      setTemplateStatus('replaced');
-    } finally {
-      setIsApplyingTemplate(false);
-    }
-  };
-
-  const keepExistingTemplate = async () => {
-    setIsApplyingTemplate(true);
-    try {
-      if (typeof successModal.onKeepExistingTemplate === 'function') {
-        await successModal.onKeepExistingTemplate();
-      }
-      setTemplateStatus('kept');
-    } finally {
-      setIsApplyingTemplate(false);
-    }
-  };
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4">
@@ -52,46 +27,10 @@ function SuccessModal({ successModal, onDownloadPDF, onClose }) {
           <p className="text-gray-600 text-center text-sm">
             Your form has been saved{FirebaseSync.isConnected() ? ' and synced to the cloud' : ''}.
           </p>
-          {successModal.templateJobName && templateStatus === 'auto-saved' && (
+          {successModal.templateJobName && (templateStatus === 'updated' || templateStatus === 'auto-saved' || templateStatus === 'replaced') && (
             <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-left">
-              <p className="font-semibold text-green-800">Saved for reuse</p>
-              <p className="text-sm text-green-700">This is now the first saved pre-start template for {successModal.templateJobName}.</p>
-            </div>
-          )}
-          {successModal.templateJobName && templateStatus === 'replaceable' && (
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-left space-y-3">
-              <div>
-                <p className="font-semibold text-blue-800">Saved pre-start already exists</p>
-                <p className="text-sm text-blue-700">Choose whether to update the saved pre-start template for {successModal.templateJobName} or keep the old one.</p>
-              </div>
-              <div className="flex flex-col gap-2">
-                <button
-                  onClick={applySubmittedTemplate}
-                  disabled={isApplyingTemplate}
-                  className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold disabled:bg-blue-300"
-                >
-                  {isApplyingTemplate ? 'Updating Template...' : 'Update Prestart Template For This Job'}
-                </button>
-                <button
-                  onClick={keepExistingTemplate}
-                  disabled={isApplyingTemplate}
-                  className="w-full border border-blue-300 text-blue-700 py-3 rounded-xl font-semibold disabled:bg-gray-100"
-                >
-                  Keep Existing Job Template
-                </button>
-              </div>
-            </div>
-          )}
-          {successModal.templateJobName && templateStatus === 'replaced' && (
-            <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-left">
-              <p className="font-semibold text-green-800">Saved template updated</p>
-              <p className="text-sm text-green-700">Future pre-starts for {successModal.templateJobName} will start from this version.</p>
-            </div>
-          )}
-          {successModal.templateJobName && templateStatus === 'kept' && (
-            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-left">
-              <p className="font-semibold text-gray-800">Existing saved template kept</p>
-              <p className="text-sm text-gray-600">The old saved pre-start for {successModal.templateJobName} will stay as the reusable version.</p>
+              <p className="font-semibold text-green-800">Job template refreshed</p>
+              <p className="text-sm text-green-700">The latest completed pre-start for {successModal.templateJobName} is now the reusable template for that job.</p>
             </div>
           )}
           <button
@@ -351,8 +290,9 @@ function PendingDevicesBanner({ pendingDevices, isDeviceAdmin, hasNotification, 
 // =============================================
 // Sync Error/Pending Banner
 // =============================================
-function SyncStatusBanner({ syncStatus, pendingSyncCount, syncError, onRetry }) {
-  if (syncStatus !== 'error' && !(syncStatus === 'pending' && pendingSyncCount > 0)) return null;
+function SyncStatusBanner({ syncStatus, pendingSyncCount, syncError, onRetry, isOnline = true }) {
+  const shouldShowPendingBanner = syncStatus === 'pending' && pendingSyncCount > 0 && !isOnline;
+  if (syncStatus !== 'error' && !shouldShowPendingBanner) return null;
   return (
     <div className={`fixed bottom-20 left-3 right-3 ${syncStatus === 'error' ? 'bg-red-600' : 'bg-yellow-600'} text-white p-3 rounded-xl shadow-lg z-50`}>
       <div className="flex items-center justify-between">

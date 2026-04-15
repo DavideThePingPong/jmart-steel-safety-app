@@ -4,6 +4,16 @@
 // Shared components: Icon, LucideIcon, SignaturePad, NoteMediaBox
 // Extracted from index.html
 
+// Production log gate — silences console.log unless ?debug is in the URL.
+// Keeps console.warn and console.error active for real issues.
+(function () {
+  var isDebug = window.location.search.indexOf('debug') !== -1 || window.__JMART_DEBUG__;
+  if (!isDebug && !window.__originalConsoleLog) {
+    window.__originalConsoleLog = console.log;
+    console.log = function () {};
+  }
+})();
+
 // React hooks and Lucide icons - attached to window for cross-file access
 const {
   useState,
@@ -3037,6 +3047,7 @@ function JMartSteelSafetyApp({
   const [sites, setSites] = useState([]);
   const [editingForm, setEditingForm] = useState(null);
   const [templateToLoad, setTemplateToLoad] = useState(null);
+  const legacyPrestartMigrationDoneRef = useRef(false);
 
   // Device Authorization
   const {
@@ -3121,88 +3132,36 @@ function JMartSteelSafetyApp({
     });
   }, [forms]);
   const prestartTemplates = useMemo(() => {
-    const latestTemplateByJob = new Map();
-    savedPrestartTemplates.forEach(template => {
-      if (!template?.templateKey || !template?.data) return;
-      latestTemplateByJob.set(template.templateKey, {
-        ...template,
-        sourceType: 'template',
-        sourceLabel: 'Saved Template',
-        isSavedTemplate: true
-      });
-    });
-    recentPrestartForms.forEach(form => {
-      const templateKey = getPrestartTemplateKey(form?.data);
-      if (!templateKey) return;
-      const fallbackTemplate = {
-        id: `recent-template-${form.id}`,
-        formId: form.id,
-        templateKey,
-        createdAt: form.createdAt || form.data?.date || new Date().toISOString(),
-        updatedAt: form.updatedAt || form.createdAt || form.data?.date || new Date().toISOString(),
-        data: {
-          ...form.data
-        },
-        sourceType: 'form',
-        sourceLabel: 'Recent Form',
-        isSavedTemplate: false
-      };
-      const existing = latestTemplateByJob.get(templateKey);
-      if (!existing) {
-        latestTemplateByJob.set(templateKey, fallbackTemplate);
-        return;
-      }
-      const existingTime = new Date(existing.updatedAt || existing.createdAt || existing.data?.date || 0).getTime();
-      const fallbackTime = new Date(fallbackTemplate.updatedAt || fallbackTemplate.createdAt || fallbackTemplate.data?.date || 0).getTime();
-      if (!existing.isSavedTemplate && fallbackTime > existingTime) {
-        latestTemplateByJob.set(templateKey, fallbackTemplate);
-      }
-    });
-    return Array.from(latestTemplateByJob.values()).sort((a, b) => new Date(b.updatedAt || b.createdAt || b.data?.date || 0) - new Date(a.updatedAt || a.createdAt || a.data?.date || 0));
-  }, [savedPrestartTemplates, recentPrestartForms]);
+    return savedPrestartTemplates.filter(template => template?.templateKey && template?.data).map(template => ({
+      ...template,
+      sourceType: 'template',
+      isSavedTemplate: true
+    })).sort((a, b) => new Date(b.updatedAt || b.createdAt || b.data?.date || 0) - new Date(a.updatedAt || a.createdAt || a.data?.date || 0));
+  }, [savedPrestartTemplates]);
   const templateJobNames = useMemo(() => {
     const names = prestartTemplates.map(template => template?.data?.siteConducted || template?.data?.builder || template?.data?.address || '').filter(Boolean);
     return [...new Set(names)];
   }, [prestartTemplates]);
-  const reusablePrestarts = useMemo(() => {
-    const sourceMap = new Map();
-    prestartTemplates.forEach(template => {
-      if (!template?.templateKey) return;
-      sourceMap.set(template.templateKey, {
-        ...template,
-        sourceType: template.sourceType || (template.isSavedTemplate ? 'template' : 'form'),
-        sourceLabel: template.sourceLabel || (template.isSavedTemplate ? 'Saved Template' : 'Recent Form')
-      });
-    });
+  useEffect(() => {
+    if (legacyPrestartMigrationDoneRef.current) return;
+    if (!recentPrestartForms.length) return;
+    const existingTemplateKeys = new Set((savedPrestartTemplates || []).filter(template => template?.templateKey).map(template => template.templateKey));
+    let migratedAny = false;
     recentPrestartForms.forEach(form => {
       const templateKey = getPrestartTemplateKey(form?.data);
-      if (!templateKey || sourceMap.has(templateKey)) return;
-      sourceMap.set(templateKey, {
-        id: form.id,
-        formId: form.id,
-        templateKey,
-        createdAt: form.createdAt || form.data?.date || new Date().toISOString(),
-        updatedAt: form.updatedAt || form.createdAt || form.data?.date || new Date().toISOString(),
-        data: {
-          ...form.data
-        },
-        sourceType: 'form',
-        sourceLabel: 'Previous Form'
-      });
+      if (!templateKey || existingTemplateKeys.has(templateKey) || !form?.data) return;
+      upsertTemplate(form.data);
+      existingTemplateKeys.add(templateKey);
+      migratedAny = true;
     });
-    return Array.from(sourceMap.values()).sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
-  }, [prestartTemplates, recentPrestartForms]);
+    if (migratedAny || existingTemplateKeys.size > 0) {
+      legacyPrestartMigrationDoneRef.current = true;
+    }
+  }, [recentPrestartForms, savedPrestartTemplates, upsertTemplate]);
   const handleDeletePrestartTemplate = useCallback(item => {
     if (!item?.templateKey) return;
-    if (!item.isSavedTemplate) {
-      const sourceFormId = item.formId || item.id;
-      if (sourceFormId) {
-        deleteForm(sourceFormId);
-        return;
-      }
-    }
     deleteTemplate(item.templateKey);
-  }, [deleteForm, deleteTemplate]);
+  }, [deleteTemplate]);
   const handleDeleteRecentPrestart = useCallback(item => {
     if (!item) return;
     const sourceFormId = item.formId || item.id;
@@ -3239,6 +3198,11 @@ function JMartSteelSafetyApp({
       return updated;
     });
   }, [setForms]);
+  const handleModifyRecentPrestart = useCallback(form => {
+    if (!form) return;
+    setEditingForm(form);
+    setCurrentView('prestart');
+  }, [setEditingForm, setCurrentView]);
 
   // PWA Install
   const {
@@ -3516,6 +3480,7 @@ function JMartSteelSafetyApp({
     onDeleteRecentPrestart: handleDeleteRecentPrestart,
     onArchivePrestart: archiveForm,
     onEditRecentPrestart: handleEditRecentPrestart,
+    onModifyRecentPrestart: handleModifyRecentPrestart,
     onSelectTemplate: template => {
       setTemplateToLoad(template);
       setCurrentView('prestart');
@@ -3525,7 +3490,7 @@ function JMartSteelSafetyApp({
     onUpdate: updateForm,
     editingForm: editingForm?.type === 'prestart' ? editingForm : null,
     sites: sites,
-    savedTemplates: reusablePrestarts,
+    savedTemplates: prestartTemplates,
     onUpsertTemplate: upsertTemplate,
     templateToLoad: templateToLoad,
     onTemplateLoaded: () => setTemplateToLoad(null)
@@ -3617,6 +3582,7 @@ function Dashboard({
   onDeleteRecentPrestart,
   onArchivePrestart,
   onEditRecentPrestart,
+  onModifyRecentPrestart,
   onSelectTemplate
 }) {
   const todayDate = new Date().toLocaleDateString('en-AU', {
@@ -3706,7 +3672,10 @@ function Dashboard({
   };
   const handleArchivePrestart = async (form, siteName) => {
     if (!onArchivePrestart || !form?.id) return;
-    const confirmed = window.confirm(`Archive "${siteName}"? This keeps it in Firebase and uploads an archive PDF to Google Drive when connected.`);
+    const confirmed = await ConfirmDialog.show(`Archive "${siteName}"? This keeps it in Firebase and uploads an archive PDF to Google Drive when connected.`, {
+      title: 'Archive Pre-Start',
+      confirmLabel: 'Archive'
+    });
     if (!confirmed) return;
     setArchivingIds(prev => [...prev, form.id]);
     try {
@@ -3717,7 +3686,11 @@ function Dashboard({
   };
   const handleDeleteRecentPrestart = async (form, siteName) => {
     if (!onDeleteRecentPrestart || !form?.id) return;
-    const confirmed = window.confirm(`Delete "${siteName}" from Recent Pre-Starts? This also removes its reusable job template.`);
+    const confirmed = await ConfirmDialog.show(`Delete "${siteName}" from Recent Pre-Starts?`, {
+      title: 'Delete Pre-Start',
+      confirmLabel: 'Delete',
+      destructive: true
+    });
     if (!confirmed) return;
     setDeletingRecentIds(prev => [...prev, form.id]);
     try {
@@ -3727,6 +3700,10 @@ function Dashboard({
     }
   };
   const handleModifyPrestart = (form, siteName) => {
+    if (onModifyRecentPrestart) {
+      onModifyRecentPrestart(form);
+      return;
+    }
     const formDate = form.data?.date ? new Date(form.data.date) : new Date(form.updatedAt || form.createdAt);
     const dateStr = formDate.toISOString().split('T')[0];
     const timeStr = formDate.toTimeString().slice(0, 5);
@@ -4072,7 +4049,7 @@ function Dashboard({
         handleModifyPrestart(form, siteName);
       },
       className: "text-gray-400 hover:text-blue-600 text-sm disabled:opacity-50",
-      title: "Modify date and time",
+      title: "Modify pre-start",
       "aria-label": `Modify ${siteName}`,
       disabled: isBusy
     }, "\u270F\uFE0F"), /*#__PURE__*/React.createElement("button", {
@@ -4221,7 +4198,7 @@ function TrainingView() {
   const generateCertificate = () => {
     TrainingCertGenerator.generate(workerName, selectedCourse, signatureData, calculateScore);
   };
-  const getAppUrl = () => 'https://davidethepingpong.github.io/jmart-steel-safety-app/index.html';
+  const getAppUrl = () => 'https://jmart-steel-safety.web.app';
 
   // Course List View
   if (!selectedCourse) {
@@ -4767,7 +4744,7 @@ function PrestartView({
     if (!supervisorName) errors.push('Supervisor name is required');
     return errors;
   };
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const errors = validateForm();
     if (errors.length > 0) {
       setValidationErrors(errors);
@@ -4812,7 +4789,10 @@ function PrestartView({
         upsertSavedTemplate(reusableTemplate);
         nextTemplateStatus = 'created';
       } else if (templateKey && loadedTemplateMeta?.templateKey === templateKey && loadedTemplateMeta?.sourceType === 'template') {
-        const shouldUpdateTemplate = window.confirm(`Use this pre-start as the new reusable template for ${templateJobName}?`);
+        const shouldUpdateTemplate = await ConfirmDialog.show(`Use this pre-start as the new reusable template for ${templateJobName}?`, {
+          title: 'Update Template',
+          confirmLabel: 'Update Template'
+        });
         if (shouldUpdateTemplate) {
           upsertSavedTemplate(reusableTemplate);
           nextTemplateStatus = 'updated';

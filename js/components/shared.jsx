@@ -1,6 +1,16 @@
 // Shared components: Icon, LucideIcon, SignaturePad, NoteMediaBox
 // Extracted from index.html
 
+// Production log gate — silences console.log unless ?debug is in the URL.
+// Keeps console.warn and console.error active for real issues.
+(function() {
+  var isDebug = window.location.search.indexOf('debug') !== -1 || window.__JMART_DEBUG__;
+  if (!isDebug && !window.__originalConsoleLog) {
+    window.__originalConsoleLog = console.log;
+    console.log = function() {};
+  }
+})();
+
 // React hooks and Lucide icons - attached to window for cross-file access
 const { useState, useRef, useEffect, useMemo, useCallback } = React;
 window.useState = useState;

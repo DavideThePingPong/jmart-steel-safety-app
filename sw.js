@@ -9,7 +9,7 @@
  * - v4: Pinned CDN versions (supply-chain hardening)
  */
 
-const CACHE_VERSION = 'v79';
+const CACHE_VERSION = 'v84';
 const STATIC_CACHE = `jmart-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `jmart-dynamic-${CACHE_VERSION}`;
 const CDN_CACHE = `jmart-cdn-${CACHE_VERSION}`;
@@ -20,6 +20,7 @@ const OFFLINE_URL = 'offline.html';
 const STATIC_FILES = [
   './',
   './index.html',
+  './jmart-safety-app.html',
   './js/config.js',
   './js/deviceAuth.js',
   './js/googleDriveConfig.js',

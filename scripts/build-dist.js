@@ -6,6 +6,8 @@ const RETRYABLE_REMOVE_ERRORS = new Set(['EBUSY', 'ENOTEMPTY', 'EPERM']);
 
 const ROOT = path.resolve(__dirname, '..');
 const DIST = path.join(ROOT, 'dist');
+const HUB_ROOT = path.resolve(ROOT, '..', 'artsteel-hub-app');
+const HUB_FALLBACK_ROOT = path.join(ROOT, 'hub-runtime');
 
 const FILES = [
   'index.html',
@@ -13,18 +15,26 @@ const FILES = [
   'reset.html',
   'manifest.json',
   'sw.js',
-  'artsteel-hub.html',
-  'hub-manifest.json',
-  'hub-sw.js',
   'jmart-safety-app.html',
   'steel-app.html',
   'Glass-Suction-Cups-Training-10Jun2025.pdf',
   'Steel-Inspection-Test-Plan.pdf'
 ];
 
+const HUB_FILES = [
+  'artsteel-hub.html',
+  'hub-reset.html',
+  'hub-manifest.json',
+  'hub-sw.js'
+];
+
 const DIRECTORIES = [
   'icons',
   'js'
+];
+
+const HUB_DIRECTORIES = [
+  'icons'
 ];
 
 function sleep(ms) {
@@ -54,27 +64,39 @@ function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
 }
 
-function copyFile(relativePath) {
-  const source = path.join(ROOT, relativePath);
-  const destination = path.join(DIST, relativePath);
+function copyFile(relativePath, options = {}) {
+  const sourceRoot = options.sourceRoot || ROOT;
+  const destinationPath = options.destinationPath || relativePath;
+  const required = options.required === true;
+  const source = path.join(sourceRoot, relativePath);
+  const destination = path.join(DIST, destinationPath);
   if (!fs.existsSync(source)) {
+    if (required) {
+      throw new Error('[build-dist] Missing required file: ' + source);
+    }
     console.warn('[build-dist] Skipping missing file:', relativePath);
     return;
   }
   ensureDir(path.dirname(destination));
   fs.copyFileSync(source, destination);
-  console.log('  copied file:', relativePath);
+  console.log('  copied file:', destinationPath);
 }
 
-function copyDirectory(relativePath) {
-  const source = path.join(ROOT, relativePath);
-  const destination = path.join(DIST, relativePath);
+function copyDirectory(relativePath, options = {}) {
+  const sourceRoot = options.sourceRoot || ROOT;
+  const destinationPath = options.destinationPath || relativePath;
+  const required = options.required === true;
+  const source = path.join(sourceRoot, relativePath);
+  const destination = path.join(DIST, destinationPath);
   if (!fs.existsSync(source)) {
+    if (required) {
+      throw new Error('[build-dist] Missing required directory: ' + source);
+    }
     console.warn('[build-dist] Skipping missing directory:', relativePath);
     return;
   }
   fs.cpSync(source, destination, { recursive: true, force: true });
-  console.log('  copied dir :', relativePath);
+  console.log('  copied dir :', destinationPath);
 }
 
 console.log('Packaging deployable Firebase bundle...');
@@ -82,7 +104,22 @@ removeDir(DIST);
 ensureDir(DIST);
 
 FILES.forEach(copyFile);
+const hubSourceRoot = fs.existsSync(HUB_ROOT) ? HUB_ROOT : HUB_FALLBACK_ROOT;
+if (!fs.existsSync(hubSourceRoot)) {
+  throw new Error('[build-dist] Hub runtime source not found. Checked: ' + HUB_ROOT + ' and ' + HUB_FALLBACK_ROOT);
+}
+if (hubSourceRoot === HUB_FALLBACK_ROOT) {
+  console.warn('[build-dist] Standalone hub app not found. Falling back to repo mirror:', HUB_FALLBACK_ROOT);
+}
+HUB_FILES.forEach((relativePath) => copyFile(relativePath, {
+  sourceRoot: hubSourceRoot,
+  required: true
+}));
 DIRECTORIES.forEach(copyDirectory);
+HUB_DIRECTORIES.forEach((relativePath) => copyDirectory(relativePath, {
+  sourceRoot: hubSourceRoot,
+  required: true
+}));
 
 console.log('');
 console.log('Deploy bundle ready at dist/');

@@ -21,6 +21,48 @@ beforeAll(() => {
 });
 
 // ==========================================================================
+// REGRESSION #3: prestart template sync must fail safe on deletes
+// ==========================================================================
+describe('usePrestartTemplates - shared template sync [REGRESSION]', () => {
+  it('should define a pending template ops storage key', () => {
+    expect(hooksCode).toContain("const PRESTART_TEMPLATE_PENDING_KEY = 'jmart-prestart-template-pending'");
+  });
+
+  it('should queue per-template Firebase operations instead of root set writes', () => {
+    const templateBlock = hooksCode.slice(
+      hooksCode.indexOf('const PRESTART_TEMPLATE_STORAGE_KEY'),
+      hooksCode.indexOf('// Export to window for cross-file access')
+    );
+
+    expect(templateBlock).toContain('queuePrestartTemplateOp');
+    expect(templateBlock).toContain('templateRef.remove()');
+    expect(templateBlock).toContain('templateRef.set(nextOp.template)');
+    expect(templateBlock).not.toContain("firebaseDb.ref(FIREBASE_TEMPLATES_PATH).set(obj)");
+  });
+
+  it('should reconcile remote templates through pending ops instead of republishing local empties', () => {
+    const templateBlock = hooksCode.slice(
+      hooksCode.indexOf('function usePrestartTemplates'),
+      hooksCode.indexOf('// Export to window for cross-file access')
+    );
+
+    expect(templateBlock).toContain('applyPendingPrestartTemplateOps');
+    expect(templateBlock).toContain('readPendingPrestartTemplateOps');
+    expect(templateBlock).not.toContain('Local has templates but Firebase is empty');
+    expect(templateBlock).not.toContain('writeTemplatesToFirebase(local)');
+  });
+
+  it('should listen for storage changes on both templates and pending ops', () => {
+    const templateBlock = hooksCode.slice(
+      hooksCode.indexOf('function usePrestartTemplates'),
+      hooksCode.indexOf('// Export to window for cross-file access')
+    );
+
+    expect(templateBlock).toContain("event.key !== PRESTART_TEMPLATE_STORAGE_KEY && event.key !== PRESTART_TEMPLATE_PENDING_KEY");
+  });
+});
+
+// ==========================================================================
 // REGRESSION #1: confirmUpdate must preserve version metadata
 // ==========================================================================
 describe('useFormManager — confirmUpdate metadata preservation [REGRESSION]', () => {

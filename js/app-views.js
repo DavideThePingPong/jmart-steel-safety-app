@@ -73,7 +73,7 @@ function TrainingView() {
   const generateCertificate = () => {
     TrainingCertGenerator.generate(workerName, selectedCourse, signatureData, calculateScore);
   };
-  const getAppUrl = () => 'https://davidethepingpong.github.io/jmart-steel-safety-app/index.html';
+  const getAppUrl = () => 'https://jmart-steel-safety.web.app';
 
   // Course List View
   if (!selectedCourse) {

@@ -10,6 +10,16 @@
       var params = new URLSearchParams(window.location.search);
       window.__JMART_RUNTIME_MODE__ = params.get('mode') || (params.get('e2e') === '1' ? 'e2e' : 'production');
       window.__JMART_E2E__ = window.__JMART_RUNTIME_MODE__ === 'e2e';
+      if (!window.__JMART_E2E__) {
+        var redirected = params.get('redirected');
+        if (redirected !== '1') {
+          params.set('redirected', '1');
+          var cleanHref = './jmart-safety-app.html';
+          var query = params.toString();
+          if (query) cleanHref += '?' + query;
+          window.location.replace(cleanHref);
+        }
+      }
     })();
   </script>
 
@@ -34,7 +44,7 @@
   <link rel="apple-touch-icon" sizes="120x120" href="icons/apple-touch-icon-120x120.png">
 
   <!-- Manifest for PWA -->
-  <link rel="manifest" href="manifest.json">
+  <link rel="manifest" href="manifest.json?v=20260404-safetyfinal">
 
   <!-- Scripts (pinned versions + crossorigin for SRI readiness) -->
   <!-- Pre-compiled Tailwind CSS - no CDN dependency -->
@@ -80,6 +90,8 @@
 
   <!-- Service Layer — loaded dynamically after CDN libs are ready -->
   <script>
+    window.__JMART_ASSET_VERSION__ = '20260404-safetyfinal';
+
     // Service scripts that depend on Firebase and other CDN libs
     var serviceScripts = [
       'js/config.js', 'js/intervalRegistry.js', 'js/storageQuotaManager.js',
@@ -93,10 +105,16 @@
       'js/formConstants.js'
     ];
 
+    function versionedAssetUrl(url) {
+      if (!url || /^https?:\/\//i.test(url)) return url;
+      var separator = url.indexOf('?') === -1 ? '?' : '&';
+      return url + separator + 'v=' + encodeURIComponent(window.__JMART_ASSET_VERSION__);
+    }
+
     function loadScriptTag(url) {
       return new Promise(function(resolve, reject) {
         var s = document.createElement('script');
-        s.src = url;
+        s.src = versionedAssetUrl(url);
         s.onload = resolve;
         s.onerror = function() {
           console.warn('[SVC-LOADER] Failed to load:', url, '— continuing');
@@ -293,7 +311,7 @@
   <!-- Service Worker Registration (v3 - external file with stale-while-revalidate, background sync) -->
   <script>
     if ('serviceWorker' in navigator && !window.__JMART_E2E__) {
-      navigator.serviceWorker.register('./sw.js')
+      navigator.serviceWorker.register('./sw.js?v=' + encodeURIComponent(window.__JMART_ASSET_VERSION__))
         .then(reg => {
           console.log('✅ SW registered, scope:', reg.scope);
 

@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#111111">
+  <title>Artsteel Hub Reset</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #071017;
+      --panel: rgba(18, 29, 40, 0.96);
+      --border: rgba(255, 255, 255, 0.1);
+      --text: #edf4fb;
+      --muted: #9cb0c4;
+      --accent: #ff8a3d;
+      --danger: #ef4444;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      font-family: Bahnschrift, "Segoe UI Variable", "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(255, 138, 61, 0.16), transparent 30%),
+        linear-gradient(160deg, #071017 0%, #0d1823 100%);
+    }
+
+    .card {
+      width: min(560px, 100%);
+      padding: 28px;
+      border-radius: 24px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+    }
+
+    h1,
+    p {
+      margin: 0;
+    }
+
+    h1 {
+      font-size: clamp(2rem, 4vw, 2.8rem);
+      letter-spacing: -0.04em;
+    }
+
+    .eyebrow {
+      display: inline-block;
+      margin-bottom: 12px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #ffd7bf;
+      background: rgba(255, 138, 61, 0.16);
+      border: 1px solid rgba(255, 138, 61, 0.25);
+    }
+
+    .intro,
+    .small {
+      margin-top: 12px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .meter {
+      margin-top: 18px;
+      height: 18px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .meter-fill {
+      height: 100%;
+      width: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      background: #64748b;
+      color: white;
+      font-size: 11px;
+      font-weight: 700;
+      transition: width 0.25s ease, background 0.25s ease;
+    }
+
+    .status {
+      margin-top: 18px;
+      padding: 14px 16px;
+      border-radius: 16px;
+      border: 1px solid rgba(253, 230, 138, 0.24);
+      background: rgba(245, 158, 11, 0.12);
+      color: #fef3c7;
+      font-size: 14px;
+      line-height: 1.6;
+      min-height: 96px;
+    }
+
+    .status.done {
+      border-color: rgba(187, 247, 208, 0.26);
+      background: rgba(34, 197, 94, 0.12);
+      color: #dcfce7;
+    }
+
+    .status.error {
+      border-color: rgba(252, 165, 165, 0.26);
+      background: rgba(239, 68, 68, 0.12);
+      color: #fee2e2;
+    }
+
+    .actions {
+      display: grid;
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    button {
+      width: 100%;
+      padding: 14px 18px;
+      border: none;
+      border-radius: 14px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 0.15s ease, opacity 0.15s ease;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.65;
+      transform: none;
+    }
+
+    .btn-reset {
+      color: white;
+      background: linear-gradient(135deg, var(--danger), #b91c1c);
+    }
+
+    .btn-open {
+      color: white;
+      background: linear-gradient(135deg, var(--accent), #ea580c);
+    }
+
+    .small {
+      font-size: 12px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="eyebrow">Standalone Hub</div>
+    <h1>Reset Hub Cache</h1>
+    <p class="intro">Use this when the standalone hub is stale, stuck offline, or showing cached Victor, Frank, Hanna, Igor, or Drive state.</p>
+    <p class="small" id="meterLabel">Storage: calculating...</p>
+    <div class="meter">
+      <div class="meter-fill" id="meterFill">0%</div>
+    </div>
+    <div class="status" id="status">
+      Ready. Reset will:
+      <br>- remove hub service workers and caches
+      <br>- clear hub-specific local data and temp keys
+      <br>- reset Firebase connection state
+      <br>- leave safety-form keys untouched
+    </div>
+    <div class="actions">
+      <button class="btn-reset" id="resetBtn" type="button">Reset Hub</button>
+      <button class="btn-open" id="openBtn" type="button" disabled>Open Hub</button>
+    </div>
+    <p class="small">Device approval, device name, and unrelated safety-form storage are preserved.</p>
+  </main>
+  <script>
+    function isHubLocalKey(key) {
+      return key === 'steel-api-key' ||
+        key === 'hub-drive-token' ||
+        /^hub-/i.test(key) ||
+        /^victor/i.test(key) ||
+        /^frank/i.test(key) ||
+        /^hanna/i.test(key) ||
+        /^igor/i.test(key);
+    }
+
+    function getStorageInfo() {
+      var total = 0;
+      for (var i = 0; i < localStorage.length; i++) {
+        var key = localStorage.key(i);
+        if (!key) continue;
+        var value = localStorage.getItem(key);
+        total += value ? value.length * 2 : 0;
+      }
+      var totalMB = (total / 1024 / 1024).toFixed(2);
+      var pct = ((total / (5 * 1024 * 1024)) * 100).toFixed(0);
+      return { totalBytes: total, totalMB: totalMB, pct: pct };
+    }
+
+    function updateMeter() {
+      var info = getStorageInfo();
+      var pct = Math.min(parseInt(info.pct, 10) || 0, 100);
+      var color = pct > 90 ? '#dc2626' : pct > 70 ? '#f59e0b' : '#22c55e';
+      document.getElementById('meterLabel').textContent = 'Storage: ' + info.totalMB + ' MB / 5 MB (' + info.pct + '%)';
+      var fill = document.getElementById('meterFill');
+      fill.style.width = Math.max(pct, 5) + '%';
+      fill.style.background = color;
+      fill.textContent = info.pct + '%';
+      return info;
+    }
+
+    async function unregisterServiceWorkers() {
+      if (!('serviceWorker' in navigator)) return 0;
+      var regs = await navigator.serviceWorker.getRegistrations();
+      for (var i = 0; i < regs.length; i++) {
+        await regs[i].unregister();
+      }
+      return regs.length;
+    }
+
+    async function clearCaches() {
+      if (!('caches' in window)) return 0;
+      var names = await caches.keys();
+      for (var i = 0; i < names.length; i++) {
+        await caches.delete(names[i]);
+      }
+      return names.length;
+    }
+
+    function clearHubKeys() {
+      var removed = 0;
+      var keys = [];
+      for (var i = 0; i < localStorage.length; i++) {
+        var key = localStorage.key(i);
+        if (key && isHubLocalKey(key)) keys.push(key);
+      }
+      keys.forEach(function(key) {
+        try {
+          if (localStorage.getItem(key) !== null) {
+            localStorage.removeItem(key);
+            removed++;
+          }
+        } catch (error) {}
+      });
+      return removed;
+    }
+
+    function clearHubTempKeys() {
+      var removed = 0;
+      var keys = [];
+      for (var i = localStorage.length - 1; i >= 0; i--) {
+        var key = localStorage.key(i);
+        if (!key) continue;
+        if (isHubLocalKey(key) || key.indexOf('temp') !== -1 || key.indexOf('cache') !== -1 || key.indexOf('draft') !== -1 || key.indexOf('backup') !== -1) {
+          keys.push(key);
+        }
+      }
+      keys.forEach(function(key) {
+        try {
+          if (localStorage.getItem(key) !== null) {
+            localStorage.removeItem(key);
+            removed++;
+          }
+        } catch (error) {}
+      });
+      return removed;
+    }
+
+    async function doReset() {
+      var status = document.getElementById('status');
+      var resetBtn = document.getElementById('resetBtn');
+      var openBtn = document.getElementById('openBtn');
+      var before = getStorageInfo();
+      var steps = [];
+
+      resetBtn.disabled = true;
+      resetBtn.textContent = 'Working...';
+      openBtn.disabled = true;
+      status.className = 'status';
+
+      try {
+        status.textContent = 'Step 1/6: Removing service workers...';
+        steps.push('Removed ' + await unregisterServiceWorkers() + ' service worker(s)');
+
+        status.textContent = 'Step 2/6: Clearing caches...';
+        steps.push('Deleted ' + await clearCaches() + ' cache(s)');
+
+        status.textContent = 'Step 3/6: Clearing hub local data...';
+        steps.push('Cleared ' + clearHubKeys() + ' hub key(s)');
+
+        status.textContent = 'Step 4/6: Removing temp keys...';
+        steps.push('Removed ' + clearHubTempKeys() + ' temp key(s)');
+
+        status.textContent = 'Step 5/6: Clearing session data...';
+        sessionStorage.clear();
+        steps.push('Session cleared');
+
+        status.textContent = 'Step 6/6: Resetting Firebase connection state...';
+        try { localStorage.removeItem('firebase:previous_websocket_failure'); } catch (error) {}
+        steps.push('Firebase connection reset');
+
+        var after = updateMeter();
+        var freedMB = (parseFloat(before.totalMB) - parseFloat(after.totalMB)).toFixed(2);
+
+        status.className = 'status done';
+        status.innerHTML = '<strong>Reset complete. Freed ' + freedMB + ' MB.</strong><br>' +
+          'Before: ' + before.totalMB + ' MB. After: ' + after.totalMB + ' MB.<br><br>' +
+          steps.join('<br>') +
+          '<br><br><strong>Open Hub</strong> to reload the standalone app.';
+        resetBtn.textContent = 'Reset Complete';
+        openBtn.disabled = false;
+      } catch (error) {
+        status.className = 'status error';
+        status.textContent = 'Reset failed: ' + error.message;
+        resetBtn.disabled = false;
+        resetBtn.textContent = 'Reset Hub';
+        openBtn.disabled = false;
+      }
+    }
+
+    document.getElementById('resetBtn').addEventListener('click', doReset);
+    document.getElementById('openBtn').addEventListener('click', function() {
+      window.location.href = './artsteel-hub.html';
+    });
+
+    unregisterServiceWorkers().catch(function() {});
+    updateMeter();
+  </script>
+</body>
+</html>

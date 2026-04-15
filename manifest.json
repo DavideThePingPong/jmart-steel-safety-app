@@ -3,7 +3,7 @@
   "name": "JMart Steel Safety App",
   "short_name": "JMart Safety",
   "description": "Safety management app for JMart Steel - NSW Operations. Pre-Start Checklists, Site Inspections, ITP Forms, Toolbox Talks.",
-  "start_url": "./index.html",
+  "start_url": "./jmart-safety-app.html?v=20260404-safetyfinal",
   "display": "standalone",
   "background_color": "#f3f4f6",
   "theme_color": "#ea580c",
@@ -42,13 +42,13 @@
       "name": "New Pre-Start",
       "short_name": "Pre-Start",
       "description": "Start a new Pre-Start checklist",
-      "url": "./index.html?action=prestart"
+      "url": "./jmart-safety-app.html?v=20260404-safetyfinal&action=prestart"
     },
     {
       "name": "Site Inspection",
       "short_name": "Inspection",
       "description": "Start a new site inspection",
-      "url": "./index.html?action=inspection"
+      "url": "./jmart-safety-app.html?v=20260404-safetyfinal&action=inspection"
     }
   ],
   "related_applications": [],

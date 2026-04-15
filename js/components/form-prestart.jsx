@@ -7,7 +7,7 @@
 // Template utilities are now in hooks.jsx (shared with dashboard/camera)
 // getPrestartTemplateKey is available via window.getPrestartTemplateKey
 
-function PrestartView({ onSubmit, onUpdate, editingForm, previousPrestarts = [], sites = [], savedTemplates = [], onUpsertTemplate, templateToLoad, onTemplateLoaded }) {
+function PrestartView({ onSubmit, onUpdate, editingForm, sites = [], savedTemplates = [], onUpsertTemplate, templateToLoad, onTemplateLoaded }) {
   const isEditing = !!editingForm;
   const editData = editingForm?.data || {};
 
@@ -26,13 +26,14 @@ function PrestartView({ onSubmit, onUpdate, editingForm, previousPrestarts = [],
   const [formDate, setFormDate] = useState(editData.date ? new Date(editData.date) : new Date());
   const [templateAction, setTemplateAction] = useState({ mode: null, key: '' });
   const [lastSubmittedTemplate, setLastSubmittedTemplate] = useState(null);
+  const [loadedTemplateMeta, setLoadedTemplateMeta] = useState(null);
 
   // Helper to ensure media fields have proper structure
-  const ensureMediaStructure = (data) => ({
+  const ensureMediaStructure = useCallback((data) => ({
     value: data?.value || '',
     notes: Array.isArray(data?.notes) ? data.notes : [],
     media: Array.isArray(data?.media) ? data.media : []
-  });
+  }), []);
 
   const [workAreas, setWorkAreas] = useState(ensureMediaStructure(editData.workAreas));
   const [tasksThisShift, setTasksThisShift] = useState(ensureMediaStructure(editData.tasksThisShift));
@@ -81,9 +82,10 @@ function PrestartView({ onSubmit, onUpdate, editingForm, previousPrestarts = [],
     setSignatures(data.signatures || FORM_CONSTANTS.emptySignatures());
     setLastSubmittedTemplate(null);
     setTemplateAction({ mode: null, key: '' });
+    setLoadedTemplateMeta(null);
     setSubmitted(false);
     setValidationErrors([]);
-  }, [editingForm]);
+  }, [editingForm, ensureMediaStructure]);
 
   const displayDate = formDate.toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const displayTime = formDate.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
@@ -92,26 +94,18 @@ function PrestartView({ onSubmit, onUpdate, editingForm, previousPrestarts = [],
   const teamMembers = FORM_CONSTANTS.teamMembers;
   const checklistTypes = FORM_CONSTANTS.checklistTypes;
   const checklistItems = FORM_CONSTANTS.checklistItems;
-  const availablePrestarts = [
-    ...savedTemplates
-      .slice()
-      .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))
-      .map((template) => ({
-        ...template,
-        sourceLabel: 'Saved Template'
-      })),
-    ...previousPrestarts
-      .filter((form) => {
-        const templateKey = getPrestartTemplateKey(form.data);
-        return !templateKey || !savedTemplates.some((template) => template.templateKey === templateKey);
-      })
-      .slice()
-      .sort((a, b) => new Date(b.data?.date || b.createdAt || 0) - new Date(a.data?.date || a.createdAt || 0))
-      .map((form) => ({
-        ...form,
-        sourceLabel: 'Previous Submission'
-      }))
-  ];
+  const availablePrestarts = savedTemplates
+    .slice()
+    .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))
+    .map((template) => ({
+      ...template,
+      sourceLabel: template.sourceLabel || 'Saved Template'
+    }));
+  const savedTemplateKeys = useMemo(() => new Set(
+    savedTemplates
+      .filter((template) => template?.templateKey && (template?.sourceType === 'template' || template?.isSavedTemplate))
+      .map((template) => template.templateKey)
+  ), [savedTemplates]);
 
   const clonePrestartValue = (value) => {
     try {
@@ -195,7 +189,7 @@ function PrestartView({ onSubmit, onUpdate, editingForm, previousPrestarts = [],
     return errors;
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const errors = validateForm();
     if (errors.length > 0) {
       setValidationErrors(errors);
@@ -218,35 +212,34 @@ function PrestartView({ onSubmit, onUpdate, editingForm, previousPrestarts = [],
     } else {
       const reusableTemplate = buildReusableTemplate(formData);
       const templateKey = getPrestartTemplateKey(reusableTemplate);
-      const matchingSavedTemplate = templateKey ? savedTemplates.find((template) => template.templateKey === templateKey) : null;
-      const matchingPreviousPrestart = templateKey
-        ? previousPrestarts
-          .filter((form) => getPrestartTemplateKey(form.data) === templateKey)
-          .sort((a, b) => new Date(b.data?.date || b.createdAt || 0) - new Date(a.data?.date || a.createdAt || 0))[0]
-        : null;
-      const hasExistingTemplate = !!(matchingSavedTemplate || matchingPreviousPrestart);
+      const templateJobName = reusableTemplate.siteConducted || reusableTemplate.builder || 'this job';
+
+      let nextTemplateStatus = null;
+      const hasSavedTemplate = templateKey ? savedTemplateKeys.has(templateKey) : false;
+
+      if (templateKey && !hasSavedTemplate) {
+        upsertSavedTemplate(reusableTemplate);
+        nextTemplateStatus = 'created';
+      } else if (
+        templateKey
+        && loadedTemplateMeta?.templateKey === templateKey
+        && loadedTemplateMeta?.sourceType === 'template'
+      ) {
+        const shouldUpdateTemplate = await ConfirmDialog.show(`Use this pre-start as the new reusable template for ${templateJobName}?`, { title: 'Update Template', confirmLabel: 'Update Template' });
+        if (shouldUpdateTemplate) {
+          upsertSavedTemplate(reusableTemplate);
+          nextTemplateStatus = 'updated';
+        }
+      }
 
       onSubmit(formData, {
         successModalProps: {
-          templateStatus: templateKey && !hasExistingTemplate ? 'auto-saved' : (templateKey ? 'replaceable' : null),
-          templateJobName: reusableTemplate.siteConducted || reusableTemplate.builder || 'this job',
-          onUseSubmittedTemplate: templateKey ? () => upsertSavedTemplate(reusableTemplate) : null,
-          onKeepExistingTemplate: (!matchingSavedTemplate && matchingPreviousPrestart)
-            ? () => upsertSavedTemplate(buildReusableTemplate(matchingPreviousPrestart.data))
-            : null
+          templateStatus: nextTemplateStatus,
+          templateJobName
         }
       });
       setLastSubmittedTemplate(reusableTemplate);
-
-      if (templateKey && !hasExistingTemplate) {
-        upsertSavedTemplate(reusableTemplate);
-        setTemplateAction({ mode: 'auto-saved', key: templateKey });
-      } else if (templateKey) {
-        setTemplateAction({ mode: 'replaceable', key: templateKey });
-      } else {
-        setTemplateAction({ mode: null, key: '' });
-      }
-
+      setTemplateAction({ mode: nextTemplateStatus, key: templateKey || '' });
       setSubmitted(true);
     }
   };
@@ -271,20 +264,12 @@ function PrestartView({ onSubmit, onUpdate, editingForm, previousPrestarts = [],
     setSignatures(FORM_CONSTANTS.emptySignatures());
     setLastSubmittedTemplate(null);
     setTemplateAction({ mode: null, key: '' });
+    setLoadedTemplateMeta(null);
     setSubmitted(false);
   };
 
-  const keepExistingTemplate = () => {
-    setTemplateAction((current) => ({ ...current, mode: 'kept' }));
-  };
-
-  const replaceExistingTemplate = () => {
-    if (!lastSubmittedTemplate) return;
-    const templateKey = upsertSavedTemplate(lastSubmittedTemplate);
-    setTemplateAction({ mode: 'replaced', key: templateKey });
-  };
-
-  if (submitted) {
+  const submittedView = submitted ? (
+    (() => {
     const signedCount = Object.values(signatures).filter(s => s !== null).length;
     const submittedJobName = lastSubmittedTemplate?.siteConducted || siteConducted || 'this job';
     return (
@@ -293,44 +278,28 @@ function PrestartView({ onSubmit, onUpdate, editingForm, previousPrestarts = [],
         <h2 className="text-2xl font-bold text-gray-800 mb-2">{isEditing ? 'Pre-Start Updated!' : 'Pre-Start Complete!'}</h2>
         <p className="text-gray-600 mb-2">{isEditing ? 'Your changes have been saved.' : 'Your checklist has been recorded.'}</p>
         <p className="text-sm text-gray-500 mb-6">{signedCount} worker(s) signed on</p>
-        {!isEditing && templateAction.mode === 'auto-saved' && (
+        {!isEditing && templateAction.mode === 'created' && (
           <div className="max-w-md mx-auto mb-4 bg-green-50 border border-green-200 rounded-xl p-4 text-left">
-            <p className="font-semibold text-green-800">Saved for reuse</p>
-            <p className="text-sm text-green-700">This is now the saved pre-start template for {submittedJobName}.</p>
+            <p className="font-semibold text-green-800">Job template created</p>
+            <p className="text-sm text-green-700">A reusable template has been created for {submittedJobName} from this pre-start.</p>
           </div>
         )}
-        {!isEditing && templateAction.mode === 'replaceable' && (
-          <div className="max-w-md mx-auto mb-4 bg-blue-50 border border-blue-200 rounded-xl p-4 text-left space-y-3">
-            <div>
-              <p className="font-semibold text-blue-800">Saved pre-start already exists</p>
-              <p className="text-sm text-blue-700">Choose whether to replace the saved pre-start for {submittedJobName} or keep the old one.</p>
-            </div>
-            <div className="flex flex-col gap-2">
-              <button onClick={replaceExistingTemplate} className="bg-blue-600 text-white px-4 py-3 rounded-lg font-semibold">Use This As Saved Template</button>
-              <button onClick={keepExistingTemplate} className="border border-blue-300 text-blue-700 px-4 py-3 rounded-lg font-semibold">Keep Old Saved Template</button>
-            </div>
-          </div>
-        )}
-        {!isEditing && templateAction.mode === 'replaced' && (
+        {!isEditing && templateAction.mode === 'updated' && (
           <div className="max-w-md mx-auto mb-4 bg-green-50 border border-green-200 rounded-xl p-4 text-left">
-            <p className="font-semibold text-green-800">Saved template updated</p>
-            <p className="text-sm text-green-700">Future pre-starts for {submittedJobName} will start from this version.</p>
-          </div>
-        )}
-        {!isEditing && templateAction.mode === 'kept' && (
-          <div className="max-w-md mx-auto mb-4 bg-gray-50 border border-gray-200 rounded-xl p-4 text-left">
-            <p className="font-semibold text-gray-800">Existing saved template kept</p>
-            <p className="text-sm text-gray-600">The old saved pre-start for {submittedJobName} will stay as the reusable version.</p>
+            <p className="font-semibold text-green-800">Job template refreshed</p>
+            <p className="text-sm text-green-700">The latest completed pre-start for {submittedJobName} is now the reusable template for that job.</p>
           </div>
         )}
         <button onClick={resetForm} className="bg-orange-600 text-white px-6 py-3 rounded-lg font-semibold">{isEditing ? 'Back to Dashboard' : 'Start Another Check'}</button>
       </div>
     );
-  }
+  })()
+  ) : null;
 
-  // Function to load data from a previous prestart
-  const loadFromPrevious = (previousForm) => {
+  // Function to load data from a saved reusable prestart template
+  const loadFromPrevious = useCallback((previousForm) => {
     const data = previousForm.data;
+    const nextTemplateKey = previousForm.templateKey || getPrestartTemplateKey(data);
 
     // Set checklist type and move to step 2
     setCheckType(data.type);
@@ -367,9 +336,13 @@ function PrestartView({ onSubmit, onUpdate, editingForm, previousPrestarts = [],
     setSignatures(FORM_CONSTANTS.emptySignatures()); // Clear all signatures
 
     // Close modal and go to step 2
+    setLoadedTemplateMeta({
+      templateKey: nextTemplateKey,
+      sourceType: previousForm.sourceType || (previousForm.isSavedTemplate ? 'template' : 'form')
+    });
     setShowPreviousList(false);
     setStep(2);
-  };
+  }, [ensureMediaStructure]);
 
   // Handle template loaded from dashboard card
   useEffect(() => {
@@ -377,28 +350,32 @@ function PrestartView({ onSubmit, onUpdate, editingForm, previousPrestarts = [],
       loadFromPrevious(templateToLoad);
       if (onTemplateLoaded) onTemplateLoaded();
     }
-  }, [templateToLoad, isEditing]);
+  }, [templateToLoad, isEditing, loadFromPrevious, onTemplateLoaded]);
+
+  if (submittedView) {
+    return submittedView;
+  }
 
   if (step === 1) {
     return (
       <div className="space-y-4">
-        {/* Previous Prestarts Modal */}
+        {/* Saved Pre-Starts Modal */}
         {showPreviousList && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-xl w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col">
               <div className="p-4 border-b flex items-center justify-between">
-                <h3 className="text-lg font-bold text-gray-800">Load from Previous</h3>
+                <h3 className="text-lg font-bold text-gray-800">Load Previous Pre-Start</h3>
                 <button onClick={() => setShowPreviousList(false)} className="text-gray-500 text-xl">✕</button>
               </div>
               <div className="overflow-y-auto flex-1 p-4">
                 {availablePrestarts.length === 0 ? (
                   <div className="text-center py-8 text-gray-500">
-                    <p>No saved pre-starts found.</p>
-                    <p className="text-sm mt-2">Complete a pre-start first and it will stay here for reuse.</p>
+                    <p>No reusable pre-starts found.</p>
+                    <p className="text-sm mt-2">Complete a pre-start first and it will appear here for reuse.</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    <p className="text-sm text-gray-600 mb-3">Select a saved pre-start to copy. Signatures, notes, and date will be reset.</p>
+                    <p className="text-sm text-gray-600 mb-3">Select a saved template or previous pre-start to copy. Signatures, notes, and date will be reset.</p>
                     {availablePrestarts.slice(0, 20).map((form) => {
                       const formDate = new Date(form.data.date || form.createdAt);
                       const typeInfo = checklistTypes.find(t => t.id === form.data.type);
@@ -436,7 +413,7 @@ function PrestartView({ onSubmit, onUpdate, editingForm, previousPrestarts = [],
           <p className="text-gray-500 text-sm mt-1">Select the type of pre-start check</p>
         </div>
 
-        {/* Load from Previous Button */}
+        {/* Load Saved Pre-Start Button */}
         {availablePrestarts.length > 0 && (
           <button
             onClick={() => setShowPreviousList(true)}
@@ -444,15 +421,15 @@ function PrestartView({ onSubmit, onUpdate, editingForm, previousPrestarts = [],
           >
             <span className="text-2xl">📄</span>
             <div className="text-left">
-              <p className="font-semibold text-blue-700">Copy Saved Pre-Start</p>
-              <p className="text-sm text-blue-600">Reuse the saved setup for the same job on another day</p>
+              <p className="font-semibold text-blue-700">Copy Previous Pre-Start</p>
+              <p className="text-sm text-blue-600">Reuse a saved template or a previous job setup</p>
             </div>
           </button>
         )}
 
         <div className="grid grid-cols-2 gap-3">
           {checklistTypes.map((type) => (
-            <button key={type.id} onClick={() => { setCheckType(type.id); setStep(2); }}
+            <button key={type.id} onClick={() => { setLoadedTemplateMeta(null); setCheckType(type.id); setStep(2); }}
               className="bg-white rounded-xl p-4 shadow-sm flex flex-col items-center gap-3 hover:shadow-md">
               <div className={`w-14 h-14 ${type.color} rounded-full flex items-center justify-center text-2xl`}>{type.emoji}</div>
               <span className="font-medium text-gray-700 text-center">{type.label}</span>

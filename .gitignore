@@ -1,11 +1,21 @@
 # Dependencies
 node_modules/
+.npm-cache/
 
 # Build outputs
 dist/
 build/
 js/app.js
 .firebase/
+
+# Ephemeral artefacts — not source
+output/
+backups/
+deploy-hosting-*.log
+deploy-*.log
+tmp-*.js
+icons*.backup-*/
+icons-*.backup-*/
 
 # Test coverage
 coverage/

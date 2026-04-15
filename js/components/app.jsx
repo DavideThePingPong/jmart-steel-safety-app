@@ -8,6 +8,7 @@ function JMartSteelSafetyApp({ isAdmin = false }) {
   const [sites, setSites] = useState([]);
   const [editingForm, setEditingForm] = useState(null);
   const [templateToLoad, setTemplateToLoad] = useState(null);
+  const legacyPrestartMigrationDoneRef = useRef(false);
 
   // Device Authorization
   const {
@@ -79,50 +80,11 @@ function JMartSteelSafetyApp({ isAdmin = false }) {
   }, [forms]);
 
   const prestartTemplates = useMemo(() => {
-    const latestTemplateByJob = new Map();
-
-    savedPrestartTemplates.forEach((template) => {
-      if (!template?.templateKey || !template?.data) return;
-      latestTemplateByJob.set(template.templateKey, {
-        ...template,
-        sourceType: 'template',
-        sourceLabel: 'Saved Template',
-        isSavedTemplate: true
-      });
-    });
-
-    recentPrestartForms.forEach((form) => {
-      const templateKey = getPrestartTemplateKey(form?.data);
-      if (!templateKey) return;
-
-      const fallbackTemplate = {
-        id: `recent-template-${form.id}`,
-        formId: form.id,
-        templateKey,
-        createdAt: form.createdAt || form.data?.date || new Date().toISOString(),
-        updatedAt: form.updatedAt || form.createdAt || form.data?.date || new Date().toISOString(),
-        data: { ...form.data },
-        sourceType: 'form',
-        sourceLabel: 'Recent Form',
-        isSavedTemplate: false
-      };
-
-      const existing = latestTemplateByJob.get(templateKey);
-      if (!existing) {
-        latestTemplateByJob.set(templateKey, fallbackTemplate);
-        return;
-      }
-
-      const existingTime = new Date(existing.updatedAt || existing.createdAt || existing.data?.date || 0).getTime();
-      const fallbackTime = new Date(fallbackTemplate.updatedAt || fallbackTemplate.createdAt || fallbackTemplate.data?.date || 0).getTime();
-      if (!existing.isSavedTemplate && fallbackTime > existingTime) {
-        latestTemplateByJob.set(templateKey, fallbackTemplate);
-      }
-    });
-
-    return Array.from(latestTemplateByJob.values())
+    return savedPrestartTemplates
+      .filter((template) => template?.templateKey && template?.data)
+      .map((template) => ({ ...template, sourceType: 'template', isSavedTemplate: true }))
       .sort((a, b) => new Date(b.updatedAt || b.createdAt || b.data?.date || 0) - new Date(a.updatedAt || a.createdAt || a.data?.date || 0));
-  }, [savedPrestartTemplates, recentPrestartForms]);
+  }, [savedPrestartTemplates]);
 
   const templateJobNames = useMemo(() => {
     const names = prestartTemplates
@@ -131,47 +93,34 @@ function JMartSteelSafetyApp({ isAdmin = false }) {
     return [...new Set(names)];
   }, [prestartTemplates]);
 
-  const reusablePrestarts = useMemo(() => {
-    const sourceMap = new Map();
+  useEffect(() => {
+    if (legacyPrestartMigrationDoneRef.current) return;
+    if (!recentPrestartForms.length) return;
 
-    prestartTemplates.forEach((template) => {
-      if (!template?.templateKey) return;
-      sourceMap.set(template.templateKey, {
-        ...template,
-        sourceType: template.sourceType || (template.isSavedTemplate ? 'template' : 'form'),
-        sourceLabel: template.sourceLabel || (template.isSavedTemplate ? 'Saved Template' : 'Recent Form')
-      });
-    });
+    const existingTemplateKeys = new Set(
+      (savedPrestartTemplates || [])
+        .filter((template) => template?.templateKey)
+        .map((template) => template.templateKey)
+    );
 
+    let migratedAny = false;
     recentPrestartForms.forEach((form) => {
       const templateKey = getPrestartTemplateKey(form?.data);
-      if (!templateKey || sourceMap.has(templateKey)) return;
-      sourceMap.set(templateKey, {
-        id: form.id,
-        formId: form.id,
-        templateKey,
-        createdAt: form.createdAt || form.data?.date || new Date().toISOString(),
-        updatedAt: form.updatedAt || form.createdAt || form.data?.date || new Date().toISOString(),
-        data: { ...form.data },
-        sourceType: 'form',
-        sourceLabel: 'Previous Form'
-      });
+      if (!templateKey || existingTemplateKeys.has(templateKey) || !form?.data) return;
+      upsertTemplate(form.data);
+      existingTemplateKeys.add(templateKey);
+      migratedAny = true;
     });
 
-    return Array.from(sourceMap.values()).sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
-  }, [prestartTemplates, recentPrestartForms]);
+    if (migratedAny || existingTemplateKeys.size > 0) {
+      legacyPrestartMigrationDoneRef.current = true;
+    }
+  }, [recentPrestartForms, savedPrestartTemplates, upsertTemplate]);
 
   const handleDeletePrestartTemplate = useCallback((item) => {
     if (!item?.templateKey) return;
-    if (!item.isSavedTemplate) {
-      const sourceFormId = item.formId || item.id;
-      if (sourceFormId) {
-        deleteForm(sourceFormId);
-        return;
-      }
-    }
     deleteTemplate(item.templateKey);
-  }, [deleteForm, deleteTemplate]);
+  }, [deleteTemplate]);
 
   const handleDeleteRecentPrestart = useCallback((item) => {
     if (!item) return;
@@ -207,6 +156,12 @@ function JMartSteelSafetyApp({ isAdmin = false }) {
       return updated;
     });
   }, [setForms]);
+
+  const handleModifyRecentPrestart = useCallback((form) => {
+    if (!form) return;
+    setEditingForm(form);
+    setCurrentView('prestart');
+  }, [setEditingForm, setCurrentView]);
 
   // PWA Install
   const { showInstallPrompt, handleInstall, dismissInstall } = usePWAInstall();
@@ -438,9 +393,9 @@ function JMartSteelSafetyApp({ isAdmin = false }) {
       )}
 
       <main className="flex-1 p-4 pb-20">
-        {currentView === 'dashboard' && <Dashboard setCurrentView={setCurrentView} forms={forms} onViewForm={setViewFormModal} isFormBackedUp={isFormBackedUp} sites={sites} prestartTemplates={prestartTemplates} recentPrestartForms={recentPrestartForms} templateJobNames={templateJobNames} onDeleteTemplate={handleDeletePrestartTemplate} onDeleteRecentPrestart={handleDeleteRecentPrestart} onArchivePrestart={archiveForm} onEditRecentPrestart={handleEditRecentPrestart} onSelectTemplate={(template) => { setTemplateToLoad(template); setCurrentView('prestart'); }} />}
+      {currentView === 'dashboard' && <Dashboard setCurrentView={setCurrentView} forms={forms} onViewForm={setViewFormModal} isFormBackedUp={isFormBackedUp} sites={sites} prestartTemplates={prestartTemplates} recentPrestartForms={recentPrestartForms} templateJobNames={templateJobNames} onDeleteTemplate={handleDeletePrestartTemplate} onDeleteRecentPrestart={handleDeleteRecentPrestart} onArchivePrestart={archiveForm} onEditRecentPrestart={handleEditRecentPrestart} onModifyRecentPrestart={handleModifyRecentPrestart} onSelectTemplate={(template) => { setTemplateToLoad(template); setCurrentView('prestart'); }} />}
         {currentView === 'training' && <TrainingView />}
-        {currentView === 'prestart' && <PrestartView onSubmit={(data, options) => addForm('prestart', data, options)} onUpdate={updateForm} editingForm={editingForm?.type === 'prestart' ? editingForm : null} sites={sites} savedTemplates={reusablePrestarts} onUpsertTemplate={upsertTemplate} templateToLoad={templateToLoad} onTemplateLoaded={() => setTemplateToLoad(null)} />}
+      {currentView === 'prestart' && <PrestartView onSubmit={(data, options) => addForm('prestart', data, options)} onUpdate={updateForm} editingForm={editingForm?.type === 'prestart' ? editingForm : null} sites={sites} savedTemplates={prestartTemplates} onUpsertTemplate={upsertTemplate} templateToLoad={templateToLoad} onTemplateLoaded={() => setTemplateToLoad(null)} />}
         {currentView === 'steel-itp' && <SteelITPView onSubmit={(data) => addForm('steel-itp', data)} onUpdate={updateForm} editingForm={editingForm?.type === 'steel-itp' ? editingForm : null} sites={sites} />}
         {currentView === 'inspection' && <SubcontractorInspectionView onSubmit={(data) => addForm('inspection', data)} onUpdate={updateForm} editingForm={editingForm?.type === 'inspection' ? editingForm : null} sites={sites} />}
         {currentView === 'itp' && <ITPFormView onSubmit={(data) => addForm('itp', data)} onUpdate={updateForm} editingForm={editingForm?.type === 'itp' ? editingForm : null} sites={sites} />}

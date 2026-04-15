@@ -121,6 +121,20 @@ describe('JMartSteelSafetyApp — hooks and props', () => {
   it('should sync sites on change with useEffect', () => {
     expect(code).toMatch(/syncSitesEffect\(sites\)/);
   });
+
+  it('should perform a one-time legacy migration for recent pre-starts missing templates', () => {
+    expect(code).toMatch(/legacyPrestartMigrationDoneRef/);
+    expect(code).toMatch(/const\s+existingTemplateKeys\s*=\s*new Set/);
+    expect(code).toMatch(/recentPrestartForms\.forEach/);
+    expect(code).toMatch(/if\s*\(legacyPrestartMigrationDoneRef\.current\)\s*return/);
+  });
+
+  it('should derive dashboard templates strictly from savedPrestartTemplates', () => {
+    expect(code).toMatch(/const\s+prestartTemplates\s*=\s*useMemo/);
+    expect(code).toMatch(/return savedPrestartTemplates/);
+    expect(code).not.toMatch(/const\s+reusablePrestarts\s*=\s*useMemo/);
+    expect(code).toMatch(/savedTemplates=\{prestartTemplates\}/);
+  });
 });
 
 // ==========================================================================

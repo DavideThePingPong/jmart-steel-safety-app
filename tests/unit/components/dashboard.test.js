@@ -1,8 +1,10 @@
 /**
- * dashboard.test.js — Code-structure tests for Dashboard (dashboard.jsx)
+ * dashboard.test.js - Code-structure tests for Dashboard (dashboard.jsx)
  *
- * Verifies form type labels, default sites fallback, recent forms limit,
- * photo upload flow, and component structure.
+ * Guards the simplified pre-start UX:
+ * - camera job list comes from saved job templates
+ * - dashboard shows one template list plus one recent history list
+ * - recent history supports archive and delete actions
  */
 
 const fs = require('fs');
@@ -15,57 +17,59 @@ beforeAll(() => {
   code = fs.readFileSync(dashboardPath, 'utf-8');
 });
 
-// ==========================================================================
-// Form Type Labels
-// ==========================================================================
-describe('Dashboard — form type labels', () => {
-  const expectedFormTypes = ['prestart', 'inspection', 'itp', 'incident', 'toolbox', 'steel-itp'];
-
-  expectedFormTypes.forEach(type => {
-    it(`should define label for "${type}" form type`, () => {
-      expect(code).toContain(`'${type}'`);
-    });
+describe('Dashboard - pre-start dashboard layout', () => {
+  it('should derive camera jobs from templateJobNames', () => {
+    expect(code).toMatch(/const\s+allJobs\s*=\s*templateJobNames/);
   });
 
-  it('should define formTypeLabels object', () => {
-    expect(code).toMatch(/const\s+formTypeLabels\s*=/);
-  });
-});
-
-// ==========================================================================
-// Default Sites Fallback
-// ==========================================================================
-describe('Dashboard — default sites', () => {
-  it('should define defaultSites array', () => {
-    expect(code).toMatch(/const\s+defaultSites\s*=/);
+  it('should show a template-specific empty state for the camera menu', () => {
+    expect(code).toMatch(/No pre-start templates yet\. Complete a Pre-Start first\./);
   });
 
-  it('should use sites prop when available, fallback to defaults', () => {
-    expect(code).toMatch(/sites\.length\s*>\s*0\s*\?\s*sites\s*:\s*defaultSites/);
+  it('should render one template list and one recent history list', () => {
+    expect(code).toMatch(/Job Templates/);
+    expect(code).toMatch(/Recent Pre-Starts/);
+    expect(code).not.toMatch(/Recent Reusable Pre-Starts/);
+    expect(code).not.toMatch(/Previous Pre-Starts/);
+  });
+
+  it('should cap recent history from recentPrestartForms rather than templates', () => {
+    expect(code).toMatch(/const\s+sortedRecentPrestartForms\s*=\s*recentPrestartForms/);
+    expect(code).not.toMatch(/recentTemplateItems/);
+  });
+
+  it('should exclude archived pre-starts from the stat tile', () => {
+    expect(code).toMatch(/form\.type === 'prestart' && form\.status !== 'archived'/);
   });
 });
 
-// ==========================================================================
-// Recent Forms
-// ==========================================================================
-describe('Dashboard — recent forms', () => {
-  it('should limit recent forms to 10', () => {
-    expect(code).toMatch(/forms\.slice\(\s*0\s*,\s*10\s*\)/);
+describe('Dashboard - recent pre-start actions', () => {
+  it('should expose an archive handler for recent forms', () => {
+    expect(code).toMatch(/const\s+handleArchivePrestart\s*=\s*async/);
+    expect(code).toMatch(/onArchivePrestart\(form\.id\)/);
   });
 
-  it('should display form site/location in recent forms list', () => {
-    expect(code).toMatch(/siteConducted/);
+  it('should expose a delete handler for recent forms', () => {
+    expect(code).toMatch(/const\s+handleDeleteRecentPrestart\s*=\s*async/);
+    expect(code).toMatch(/onDeleteRecentPrestart\(form\)/);
   });
 
-  it('should show backup status indicator', () => {
-    expect(code).toMatch(/isFormBackedUp/);
+  it('should render archive and delete actions for recent forms', () => {
+    expect(code).toMatch(/Archive to Firebase and Google Drive/);
+    expect(code).toMatch(/Delete recent pre-start/);
+  });
+
+  it('should keep template delete actions separate from recent archive actions', () => {
+    expect(code).toMatch(/title="Delete template"/);
+    expect(code).toMatch(/handleArchivePrestart\(form,\s*siteName\)/);
+  });
+
+  it('should delete recent pre-starts without deleting their job templates', () => {
+    expect(code).not.toMatch(/This also removes its reusable job template/);
   });
 });
 
-// ==========================================================================
-// Photo Upload Flow
-// ==========================================================================
-describe('Dashboard — photo upload', () => {
+describe('Dashboard - photo upload', () => {
   it('should have camera and gallery input refs', () => {
     expect(code).toMatch(/cameraInputRef/);
     expect(code).toMatch(/galleryInputRef/);
@@ -80,10 +84,6 @@ describe('Dashboard — photo upload', () => {
     expect(code).toMatch(/failCount/);
   });
 
-  it('should handle job selection with handleJobSelect', () => {
-    expect(code).toMatch(/handleJobSelect/);
-  });
-
   it('should have camera and gallery buttons in menu', () => {
     expect(code).toMatch(/Take Photo/);
     expect(code).toMatch(/Choose from Gallery/);
@@ -94,37 +94,21 @@ describe('Dashboard — photo upload', () => {
   });
 });
 
-// ==========================================================================
-// Quick Actions
-// ==========================================================================
-describe('Dashboard — quick actions', () => {
+describe('Dashboard - quick actions and exports', () => {
   it('should have Quick Actions section', () => {
     expect(code).toMatch(/Quick Actions/);
   });
 
-  it('should include Pre-Start in quick actions', () => {
+  it('should include Pre-Start and Recordings quick actions', () => {
     expect(code).toMatch(/Pre-Start/);
-  });
-
-  it('should include Recordings in quick actions', () => {
     expect(code).toMatch(/Recordings/);
   });
-});
 
-// ==========================================================================
-// Safety Reminder
-// ==========================================================================
-describe('Dashboard — safety reminder', () => {
-  it('should display daily safety reminder about PPE', () => {
+  it('should display the daily safety reminder', () => {
     expect(code).toMatch(/Daily Safety Reminder/);
     expect(code).toMatch(/PPE/);
   });
-});
 
-// ==========================================================================
-// Export
-// ==========================================================================
-describe('Dashboard — exports', () => {
   it('should export to window.Dashboard', () => {
     expect(code).toMatch(/window\.Dashboard\s*=\s*Dashboard/);
   });

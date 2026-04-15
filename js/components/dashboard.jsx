@@ -11,6 +11,7 @@ function Dashboard({
   onDeleteRecentPrestart,
   onArchivePrestart,
   onEditRecentPrestart,
+  onModifyRecentPrestart,
   onSelectTemplate
 }) {
   const todayDate = new Date().toLocaleDateString('en-AU', {
@@ -92,7 +93,7 @@ function Dashboard({
 
   const handleArchivePrestart = async (form, siteName) => {
     if (!onArchivePrestart || !form?.id) return;
-    const confirmed = window.confirm(`Archive "${siteName}"? This keeps it in Firebase and uploads an archive PDF to Google Drive when connected.`);
+    const confirmed = await ConfirmDialog.show(`Archive "${siteName}"? This keeps it in Firebase and uploads an archive PDF to Google Drive when connected.`, { title: 'Archive Pre-Start', confirmLabel: 'Archive' });
     if (!confirmed) return;
 
     setArchivingIds((prev) => [...prev, form.id]);
@@ -105,7 +106,7 @@ function Dashboard({
 
   const handleDeleteRecentPrestart = async (form, siteName) => {
     if (!onDeleteRecentPrestart || !form?.id) return;
-    const confirmed = window.confirm(`Delete "${siteName}" from Recent Pre-Starts? This also removes its reusable job template.`);
+    const confirmed = await ConfirmDialog.show(`Delete "${siteName}" from Recent Pre-Starts?`, { title: 'Delete Pre-Start', confirmLabel: 'Delete', destructive: true });
     if (!confirmed) return;
 
     setDeletingRecentIds((prev) => [...prev, form.id]);
@@ -117,6 +118,10 @@ function Dashboard({
   };
 
   const handleModifyPrestart = (form, siteName) => {
+    if (onModifyRecentPrestart) {
+      onModifyRecentPrestart(form);
+      return;
+    }
     const formDate = form.data?.date ? new Date(form.data.date) : new Date(form.updatedAt || form.createdAt);
     const dateStr = formDate.toISOString().split('T')[0];
     const timeStr = formDate.toTimeString().slice(0, 5);
@@ -484,7 +489,7 @@ function Dashboard({
                           handleModifyPrestart(form, siteName);
                         }}
                         className="text-gray-400 hover:text-blue-600 text-sm disabled:opacity-50"
-                        title="Modify date and time"
+                        title="Modify pre-start"
                         aria-label={`Modify ${siteName}`}
                         disabled={isBusy}
                       >

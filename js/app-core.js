@@ -1,5 +1,16 @@
 "use strict";
 
+// Production log gate — silences console.log in production unless ?debug is in the URL.
+// console.warn and console.error remain active.
+(function() {
+  var isDebug = window.location.search.indexOf('debug') !== -1 || window.__JMART_DEBUG__;
+  if (!isDebug) {
+    var noop = function() {};
+    window.__originalConsoleLog = console.log;
+    console.log = noop;
+  }
+})();
+
 // === js/components/shared.jsx ===
 // Shared components: Icon, LucideIcon, SignaturePad, NoteMediaBox
 // Extracted from index.html
