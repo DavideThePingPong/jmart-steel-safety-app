@@ -81,6 +81,36 @@
         ]
       },
       {
+        "source": "/",
+        "headers": [
+          { "key": "Cache-Control", "value": "no-cache, must-revalidate, max-age=0" }
+        ]
+      },
+      {
+        "source": "/index.html",
+        "headers": [
+          { "key": "Cache-Control", "value": "no-cache, must-revalidate, max-age=0" }
+        ]
+      },
+      {
+        "source": "/artsteel-hub.html",
+        "headers": [
+          { "key": "Cache-Control", "value": "no-cache, must-revalidate, max-age=0" }
+        ]
+      },
+      {
+        "source": "/sw.js",
+        "headers": [
+          { "key": "Cache-Control", "value": "no-cache, must-revalidate, max-age=0" }
+        ]
+      },
+      {
+        "source": "/hub-sw.js",
+        "headers": [
+          { "key": "Cache-Control", "value": "no-cache, must-revalidate, max-age=0" }
+        ]
+      },
+      {
         "source": "**",
         "headers": [
           {
