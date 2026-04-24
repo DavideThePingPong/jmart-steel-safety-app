@@ -36,12 +36,13 @@ const DeviceAuth = {
     ctx.fillText('JMart Device Fingerprint', 2, 2);
     const canvasData = canvas.toDataURL();
 
+    // Stable fingerprint: only physical/hardware traits that don't change with
+    // VPN exit nodes, browser updates, or locale switches.
+    // EXCLUDED on purpose: navigator.userAgent (changes on browser update),
+    // navigator.language (VPN/locale), getTimezoneOffset (VPN changes timezone).
     const fingerprint = [
-      navigator.userAgent,
-      navigator.language,
       screen.width + 'x' + screen.height,
       screen.colorDepth,
-      new Date().getTimezoneOffset(),
       canvasData.slice(-50),
       navigator.hardwareConcurrency || 'unknown',
       navigator.platform
@@ -55,7 +56,9 @@ const DeviceAuth = {
       hash = hash & hash;
     }
 
-    this.deviceId = 'DEV-' + Math.abs(hash).toString(36).toUpperCase() + '-' + Date.now().toString(36).toUpperCase();
+    // Deterministic ID: same fingerprint => same DEV-ID, even after localStorage clear.
+    // Previously included Date.now() which made every cache-clear a "new" device.
+    this.deviceId = 'DEV-' + Math.abs(hash).toString(36).toUpperCase();
     localStorage.setItem('jmart-device-id', this.deviceId);
     return this.deviceId;
   },
