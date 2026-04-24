@@ -5,6 +5,7 @@
   "main": "index.html",
   "scripts": {
     "build": "node scripts/build-jsx.js && node scripts/build-dist.js",
+    "deploy": "npm run build && firebase deploy --project jmart-steel-safety --only hosting,database --non-interactive",
     "lint": "eslint js/components/*.jsx js/*.js",
     "lint:fix": "eslint js/components/*.jsx js/*.js --fix",
     "backup:drive": "python scripts/backup-safety-data-to-drive.py",
