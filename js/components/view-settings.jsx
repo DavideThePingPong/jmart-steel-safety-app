@@ -112,6 +112,7 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
   const [deviceActionLoading, setDeviceActionLoading] = useState(null);
   const [editingDeviceId, setEditingDeviceId] = useState(null);
   const [editingDeviceName, setEditingDeviceName] = useState('');
+  const [myDeviceName, setMyDeviceName] = useState('');
   const [storageInfo, setStorageInfo] = useState(null);
   const [fixStatus, setFixStatus] = useState('');
   const [isFixing, setIsFixing] = useState(false);
@@ -130,6 +131,18 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
       return () => unsubscribe();
     }
   }, [isAdmin, canViewDevices, canRevokeDevices]);
+
+  // Listen to this device's own name (works for ALL users, including non-admins).
+  // Renames sync across devices because they all read the same Firebase node.
+  useEffect(() => {
+    if (!isFirebaseConfigured || !window.firebaseDb) return;
+    const myId = DeviceAuthManager.deviceId;
+    if (!myId) return;
+    const ref = window.firebaseDb.ref('jmart-safety/devices/approved/' + myId + '/name');
+    const handler = (snap) => setMyDeviceName(snap.val() || '');
+    ref.on('value', handler);
+    return () => ref.off('value', handler);
+  }, []);
 
   // Listen for Google Drive connection status changes (real-time, no timeout)
   useEffect(() => {
@@ -438,7 +451,51 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
         <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
           <span className="text-2xl">🔐</span> This Device
         </h3>
-        <div className="bg-gray-50 rounded-lg p-3 space-y-1">
+        <div className="bg-gray-50 rounded-lg p-3 space-y-2">
+          {/* Device name with inline rename — available to all users */}
+          {editingDeviceId === DeviceAuthManager.deviceId ? (
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={editingDeviceName}
+                onChange={(e) => setEditingDeviceName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSaveRename(DeviceAuthManager.deviceId);
+                  if (e.key === 'Escape') handleCancelRename();
+                }}
+                placeholder="Device name (e.g. Davide's iPhone)"
+                className="border border-gray-300 rounded px-2 py-1 text-sm flex-1 min-w-0"
+                autoFocus
+                maxLength={30}
+              />
+              <button
+                onClick={() => handleSaveRename(DeviceAuthManager.deviceId)}
+                className="text-white bg-green-600 hover:bg-green-700 text-sm font-medium px-3 py-1 rounded"
+                disabled={deviceActionLoading === DeviceAuthManager.deviceId}
+              >
+                {deviceActionLoading === DeviceAuthManager.deviceId ? '…' : 'Save'}
+              </button>
+              <button
+                onClick={handleCancelRename}
+                className="text-gray-600 text-sm font-medium px-2 py-1 rounded hover:bg-gray-200"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm">
+                <span className="text-gray-500">Name:</span>{' '}
+                <span className="font-medium">{myDeviceName || 'Unnamed device'}</span>
+              </p>
+              <button
+                onClick={() => handleStartRename({ id: DeviceAuthManager.deviceId, name: myDeviceName })}
+                className="text-blue-600 hover:text-blue-700 text-sm font-medium px-3 py-1 border border-blue-300 rounded hover:bg-blue-50"
+              >
+                Rename
+              </button>
+            </div>
+          )}
           <p className="text-sm"><span className="text-gray-500">Type:</span> <span className="font-medium">{DeviceAuth.deviceInfo?.type}</span></p>
           <p className="text-sm"><span className="text-gray-500">Browser:</span> <span className="font-medium">{DeviceAuth.deviceInfo?.browser}</span></p>
           <p className="text-sm"><span className="text-gray-500">Screen:</span> <span className="font-medium">{DeviceAuth.deviceInfo?.screen}</span></p>

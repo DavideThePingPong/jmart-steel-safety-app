@@ -904,10 +904,13 @@ const DeviceAuth = {
     return this.revokeDevice(deviceId);
   },
 
-  // Rename a device (admin only)
+  // Rename a device. Admin/canRevokeDevices can rename any device;
+  // any user can rename their OWN device.
   renameDevice: async function(targetDeviceId, newName) {
-    if (!firebaseDb || (!this.isAdmin && !this.canRevokeDevices)) return false;
+    if (!firebaseDb) return false;
     if (!newName || !newName.trim()) return false;
+    const isSelfRename = targetDeviceId === this.deviceId;
+    if (!this.isAdmin && !this.canRevokeDevices && !isSelfRename) return false;
     try {
       // Use firebaseRead (REST fallback) to check existence, then direct write for the update
       const approvedResult = await firebaseRead('jmart-safety/devices/approved/' + targetDeviceId);

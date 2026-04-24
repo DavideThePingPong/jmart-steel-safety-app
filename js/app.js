@@ -7903,6 +7903,7 @@ function SettingsView({
   const [deviceActionLoading, setDeviceActionLoading] = useState(null);
   const [editingDeviceId, setEditingDeviceId] = useState(null);
   const [editingDeviceName, setEditingDeviceName] = useState('');
+  const [myDeviceName, setMyDeviceName] = useState('');
   const [storageInfo, setStorageInfo] = useState(null);
   const [fixStatus, setFixStatus] = useState('');
   const [isFixing, setIsFixing] = useState(false);
@@ -7921,6 +7922,18 @@ function SettingsView({
       return () => unsubscribe();
     }
   }, [isAdmin, canViewDevices, canRevokeDevices]);
+
+  // Listen to this device's own name (works for ALL users, including non-admins).
+  // Renames sync across devices because they all read the same Firebase node.
+  useEffect(() => {
+    if (!isFirebaseConfigured || !window.firebaseDb) return;
+    const myId = DeviceAuthManager.deviceId;
+    if (!myId) return;
+    const ref = window.firebaseDb.ref('jmart-safety/devices/approved/' + myId + '/name');
+    const handler = snap => setMyDeviceName(snap.val() || '');
+    ref.on('value', handler);
+    return () => ref.off('value', handler);
+  }, []);
 
   // Listen for Google Drive connection status changes (real-time, no timeout)
   useEffect(() => {
@@ -8244,8 +8257,43 @@ function SettingsView({
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-2xl"
   }, "\uD83D\uDD10"), " This Device"), /*#__PURE__*/React.createElement("div", {
-    className: "bg-gray-50 rounded-lg p-3 space-y-1"
+    className: "bg-gray-50 rounded-lg p-3 space-y-2"
+  }, editingDeviceId === DeviceAuthManager.deviceId ? /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "text",
+    value: editingDeviceName,
+    onChange: e => setEditingDeviceName(e.target.value),
+    onKeyDown: e => {
+      if (e.key === 'Enter') handleSaveRename(DeviceAuthManager.deviceId);
+      if (e.key === 'Escape') handleCancelRename();
+    },
+    placeholder: "Device name (e.g. Davide's iPhone)",
+    className: "border border-gray-300 rounded px-2 py-1 text-sm flex-1 min-w-0",
+    autoFocus: true,
+    maxLength: 30
+  }), /*#__PURE__*/React.createElement("button", {
+    onClick: () => handleSaveRename(DeviceAuthManager.deviceId),
+    className: "text-white bg-green-600 hover:bg-green-700 text-sm font-medium px-3 py-1 rounded",
+    disabled: deviceActionLoading === DeviceAuthManager.deviceId
+  }, deviceActionLoading === DeviceAuthManager.deviceId ? '…' : 'Save'), /*#__PURE__*/React.createElement("button", {
+    onClick: handleCancelRename,
+    className: "text-gray-600 text-sm font-medium px-2 py-1 rounded hover:bg-gray-200"
+  }, "Cancel")) : /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between gap-2"
   }, /*#__PURE__*/React.createElement("p", {
+    className: "text-sm"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-gray-500"
+  }, "Name:"), ' ', /*#__PURE__*/React.createElement("span", {
+    className: "font-medium"
+  }, myDeviceName || 'Unnamed device')), /*#__PURE__*/React.createElement("button", {
+    onClick: () => handleStartRename({
+      id: DeviceAuthManager.deviceId,
+      name: myDeviceName
+    }),
+    className: "text-blue-600 hover:text-blue-700 text-sm font-medium px-3 py-1 border border-blue-300 rounded hover:bg-blue-50"
+  }, "Rename")), /*#__PURE__*/React.createElement("p", {
     className: "text-sm"
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-gray-500"
