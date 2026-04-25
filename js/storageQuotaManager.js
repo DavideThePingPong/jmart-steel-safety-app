@@ -355,16 +355,25 @@ StorageQuotaManager.safeFormsWrite = function(formsArray) {
   // Step 4: Write — if it still fails, progressively drop forms
   try {
     localStorage.setItem('jmart-safety-forms', json);
+    return { ok: true, written: stripped.length, droppedFromTrim: formsArray.length - stripped.length };
   } catch(e) {
     console.error('[safeFormsWrite] Write failed, emergency trim');
+    if (typeof ToastNotifier !== 'undefined') {
+      ToastNotifier.warning('Storage full — keeping only the 5 most recent forms locally. Firebase has the rest.');
+    }
     // Keep only 5 most recent forms
     stripped = stripped.slice(0, 5);
     try {
       localStorage.setItem('jmart-safety-forms', JSON.stringify(stripped));
+      return { ok: true, written: stripped.length, droppedFromTrim: formsArray.length - 5, emergencyTrim: true };
     } catch(e2) {
       // Give up on caching forms — app still works via Firebase
       try { localStorage.removeItem('jmart-safety-forms'); } catch(e3) {}
       console.error('[safeFormsWrite] Cannot cache forms — Firebase is source of truth');
+      if (typeof ToastNotifier !== 'undefined') {
+        ToastNotifier.error('Storage is completely full. Your forms are safe in Firebase but won\'t cache locally until you free space.');
+      }
+      return { ok: false, written: 0, droppedFromTrim: formsArray.length, error: e2.message };
     }
   }
 };

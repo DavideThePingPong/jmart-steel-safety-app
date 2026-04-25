@@ -346,6 +346,24 @@ const DeviceAuth = {
           }
         }
       }
+
+      // Prune stale admin UIDs — UIDs in adminAuthUids whose device record
+      // no longer exists in devices/approved. Without this, losing the only
+      // admin device (phone wiped, browser cleared) would leave the UID
+      // orphaned and prevent any other approved device from bootstrapping
+      // to admin (rule allows write only when adminAuthUids is empty).
+      const adminUidsResult = await firebaseRead('jmart-safety/adminAuthUids');
+      const adminUids = adminUidsResult.val || {};
+      const liveAuthUids = new Set(Object.values(devices).map(d => d && d.authUid).filter(Boolean));
+      for (const uid of Object.keys(adminUids)) {
+        if (!liveAuthUids.has(uid)) {
+          await firebaseDb.ref('jmart-safety/adminAuthUids/' + uid).remove();
+          console.warn('[DeviceAuth] Removed stale admin UID (no matching device):', uid);
+          if (typeof AuditLogManager !== 'undefined') {
+            AuditLogManager.log('cleanup', { action: 'Removed stale admin UID', uid });
+          }
+        }
+      }
     } catch (e) {
       console.warn('[DeviceAuth] Cleanup failed (non-fatal):', e.message);
     }

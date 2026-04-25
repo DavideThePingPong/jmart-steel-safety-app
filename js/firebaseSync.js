@@ -205,10 +205,21 @@ const FirebaseSync = {
       // Previously this case was ignored, and a single 5MB+ entry would be written
       // to localStorage, immediately filling storage.
       if (serialized.length > this.MAX_QUEUE_BYTES && this.pendingQueue.length === 1) {
-        console.warn('[FirebaseSync] Single queue entry too large (' + Math.round(serialized.length / 1024) + 'KB) — dropping it');
+        var droppedSize = Math.round(serialized.length / 1024);
+        console.warn('[FirebaseSync] Single queue entry too large (' + droppedSize + 'KB) — dropping it');
+        if (typeof ToastNotifier !== 'undefined') {
+          ToastNotifier.error('A form was too large to queue (' + droppedSize + 'KB). Try removing photos and resubmitting.');
+        }
         this.pendingQueue = [];
         serialized = '[]';
+      } else if (this.pendingQueue.length < (this._lastQueueLength || 0)) {
+        // We dropped some old entries to fit under the byte cap — warn the user
+        var dropped = (this._lastQueueLength || 0) - this.pendingQueue.length;
+        if (typeof ToastNotifier !== 'undefined' && dropped > 0) {
+          ToastNotifier.warning(dropped + ' older sync item' + (dropped === 1 ? '' : 's') + ' had to be dropped to free space.');
+        }
       }
+      this._lastQueueLength = this.pendingQueue.length;
       localStorage.setItem('jmart-sync-queue', serialized);
       // Reset consecutive error counter on success
       this.consecutiveStorageErrors = 0;
@@ -697,6 +708,7 @@ const FirebaseSync = {
     };
     const errorHandler = (error) => {
       console.error('Firebase form assets listener error:', error);
+      if (typeof ToastNotifier !== 'undefined') ToastNotifier.error('Form assets sync paused — connection lost');
       if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(error, 'firebase-form-assets-listener');
     };
     ref.on('value', handler, errorHandler);
@@ -713,6 +725,7 @@ const FirebaseSync = {
     };
     const errorHandler = (error) => {
       console.error('Firebase sites listener error:', error);
+      if (typeof ToastNotifier !== 'undefined') ToastNotifier.error('Sites sync paused — connection lost');
       if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(error, 'firebase-sites-listener');
     };
     ref.on('value', handler, errorHandler);
@@ -729,6 +742,7 @@ const FirebaseSync = {
     };
     const errorHandler = (error) => {
       console.error('Firebase training listener error:', error);
+      if (typeof ToastNotifier !== 'undefined') ToastNotifier.error('Training sync paused — connection lost');
       if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(error, 'firebase-training-listener');
     };
     ref.on('value', handler, errorHandler);
@@ -743,6 +757,7 @@ const FirebaseSync = {
     };
     const errorHandler = (error) => {
       console.error('Firebase signatures listener error:', error);
+      if (typeof ToastNotifier !== 'undefined') ToastNotifier.error('Signatures sync paused — connection lost');
       if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(error, 'firebase-signatures-listener');
     };
     ref.on('value', handler, errorHandler);

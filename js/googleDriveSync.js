@@ -176,6 +176,21 @@ const GoogleDriveSync = {
       throw new Error('Not connected to Google Drive');
     }
 
+    // Proactive token freshness check — Google access tokens last ~1hr.
+    // If we're past 55 min, refresh BEFORE the call rather than waiting for a 401.
+    // Eliminates the one-failed-call-then-retry pattern after long idle.
+    try {
+      var stored = localStorage.getItem('google-drive-token');
+      if (stored) {
+        var parsed = JSON.parse(stored);
+        var age = Date.now() - (parsed.savedAt || 0);
+        if (age > 55 * 60 * 1000) {
+          console.log('Drive token >55min old, refreshing proactively before API call');
+          this._silentReconnect();
+        }
+      }
+    } catch (_) { /* don't block API call on a parse error */ }
+
     // Add auth header
     options.headers = {
       ...options.headers,
