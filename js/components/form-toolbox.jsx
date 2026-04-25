@@ -20,7 +20,7 @@ function ToolboxView({ onSubmit, onUpdate, editingForm, sites = [] }) {
   const [validationErrors, setValidationErrors] = useState([]);
 
   const todayDate = new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-  const teamMembers = FORM_CONSTANTS.teamMembers;
+  const teamMembers = FORM_CONSTANTS.getActiveTeamMembers(signatures);
   const preparers = FORM_CONSTANTS.supervisors;
   const builders = FORM_CONSTANTS.builders;
   const sitesList = [...new Set((sites.length > 0 ? sites : FORM_CONSTANTS.defaultSites).filter(s => typeof s === 'string'))];

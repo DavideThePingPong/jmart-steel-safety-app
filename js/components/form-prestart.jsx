@@ -91,7 +91,7 @@ function PrestartView({ onSubmit, onUpdate, editingForm, sites = [], savedTempla
   const displayTime = formDate.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
   const builders = FORM_CONSTANTS.builders;
   const sitesList = [...new Set((sites.length > 0 ? sites : FORM_CONSTANTS.defaultSites).filter(s => typeof s === 'string'))];
-  const teamMembers = FORM_CONSTANTS.teamMembers;
+  const teamMembers = FORM_CONSTANTS.getActiveTeamMembers(signatures);
   const checklistTypes = FORM_CONSTANTS.checklistTypes;
   const checklistItems = FORM_CONSTANTS.checklistItems;
   const availablePrestarts = savedTemplates

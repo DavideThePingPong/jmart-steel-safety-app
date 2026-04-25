@@ -24,6 +24,16 @@ const FORM_CONSTANTS = {
     return sigs;
   },
 
+  // Returns the active worker list — defaults filtered by hidden flags + custom adds.
+  // A member is "hidden" when signatures has key '__hidden:NAME' set to true.
+  // Used everywhere instead of teamMembers directly so removed defaults stay removed.
+  getActiveTeamMembers: function(signatures) {
+    const sigs = signatures || {};
+    const visibleDefaults = this.teamMembers.filter(n => !sigs['__hidden:' + n]);
+    const customs = Object.keys(sigs).filter(n => !this.teamMembers.includes(n) && !n.startsWith('__hidden:'));
+    return [...visibleDefaults, ...customs];
+  },
+
   // Pre-Start Checklist Types
   checklistTypes: [
     { id: 'site', label: 'Site Pre-Start', emoji: '\u{1F3D7}\uFE0F', color: 'bg-blue-500' },

@@ -248,8 +248,8 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
 
   // Default team members from shared constants
   const defaultMembers = FORM_CONSTANTS.teamMembers;
-  // Get all members (default + any custom added via signatures)
-  const allMembers = [...new Set([...defaultMembers, ...Object.keys(signatures).filter(name => !defaultMembers.includes(name))])];
+  // Get all visible members — defaults minus hidden, plus customs.
+  const allMembers = FORM_CONSTANTS.getActiveTeamMembers(signatures);
 
   const saveSignature = (name, signatureData) => {
     const newSignatures = { ...signatures, [name]: signatureData };
@@ -263,21 +263,29 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
     onUpdateSignatures(newSignatures);
   };
 
-  const addNewMember = () => {
-    if (newMemberName.trim() && !allMembers.includes(newMemberName.trim())) {
-      // Add member with empty signature (will show "Add Signature" button)
-      const newSignatures = { ...signatures, [newMemberName.trim()]: null };
-      onUpdateSignatures(newSignatures);
-      setNewMemberName('');
-      setShowAddMember(false);
-    }
-  };
-
   const deleteMember = (name) => {
     if (!window.confirm('Remove "' + name + '" from the worker list? Their saved signature will also be deleted.')) return;
     const newSignatures = { ...signatures };
     delete newSignatures[name];
+    if (defaultMembers.includes(name)) {
+      // Default members are hardcoded in FORM_CONSTANTS — flag them as hidden so
+      // they don't reappear from teamMembers on next render.
+      newSignatures['__hidden:' + name] = true;
+    }
     onUpdateSignatures(newSignatures);
+  };
+
+  const addNewMember = () => {
+    if (newMemberName.trim() && !allMembers.includes(newMemberName.trim())) {
+      const newSignatures = { ...signatures, [newMemberName.trim()]: null };
+      // If they're re-adding a previously hidden default, clear the hidden flag.
+      if (defaultMembers.includes(newMemberName.trim())) {
+        delete newSignatures['__hidden:' + newMemberName.trim()];
+      }
+      onUpdateSignatures(newSignatures);
+      setNewMemberName('');
+      setShowAddMember(false);
+    }
   };
 
   const addSite = () => {
