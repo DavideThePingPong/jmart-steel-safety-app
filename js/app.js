@@ -2791,11 +2791,11 @@ function LoginScreen({
       className: "bg-white rounded-2xl shadow-xl p-6 w-full max-w-md"
     }, /*#__PURE__*/React.createElement("div", {
       className: "text-center mb-6"
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "w-20 h-20 bg-orange-500 rounded-2xl flex items-center justify-center mx-auto mb-4"
-    }, /*#__PURE__*/React.createElement("span", {
-      className: "text-4xl"
-    }, "\uD83D\uDEE1\uFE0F")), /*#__PURE__*/React.createElement("h1", {
+    }, /*#__PURE__*/React.createElement("img", {
+      src: "icons/icon-192x192.png",
+      alt: "J&M Artsteel",
+      className: "w-20 h-20 rounded-2xl mx-auto mb-4"
+    }), /*#__PURE__*/React.createElement("h1", {
       className: "text-2xl font-bold text-gray-800"
     }, "J&M Artsteel Safety"), /*#__PURE__*/React.createElement("p", {
       className: "text-gray-500 mt-2"
@@ -2899,11 +2899,11 @@ function LoginScreen({
     className: "bg-white rounded-2xl shadow-xl p-6 w-full max-w-md"
   }, /*#__PURE__*/React.createElement("div", {
     className: "text-center mb-6"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "w-20 h-20 bg-orange-500 rounded-2xl flex items-center justify-center mx-auto mb-4"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "text-4xl"
-  }, "\uD83D\uDEE1\uFE0F")), /*#__PURE__*/React.createElement("h1", {
+  }, /*#__PURE__*/React.createElement("img", {
+    src: "icons/icon-192x192.png",
+    alt: "J&M Artsteel",
+    className: "w-20 h-20 rounded-2xl mx-auto mb-4"
+  }), /*#__PURE__*/React.createElement("h1", {
     className: "text-2xl font-bold text-gray-800"
   }, "J&M Artsteel Safety"), /*#__PURE__*/React.createElement("p", {
     className: "text-gray-500 mt-2"
@@ -3009,11 +3009,11 @@ function AppWithAuth() {
       className: "min-h-screen bg-gray-100 flex items-center justify-center"
     }, /*#__PURE__*/React.createElement("div", {
       className: "text-center"
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "w-16 h-16 bg-orange-500 rounded-2xl flex items-center justify-center mx-auto mb-4 animate-pulse"
-    }, /*#__PURE__*/React.createElement("span", {
-      className: "text-3xl"
-    }, "\uD83D\uDEE1\uFE0F")), /*#__PURE__*/React.createElement("p", {
+    }, /*#__PURE__*/React.createElement("img", {
+      src: "icons/icon-192x192.png",
+      alt: "J&M Artsteel",
+      className: "w-20 h-20 rounded-2xl mx-auto mb-4 animate-pulse"
+    }), /*#__PURE__*/React.createElement("p", {
       className: "text-gray-600"
     }, authLoadingMessage)));
   }

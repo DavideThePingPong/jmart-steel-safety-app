@@ -132,9 +132,7 @@ function LoginScreen({ onAuthenticated, authStatus }) {
       <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md">
           <div className="text-center mb-6">
-            <div className="w-20 h-20 bg-orange-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <span className="text-4xl">🛡️</span>
-            </div>
+            <img src="icons/icon-192x192.png" alt="J&M Artsteel" className="w-20 h-20 rounded-2xl mx-auto mb-4" />
             <h1 className="text-2xl font-bold text-gray-800">J&M Artsteel Safety</h1>
             <p className="text-gray-500 mt-2">First Time Setup</p>
           </div>
@@ -265,9 +263,7 @@ function LoginScreen({ onAuthenticated, authStatus }) {
     <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md">
         <div className="text-center mb-6">
-          <div className="w-20 h-20 bg-orange-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <span className="text-4xl">🛡️</span>
-          </div>
+          <img src="icons/icon-192x192.png" alt="J&M Artsteel" className="w-20 h-20 rounded-2xl mx-auto mb-4" />
           <h1 className="text-2xl font-bold text-gray-800">J&M Artsteel Safety</h1>
           <p className="text-gray-500 mt-2">Enter password to access</p>
         </div>
@@ -398,9 +394,7 @@ function AppWithAuth() {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
         <div className="text-center">
-          <div className="w-16 h-16 bg-orange-500 rounded-2xl flex items-center justify-center mx-auto mb-4 animate-pulse">
-            <span className="text-3xl">🛡️</span>
-          </div>
+          <img src="icons/icon-192x192.png" alt="J&M Artsteel" className="w-20 h-20 rounded-2xl mx-auto mb-4 animate-pulse" />
           <p className="text-gray-600">{authLoadingMessage}</p>
         </div>
       </div>
