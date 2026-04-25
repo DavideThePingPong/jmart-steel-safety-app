@@ -1447,89 +1447,196 @@ function extractHannaJson(text, fallbackMessage) {
   return extractJsonObject(stripped, fallbackMessage);
 }
 
+// Hanna's primary OCR engine. Defaults to Qwen3 VL on OpenRouter for cost
+// (~$0.10/M tokens vs Anthropic Sonnet's ~$3/M) and falls back to Anthropic
+// Sonnet 4 only when OpenRouter returns 402/insufficient-credit. Other
+// errors (bad image, parse failure) surface to the user instead of silently
+// running up Anthropic costs.
+const HANNA_OPENROUTER_MODEL =
+  process.env.HANNA_OPENROUTER_MODEL || "qwen/qwen3-vl-30b-a3b-instruct";
+
+function isOpenRouterCreditError(status, body) {
+  if (status === 402) return true;
+  if (status === 429 && /credit|insufficient|balance|quota/i.test(String(body || ""))) return true;
+  // OpenRouter surfaces 200 with an error payload in some edge cases
+  if (typeof body === "string" && /insufficient.*credit|insufficient.*balance/i.test(body)) return true;
+  return false;
+}
+
+async function callOpenRouterVisionForReceipt(buffer, mediaType, prompt, apiKey, model) {
+  // OpenAI-compatible chat-completions endpoint. Image is data-URI encoded.
+  const dataUri = `data:${mediaType || "image/jpeg"};base64,${buffer.toString("base64")}`;
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      // OpenRouter recommends these for accounting / per-app routing limits.
+      "HTTP-Referer": "https://jmart-steel-safety.web.app",
+      "X-Title": "JMart Hanna Receipt Scanner",
+    },
+    body: JSON.stringify({
+      model: model || HANNA_OPENROUTER_MODEL,
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: prompt },
+            { type: "image_url", image_url: { url: dataUri } },
+          ],
+        },
+      ],
+      max_tokens: 1024,
+      temperature: 0,
+    }),
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    const err = new Error(`OpenRouter ${response.status}: ${text.slice(0, 300)}`);
+    err.openRouterStatus = response.status;
+    err.openRouterBody = text;
+    throw err;
+  }
+  let payload;
+  try { payload = JSON.parse(text); }
+  catch (e) { throw new Error("OpenRouter returned non-JSON response"); }
+  return extractOpenRouterMessageText(payload);
+}
+
+// Anthropic vision call for Hanna — kept as a named helper so both the
+// primary OpenRouter path and the credit-failure fallback can use it.
+async function callAnthropicVisionForReceipt(buffer, mediaType, prompt, apiKey) {
+  const payload = await callAnthropicMessages({
+    apiKey: apiKey,
+    model: HUB_VISION_MODEL,
+    maxTokens: 1024,
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "image", source: { type: "base64", media_type: mediaType || "image/jpeg", data: buffer.toString("base64") } },
+          { type: "text", text: prompt },
+        ],
+      },
+    ],
+  });
+  return extractResponseText(payload);
+}
+
+async function callAnthropicTextForReceipt(prompt, apiKey) {
+  const payload = await callAnthropicMessages({
+    apiKey: apiKey,
+    model: HUB_VISION_MODEL,
+    maxTokens: 1024,
+    messages: [{ role: "user", content: prompt }],
+  });
+  return extractResponseText(payload);
+}
+
+async function callAnthropicPdfForReceipt(buffer, prompt, apiKey) {
+  const payload = await callAnthropicMessages({
+    apiKey: apiKey,
+    model: HUB_VISION_MODEL,
+    maxTokens: 1024,
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "document", source: { type: "base64", media_type: "application/pdf", data: buffer.toString("base64") } },
+          { type: "text", text: prompt },
+        ],
+      },
+    ],
+  });
+  return extractResponseText(payload);
+}
+
 async function extractHannaReceiptData(filename, mediaType, buffer, secrets) {
   const ext = path.extname(filename || "").toLowerCase();
-  const anthropicKey = secrets && secrets.anthropicKey ? secrets.anthropicKey : "";
+  const anthropicKey = (secrets && secrets.anthropicKey) || "";
+  const openRouterKey = (secrets && secrets.openRouterKey) || "";
   const prompt = buildHannaReceiptPrompt();
-  let payload;
 
-  if (String(mediaType || "").startsWith("image/")) {
-    payload = await callAnthropicMessages({
-      apiKey: anthropicKey,
-      model: HUB_VISION_MODEL,
-      maxTokens: 1024,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "image",
-              source: {
-                type: "base64",
-                media_type: mediaType || "image/jpeg",
-                data: buffer.toString("base64"),
-              },
-            },
-            {
-              type: "text",
-              text: prompt,
-            },
-          ],
-        },
-      ],
-    });
-    return sanitizeHannaReceipt(extractHannaJson(extractResponseText(payload), "Receipt extraction returned invalid JSON"));
-  }
-
-  if (mediaType === "application/pdf" || ext === ".pdf") {
-    const pdfText = await extractPdfText(buffer);
-    if (pdfText) {
-      payload = await callAnthropicMessages({
-        apiKey: anthropicKey,
-        model: HUB_VISION_MODEL,
-        maxTokens: 1024,
-        messages: [
-          {
-            role: "user",
-            content:
-              "The following text was extracted from a receipt PDF.\n\n" +
-              pdfText +
-              "\n\n" +
-              prompt,
-          },
-        ],
-      });
-      return sanitizeHannaReceipt(extractHannaJson(extractResponseText(payload), "Receipt extraction returned invalid JSON"));
+  // Try OpenRouter Qwen (cheap) first, then Anthropic Sonnet on credit failure.
+  // Helper that picks the right Anthropic call shape per media type.
+  const fallbackAnthropic = async () => {
+    if (!anthropicKey) {
+      throw { status: 503, detail: "OpenRouter credits exhausted and no Anthropic fallback key configured" };
     }
+    console.warn("[Hanna] Falling back to Anthropic Sonnet 4 (OpenRouter unavailable or out of credit)");
+    if (String(mediaType || "").startsWith("image/")) {
+      return await callAnthropicVisionForReceipt(buffer, mediaType, prompt, anthropicKey);
+    }
+    if (mediaType === "application/pdf" || ext === ".pdf") {
+      const pdfText = await extractPdfText(buffer);
+      if (pdfText) return await callAnthropicTextForReceipt("The following text was extracted from a receipt PDF.\n\n" + pdfText + "\n\n" + prompt, anthropicKey);
+      return await callAnthropicPdfForReceipt(buffer, prompt, anthropicKey);
+    }
+    throw { status: 400, detail: "Unsupported receipt type" };
+  };
 
-    payload = await callAnthropicMessages({
-      apiKey: anthropicKey,
-      model: HUB_VISION_MODEL,
-      maxTokens: 1024,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "document",
-              source: {
-                type: "base64",
-                media_type: "application/pdf",
-                data: buffer.toString("base64"),
-              },
-            },
-            {
-              type: "text",
-              text: prompt,
-            },
-          ],
-        },
-      ],
-    });
-    return sanitizeHannaReceipt(extractHannaJson(extractResponseText(payload), "Receipt extraction returned invalid JSON"));
+  let rawText = "";
+  if (String(mediaType || "").startsWith("image/")) {
+    if (openRouterKey) {
+      try {
+        rawText = await callOpenRouterVisionForReceipt(buffer, mediaType, prompt, openRouterKey, HANNA_OPENROUTER_MODEL);
+      } catch (err) {
+        if (isOpenRouterCreditError(err.openRouterStatus, err.openRouterBody)) {
+          rawText = await fallbackAnthropic();
+        } else {
+          throw err;
+        }
+      }
+    } else {
+      rawText = await fallbackAnthropic();
+    }
+  } else if (mediaType === "application/pdf" || ext === ".pdf") {
+    // PDFs: try text extraction first (Qwen is text-only-friendly for PDFs),
+    // then OpenRouter text completion, then Anthropic fallback.
+    const pdfText = await extractPdfText(buffer);
+    if (openRouterKey && pdfText) {
+      try {
+        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${openRouterKey}`,
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://jmart-steel-safety.web.app",
+            "X-Title": "JMart Hanna Receipt Scanner",
+          },
+          body: JSON.stringify({
+            model: HANNA_OPENROUTER_MODEL,
+            messages: [{ role: "user", content: "The following text was extracted from a receipt PDF.\n\n" + pdfText + "\n\n" + prompt }],
+            max_tokens: 1024,
+            temperature: 0,
+          }),
+        });
+        const text = await response.text();
+        if (!response.ok) {
+          if (isOpenRouterCreditError(response.status, text)) {
+            rawText = await fallbackAnthropic();
+          } else {
+            throw new Error(`OpenRouter ${response.status}: ${text.slice(0, 300)}`);
+          }
+        } else {
+          rawText = extractOpenRouterMessageText(JSON.parse(text));
+        }
+      } catch (err) {
+        if (err && err.message && /OpenRouter/i.test(err.message)) {
+          rawText = await fallbackAnthropic();
+        } else {
+          throw err;
+        }
+      }
+    } else {
+      // Non-text PDF or no OpenRouter key — Anthropic handles document blocks natively.
+      rawText = await fallbackAnthropic();
+    }
+  } else {
+    throw { status: 400, detail: "Unsupported receipt type" };
   }
 
-  throw { status: 400, detail: "Unsupported receipt type" };
+  return sanitizeHannaReceipt(extractHannaJson(rawText, "Receipt extraction returned invalid JSON"));
 }
 
 function buildVictorSearchPrompt(input) {
@@ -1812,7 +1919,9 @@ exports.hannaScanReceipt = onRequest(
       /^http:\/\/localhost(?::\d+)?$/,
       /^http:\/\/127\.0\.0\.1(?::\d+)?$/,
     ],
-    secrets: [ANTHROPIC_API_KEY],
+    // OPENROUTER_API_KEY is the primary OCR engine (Qwen3 VL — cheap).
+    // ANTHROPIC_API_KEY is the credit-failure fallback only.
+    secrets: [OPENROUTER_API_KEY, ANTHROPIC_API_KEY],
   },
   async (req, res) => {
     if (req.method !== "POST") {
@@ -1838,6 +1947,7 @@ exports.hannaScanReceipt = onRequest(
 
       const receipt = await extractHannaReceiptData(filename, mimeType, buffer, {
         anthropicKey: ANTHROPIC_API_KEY.value() || "",
+        openRouterKey: OPENROUTER_API_KEY.value() || "",
       });
       res.json({ success: true, receipt });
     } catch (error) {
