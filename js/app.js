@@ -8072,8 +8072,10 @@ function SettingsView({
     delete newSignatures[name];
     if (defaultMembers.includes(name)) {
       // Default members are hardcoded in FORM_CONSTANTS — flag them as hidden so
-      // they don't reappear from teamMembers on next render.
-      newSignatures['__hidden:' + name] = true;
+      // they don't reappear from teamMembers on next render. Value is a string
+      // ('hidden') because firebase.rules.json validates each signature value as
+      // string-or-null; a boolean true would silently reject the whole sync.
+      newSignatures['__hidden:' + name] = 'hidden';
     }
     onUpdateSignatures(newSignatures);
   };
