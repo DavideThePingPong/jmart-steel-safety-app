@@ -391,30 +391,45 @@ StorageQuotaManager.safePhotoQueueWrite = function(queueArray) {
   var sorted = queueArray.slice().sort(function(a, b) {
     return new Date(b.queuedAt || 0) - new Date(a.queuedAt || 0);
   });
-  var json = JSON.stringify(sorted);
   var originalLength = sorted.length;
-  // If over budget, drop oldest items until it fits
+
+  // Step 1: drop ANY single item that ALONE exceeds the queue budget.
+  // Previously a single oversize photo triggered a full wipe at the end —
+  // losing the worker's other 4 photos along with the bad one. Now we drop
+  // only the bad item and keep the rest queued.
+  var oversizeDropped = 0;
+  sorted = sorted.filter(function(item) {
+    var itemBytes = 0;
+    try { itemBytes = JSON.stringify(item).length; } catch(e) { itemBytes = 0; }
+    if (itemBytes > StorageQuotaManager.MAX_PHOTO_QUEUE_BYTES) {
+      oversizeDropped++;
+      return false;
+    }
+    return true;
+  });
+
+  // Step 2: if the resulting array is still too big, drop oldest until it fits.
+  var json = JSON.stringify(sorted);
   while (json.length > this.MAX_PHOTO_QUEUE_BYTES && sorted.length > 1) {
-    sorted = sorted.slice(0, -1); // drop oldest
+    sorted = sorted.slice(0, -1); // drop oldest (already sorted newest-first)
     json = JSON.stringify(sorted);
   }
-  // Warn user if photos were dropped
-  var dropped = originalLength - sorted.length;
-  if (dropped > 0) {
-    console.warn('[safePhotoQueueWrite] Dropped ' + dropped + ' photo(s) due to storage limits');
-    if (typeof ToastNotifier !== 'undefined') ToastNotifier.warning(dropped + ' queued photo(s) dropped — storage full');
-  }
-  // If a single item is still over budget, skip caching entirely
-  if (json.length > this.MAX_PHOTO_QUEUE_BYTES) {
-    console.warn('[safePhotoQueueWrite] Single photo exceeds 1MB budget — skipping localStorage cache');
-    if (typeof ToastNotifier !== 'undefined') ToastNotifier.warning('Photo too large to queue offline');
-    try { localStorage.setItem('jmart-photo-queue', '[]'); } catch(e) {}
-    return;
+  var totalDropped = originalLength - sorted.length;
+  if (totalDropped > 0) {
+    console.warn('[safePhotoQueueWrite] Dropped ' + totalDropped + ' photo(s) due to storage limits (oversize: ' + oversizeDropped + ')');
+    if (typeof ToastNotifier !== 'undefined') {
+      if (oversizeDropped > 0) {
+        ToastNotifier.warning(oversizeDropped + ' photo(s) too large to queue — others kept');
+      } else {
+        ToastNotifier.warning(totalDropped + ' queued photo(s) dropped — storage full');
+      }
+    }
   }
   try {
     localStorage.setItem('jmart-photo-queue', json);
   } catch(e) {
     console.error('[safePhotoQueueWrite] Write failed — clearing queue from localStorage');
+    if (typeof ToastNotifier !== 'undefined') ToastNotifier.error('Photo queue lost — storage write failed');
     try { localStorage.removeItem('jmart-photo-queue'); } catch(e2) {}
   }
 };

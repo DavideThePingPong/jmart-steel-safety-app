@@ -123,7 +123,7 @@ function Dashboard({
       return;
     }
     const formDate = form.data?.date ? new Date(form.data.date) : new Date(form.updatedAt || form.createdAt);
-    const dateStr = formDate.toISOString().split('T')[0];
+    const dateStr = localDateStr(formDate);
     const timeStr = formDate.toTimeString().slice(0, 5);
     setEditDateTimeModal({ form, siteName, date: dateStr, time: timeStr });
   };

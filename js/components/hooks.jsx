@@ -175,6 +175,12 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
           }
         } catch (pdfErr) {
           console.error('PDF generation error:', pdfErr);
+          // Surface to user — silent failure here meant they thought the form
+          // was fully backed up but actually no PDF on disk and no Drive copy.
+          if (typeof ToastNotifier !== 'undefined') {
+            ToastNotifier.warning('Form saved, but PDF could not be generated. Open the form from Recent and try Download PDF again.');
+          }
+          if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(pdfErr, 'pdf-auto-save');
         }
       }, 500);
 
@@ -800,10 +806,14 @@ function useDataSync({ setForms, setSites, deletingFormRef, deletedFormIdsRef, s
           StorageQuotaManager.safeFormsWrite(mergedForms);
           console.log('Forms synced:', mergedForms.length, 'total');
         } else {
-          // Firebase returned empty. Only republish local forms if there is an actual
-          // queued local form write waiting to sync; otherwise treat Firebase as the
-          // source of truth so remote deletes clear stale local cache instead of
-          // resurrecting forms on other devices.
+          // Firebase returned empty. This is dangerous — it can also mean a
+          // transient permission glitch or rules-not-yet-loaded state at boot,
+          // not a genuine remote-empty. NEVER wipe local forms on the very
+          // first listener fire, because a fresh device that gets a glitched
+          // empty payload would lose all locally-cached forms it just loaded
+          // from localStorage. Only honor "remote empty ⇒ clear local" if we
+          // have observed a non-empty remote at least once this session
+          // (proves the listener works) AND there is no pending sync queue.
           let freshLocalForms = [];
           try {
             const freshLocal = localStorage.getItem('jmart-safety-forms');
@@ -813,11 +823,18 @@ function useDataSync({ setForms, setSites, deletingFormRef, deletedFormIdsRef, s
           if (freshLocalForms.length > 0 && hasQueuedFormSync()) {
             console.log('Firebase empty, pushing local forms to Firebase');
             FirebaseSync.syncForms(freshLocalForms);
-          } else {
+          } else if (previousRemoteIds.size > 0 && !hasQueuedFormSync()) {
+            // We've seen a non-empty remote before this fire — a real deletion
+            // happened. Safe to clear local.
             formsFromFirebaseRef.current = true;
             setForms([]);
             StorageQuotaManager.safeFormsWrite([]);
-            console.log('Firebase empty, clearing local forms cache');
+            console.log('Firebase empty after non-empty observation, clearing local forms cache');
+          } else {
+            // First-fire empty payload OR queue still pending. Keep local data
+            // exactly as-is until the listener proves itself with non-empty
+            // data, or until the queue drains.
+            console.log('Firebase empty on first observation — keeping local cache (avoiding accidental wipe)');
           }
         }
 

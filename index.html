@@ -92,17 +92,18 @@
   <script>
     window.__JMART_ASSET_VERSION__ = '20260404-safetyfinal';
 
-    // Force-update check: every page load, fetch /version.json (no-cache, cache-buster).
-    // If it doesn't match the version stored locally, nuke caches + service workers and
-    // reload — guarantees the latest deploy reaches the user even if a prior SW had
-    // pinned old assets. The version is stamped into index.html at build time and the
-    // matching version.json sits next to it; both are no-cache via firebase.json.
+    // Force-update check (TWO PASSES). Why two:
+    //   Pass A — sync localStorage compare: catches the "fresh HTML, old localStorage"
+    //   case immediately, BEFORE any other scripts run, so user sees no flash.
+    //   Pass B — async fetch of /version.json with cache-buster: catches the harder
+    //   case where this HTML itself was served from a stale cache (so embedded
+    //   version is also old, localStorage still matches). version.json is written
+    //   fresh every build by scripts/build-dist.js and served no-cache via
+    //   firebase.json — so this fetch always reflects the live deploy.
     (function forceUpdateCheck() {
       var thisVersion = window.__JMART_ASSET_VERSION__;
-      var stored = null;
-      try { stored = localStorage.getItem('jmart-asset-version'); } catch (_) {}
-      if (stored && stored !== thisVersion) {
-        console.log('[FORCE-UPDATE] Version mismatch — wiping caches/SW and reloading. ' + stored + ' → ' + thisVersion);
+      function nukeAndReload(targetVersion, reason) {
+        console.log('[FORCE-UPDATE] ' + reason + ' — wiping caches/SW and reloading.');
         var nukes = [];
         if ('serviceWorker' in navigator) {
           nukes.push(navigator.serviceWorker.getRegistrations().then(function(rs) {
@@ -115,13 +116,32 @@
           }).catch(function() {}));
         }
         Promise.all(nukes).then(function() {
-          try { localStorage.setItem('jmart-asset-version', thisVersion); } catch (_) {}
+          try { localStorage.setItem('jmart-asset-version', targetVersion || thisVersion); } catch (_) {}
           location.reload();
         });
-        // Stop further script execution while we wipe + reload
+      }
+
+      // Pass A: localStorage vs embedded
+      var stored = null;
+      try { stored = localStorage.getItem('jmart-asset-version'); } catch (_) {}
+      if (stored && stored !== thisVersion) {
+        nukeAndReload(thisVersion, 'localStorage version ' + stored + ' != embedded ' + thisVersion);
         throw new Error('Forcing update reload');
       }
       try { localStorage.setItem('jmart-asset-version', thisVersion); } catch (_) {}
+
+      // Pass B: version.json vs embedded — catches stale-cached HTML.
+      // Run async so it never blocks app boot; if mismatch, nuke + reload anyway.
+      try {
+        fetch('./version.json?_=' + Date.now(), { cache: 'no-store' })
+          .then(function(r) { return r.ok ? r.json() : null; })
+          .then(function(v) {
+            if (v && v.version && v.version !== thisVersion) {
+              nukeAndReload(v.version, 'server version ' + v.version + ' != embedded ' + thisVersion);
+            }
+          })
+          .catch(function() { /* offline or version.json missing — leave as-is */ });
+      } catch (_) {}
     })();
 
     // Service scripts that depend on Firebase and other CDN libs

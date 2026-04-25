@@ -522,11 +522,16 @@ const PDFGenerator = {
       doc.text('Generated: ' + new Date().toLocaleString('en-AU'), pageWidth - margin, pageHeight - 8, { align: 'right' });
     }
 
-    // Generate filename
+    // Generate filename. Includes a short form-ID suffix so two forms saved on
+    // the same day with the same site+type don't collide on Drive (Drive doesn't
+    // dedupe by name — both upload, both clutter the folder, deleteOldFormPDFs
+    // can't tell them apart). The 6-char tail of form.id keeps filenames
+    // readable while making collisions astronomically unlikely.
     const siteName = data.siteConducted || data.site || data.siteLocation || data.jobName || 'Form';
     const safeSiteName = siteName.toString().replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '-').substring(0, 30);
     const safeFormType = folderName.replace(/[^a-zA-Z0-9]/g, '-');
-    const filename = safeSiteName + '_' + safeFormType + '_' + dateStr + '.pdf';
+    const idTail = (form && form.id ? String(form.id) : '').replace(/[^a-zA-Z0-9]/g, '').slice(-6) || 'noid';
+    const filename = safeSiteName + '_' + safeFormType + '_' + dateStr + '_' + idTail + '.pdf';
 
     return { doc, filename, folderName };
   },

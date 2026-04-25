@@ -1,10 +1,28 @@
 // Modal & Banner Components
 // Extracted from app.jsx for maintainability
 
+// Shared hook: dismisses the modal when Escape is pressed. Modals previously
+// had no keyboard escape — keyboard users had to tap. Mounted as a side-effect
+// so it cleans up on unmount.
+function useEscapeToClose(isOpen, onClose) {
+  useEffect(() => {
+    if (!isOpen || typeof onClose !== 'function') return;
+    const handler = (e) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [isOpen, onClose]);
+}
+
 // =============================================
 // Success Modal - shown after form submission
 // =============================================
 function SuccessModal({ successModal, onDownloadPDF, onClose }) {
+  useEscapeToClose(!!successModal, onClose);
   const [templateStatus, setTemplateStatus] = useState(successModal?.templateStatus || null);
 
   useEffect(() => {
@@ -59,6 +77,7 @@ function SuccessModal({ successModal, onDownloadPDF, onClose }) {
 // View Form Modal - shows form details
 // =============================================
 function ViewFormModal({ viewFormModal, onClose, onEdit, onDownloadPDF, onDelete }) {
+  useEscapeToClose(!!viewFormModal, onClose);
   if (!viewFormModal) return null;
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4">
@@ -78,6 +97,26 @@ function ViewFormModal({ viewFormModal, onClose, onEdit, onDownloadPDF, onDelete
           {viewFormModal.data && Object.entries(viewFormModal.data).map(([key, value]) => {
             if (!value || typeof value === 'object') return null;
             const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+            // Signatures and photos are stored as data: URIs (base64). Don't dump
+            // the raw string into the DOM — it's multi-KB unbroken text and can
+            // push action buttons offscreen on mobile. Render as image instead.
+            if (typeof value === 'string' && /^data:image\//.test(value)) {
+              return (
+                <div key={key} className="border-b border-gray-100 pb-2">
+                  <p className="text-xs text-gray-500">{label}</p>
+                  <img src={value} alt={label} className="max-h-32 mt-1 rounded border bg-white" />
+                </div>
+              );
+            }
+            // Skip any other multi-KB strings just in case (e.g. legacy fields).
+            if (typeof value === 'string' && value.length > 1000) {
+              return (
+                <div key={key} className="border-b border-gray-100 pb-2">
+                  <p className="text-xs text-gray-500">{label}</p>
+                  <p className="text-xs text-gray-400 italic">[{value.length} chars — not rendered]</p>
+                </div>
+              );
+            }
             return (
               <div key={key} className="border-b border-gray-100 pb-2">
                 <p className="text-xs text-gray-500">{label}</p>
@@ -115,6 +154,7 @@ function ViewFormModal({ viewFormModal, onClose, onEdit, onDownloadPDF, onDelete
 // Delete Confirmation Modal
 // =============================================
 function DeleteConfirmModal({ deleteConfirmModal, isFormBackedUp, onDownloadPDF, onDelete, onCancel }) {
+  useEscapeToClose(!!deleteConfirmModal, onCancel);
   if (!deleteConfirmModal) return null;
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[110] p-4">
@@ -166,6 +206,7 @@ function DeleteConfirmModal({ deleteConfirmModal, isFormBackedUp, onDownloadPDF,
 // Update Confirmation Modal
 // =============================================
 function UpdateConfirmModal({ updateConfirmModal, isUpdating, onConfirm, onContinueEditing, onCancel }) {
+  useEscapeToClose(!!updateConfirmModal, onCancel);
   if (!updateConfirmModal) return null;
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[120] p-4">

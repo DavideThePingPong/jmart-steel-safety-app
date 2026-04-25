@@ -7,7 +7,7 @@ function IncidentView({ onSubmit, onUpdate, editingForm }) {
 
   const [step, setStep] = useState(isEditing ? 2 : 1);
   const [formData, setFormData] = useState({
-    type: editData.type || '', date: editData.date || new Date().toISOString().split('T')[0], time: editData.time || new Date().toTimeString().slice(0, 5),
+    type: editData.type || '', date: editData.date || localDateStr(), time: editData.time || new Date().toTimeString().slice(0, 5),
     location: editData.location || '', description: editData.description || '', injuries: editData.injuries || 'none', injuryDetails: editData.injuryDetails || '', witnesses: editData.witnesses || '', immediateActions: editData.immediateActions || '', reportedBy: editData.reportedBy || '',
   });
   const [reporterSignature, setReporterSignature] = useState(editData.reporterSignature || null);
@@ -25,8 +25,12 @@ function IncidentView({ onSubmit, onUpdate, editingForm }) {
     const data = editingForm?.data || {};
     setStep(editingForm ? 2 : 1);
     setFormData({
-      type: data.type || '', date: data.date || new Date().toISOString().split('T')[0], time: data.time || new Date().toTimeString().slice(0, 5),
-      location: data.location || '', description: data.description || '', injuries: data.injuries || 'none', injuryDetails: data.injuryDetails || '', witnesses: data.witnesses || '', immediateActions: data.immediateActions || '', reportedBy: data.reportedBy || '',
+      type: data.type || '', date: data.date || localDateStr(), time: data.time || new Date().toTimeString().slice(0, 5),
+      // Use ?? (nullish coalesce) for fields where '' is a meaningful value the
+      // user might have set deliberately. With || an empty string was being
+      // silently replaced — e.g. cleared "injuries" turned back into 'none' on
+      // edit, changing the audit trail without the user knowing.
+      location: data.location ?? '', description: data.description ?? '', injuries: data.injuries ?? 'none', injuryDetails: data.injuryDetails ?? '', witnesses: data.witnesses ?? '', immediateActions: data.immediateActions ?? '', reportedBy: data.reportedBy ?? '',
     });
     setReporterSignature(data.reporterSignature || null);
     setSigningReporter(false);
@@ -79,7 +83,7 @@ function IncidentView({ onSubmit, onUpdate, editingForm }) {
         <button onClick={() => {
           setStep(1);
           setFormData({
-            type: '', date: new Date().toISOString().split('T')[0], time: new Date().toTimeString().slice(0, 5),
+            type: '', date: localDateStr(), time: new Date().toTimeString().slice(0, 5),
             location: '', description: '', injuries: 'none', injuryDetails: '', witnesses: '', immediateActions: '', reportedBy: '',
           });
           setReporterSignature(null);

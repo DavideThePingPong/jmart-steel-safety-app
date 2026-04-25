@@ -170,26 +170,61 @@ const GoogleDriveSync = {
     return this.accessToken !== null;
   },
 
-  // Wrapper for API calls with automatic token refresh on 401
+  // Promise-wrapped silent reconnect — resolves with the new token, rejects on
+  // failure. Used to AWAIT a refresh before the next API call instead of
+  // fire-and-forget. Without this, proactive refresh kicks off async and the
+  // current call still hits the API with the stale token.
+  _refreshTokenAsync: function() {
+    var self = this;
+    return new Promise(function(resolve, reject) {
+      if (!self.tokenClient) { reject(new Error('Drive not initialized')); return; }
+      var done = false;
+      var prev = self.tokenClient.callback;
+      var timeout = setTimeout(function() {
+        if (done) return; done = true;
+        self.tokenClient.callback = prev;
+        reject(new Error('Token refresh timed out'));
+      }, 15000);
+      self.tokenClient.callback = function(resp) {
+        if (done) return; done = true;
+        clearTimeout(timeout);
+        self.tokenClient.callback = prev;
+        if (resp && resp.error) { reject(new Error(resp.error)); return; }
+        if (resp && resp.access_token) {
+          self.accessToken = resp.access_token;
+          try {
+            localStorage.setItem('google-drive-token', JSON.stringify({ token: resp.access_token, savedAt: Date.now() }));
+          } catch (_) {}
+          resolve(resp.access_token);
+        } else {
+          reject(new Error('No token in refresh response'));
+        }
+      };
+      try { self.tokenClient.requestAccessToken({ prompt: '' }); }
+      catch (e) { if (done) return; done = true; clearTimeout(timeout); self.tokenClient.callback = prev; reject(e); }
+    });
+  },
+
+  // Wrapper for API calls with automatic token refresh + retry on 429/5xx
   apiCall: async function(url, options = {}) {
     if (!this.accessToken) {
       throw new Error('Not connected to Google Drive');
     }
 
-    // Proactive token freshness check — Google access tokens last ~1hr.
-    // If we're past 55 min, refresh BEFORE the call rather than waiting for a 401.
-    // Eliminates the one-failed-call-then-retry pattern after long idle.
+    // Proactive token freshness — AWAIT the refresh so the call uses fresh token
+    // (previously fire-and-forget meant the call still hit with stale token).
     try {
       var stored = localStorage.getItem('google-drive-token');
       if (stored) {
         var parsed = JSON.parse(stored);
         var age = Date.now() - (parsed.savedAt || 0);
         if (age > 55 * 60 * 1000) {
-          console.log('Drive token >55min old, refreshing proactively before API call');
-          this._silentReconnect();
+          console.log('Drive token >55min old, awaiting proactive refresh');
+          try { await this._refreshTokenAsync(); }
+          catch (e) { console.warn('Proactive refresh failed (will fall back to 401-retry):', e.message); }
         }
       }
-    } catch (_) { /* don't block API call on a parse error */ }
+    } catch (_) { /* parse failure shouldn't block the call */ }
 
     // Add auth header
     options.headers = {
@@ -204,6 +239,21 @@ const GoogleDriveSync = {
       response = await fetch(url, { ...options, signal: controller.signal });
     } finally {
       clearTimeout(timeout);
+    }
+
+    // Retry transient Drive failures (429 rate limit, 500/502/503/504 server)
+    // with exponential backoff. Honors Retry-After if present. Without this,
+    // a brief Drive blip silently lost the upload — caller just got null.
+    if ([429, 500, 502, 503, 504].indexOf(response.status) >= 0) {
+      var attempt = options.__retryAttempt || 0;
+      if (attempt < 3) {
+        var retryAfter = response.headers && response.headers.get && response.headers.get('Retry-After');
+        var backoffMs = retryAfter ? Math.min(parseInt(retryAfter, 10) * 1000, 10000) : (Math.pow(2, attempt) * 1000);
+        console.warn('[Drive] Transient ' + response.status + ' — retrying in ' + backoffMs + 'ms (attempt ' + (attempt + 1) + '/3)');
+        await new Promise(function(r) { setTimeout(r, backoffMs); });
+        return this.apiCall(url, Object.assign({}, options, { __retryAttempt: attempt + 1 }));
+      }
+      console.error('[Drive] Transient failure persisted after 3 retries:', response.status, url);
     }
 
     // If token expired (401), try to refresh silently
@@ -593,113 +643,26 @@ const GoogleDriveSync = {
     console.log('Disconnected from Google Drive');
   },
 
-  // Get or create a subfolder for job recordings
+  // Get or create a subfolder for job recordings.
+  // Delegates to getOrCreateNestedFolder so concurrent photo uploads for the
+  // same site/date share the same folder ID via _folderPromiseCache, instead
+  // of racing to create duplicate Job Recordings/SiteA/Date folders.
   getOrCreateRecordingsFolder: async function(siteName, date) {
     if (!this.accessToken) return null;
-
     try {
-      // First ensure main folder exists
       if (!this.folderId) {
         await this.getOrCreateFolder();
       }
-
-      // Create/get "Job Recordings" subfolder
-      const recordingsFolderName = 'Job Recordings';
-      let recordingsFolderId = null;
-
-      // Search for Job Recordings folder
-      const recordingsSearch = await this.apiCall(
-        `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent("name='" + this._escapeQuery(recordingsFolderName) + "' and '" + this.folderId + "' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false")}`
-      );
-      if (!recordingsSearch.ok) {
-        throw new Error('Drive API error: ' + recordingsSearch.status);
+      var safeSiteName = (siteName || 'Unsorted').replace(/[<>:"/\\|?*]/g, '-').trim() || 'Unsorted';
+      var dateStr = new Date(date).toLocaleDateString('en-AU').replace(/\//g, '-');
+      var path = 'Job Recordings/' + safeSiteName + '/' + dateStr;
+      var folderId = await this.getOrCreateNestedFolder(path);
+      if (!folderId) {
+        if (typeof ToastNotifier !== 'undefined') ToastNotifier.warning('Could not create Drive folder for recordings');
+        return null;
       }
-      const recordingsData = await recordingsSearch.json();
-
-      if (recordingsData.files && recordingsData.files.length > 0) {
-        recordingsFolderId = recordingsData.files[0].id;
-      } else {
-        // Create Job Recordings folder
-        const createRecordings = await this.apiCall('https://www.googleapis.com/drive/v3/files', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: recordingsFolderName,
-            mimeType: 'application/vnd.google-apps.folder',
-            parents: [this.folderId],
-          }),
-        });
-        if (!createRecordings.ok) {
-          throw new Error('Drive API error: ' + createRecordings.status);
-        }
-        const newRecordingsFolder = await createRecordings.json();
-        recordingsFolderId = newRecordingsFolder.id;
-      }
-
-      // Create/get site subfolder
-      const safeSiteName = siteName.replace(/[<>:"/\\|?*]/g, '-');
-      let siteFolderId = null;
-
-      const siteSearch = await this.apiCall(
-        `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent("name='" + this._escapeQuery(safeSiteName) + "' and '" + recordingsFolderId + "' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false")}`
-      );
-      if (!siteSearch.ok) {
-        throw new Error('Drive API error: ' + siteSearch.status);
-      }
-      const siteData = await siteSearch.json();
-
-      if (siteData.files && siteData.files.length > 0) {
-        siteFolderId = siteData.files[0].id;
-      } else {
-        const createSite = await this.apiCall('https://www.googleapis.com/drive/v3/files', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: safeSiteName,
-            mimeType: 'application/vnd.google-apps.folder',
-            parents: [recordingsFolderId],
-          }),
-        });
-        if (!createSite.ok) {
-          throw new Error('Drive API error: ' + createSite.status);
-        }
-        const newSiteFolder = await createSite.json();
-        siteFolderId = newSiteFolder.id;
-      }
-
-      // Create/get date subfolder
-      const dateStr = new Date(date).toLocaleDateString('en-AU').replace(/\//g, '-');
-      let dateFolderId = null;
-
-      const dateSearch = await this.apiCall(
-        `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent("name='" + this._escapeQuery(dateStr) + "' and '" + siteFolderId + "' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false")}`
-      );
-      if (!dateSearch.ok) {
-        throw new Error('Drive API error: ' + dateSearch.status);
-      }
-      const dateData = await dateSearch.json();
-
-      if (dateData.files && dateData.files.length > 0) {
-        dateFolderId = dateData.files[0].id;
-      } else {
-        const createDate = await this.apiCall('https://www.googleapis.com/drive/v3/files', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: dateStr,
-            mimeType: 'application/vnd.google-apps.folder',
-            parents: [siteFolderId],
-          }),
-        });
-        if (!createDate.ok) {
-          throw new Error('Drive API error: ' + createDate.status);
-        }
-        const newDateFolder = await createDate.json();
-        dateFolderId = newDateFolder.id;
-      }
-
-      console.log('Created/found recordings folder structure:', siteName, dateStr, dateFolderId);
-      return dateFolderId;
+      console.log('Recordings folder ready:', path, folderId);
+      return folderId;
     } catch (error) {
       console.error('Error creating recordings folder structure:', error);
       if (typeof ToastNotifier !== 'undefined') ToastNotifier.warning('Could not create Drive folder for recordings');

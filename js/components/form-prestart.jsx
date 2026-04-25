@@ -469,7 +469,7 @@ function PrestartView({ onSubmit, onUpdate, editingForm, sites = [], savedTempla
             <div className="flex gap-2 mt-2">
               <input
                 type="date"
-                value={formDate.toISOString().split('T')[0]}
+                value={localDateStr(formDate)}
                 onChange={(e) => {
                   const newDate = new Date(formDate);
                   const [year, month, day] = e.target.value.split('-');

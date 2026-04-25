@@ -14,6 +14,15 @@
   }
 })();
 
+// Helper: format a Date as YYYY-MM-DD in the LOCAL timezone (not UTC).
+// `new Date().toISOString().split('T')[0]` returns the UTC date — for Sydney
+// (UTC+10/+11) any time after ~13:00 UTC shows tomorrow's date in form inputs.
+// Use this anywhere a `<input type="date">` default needs the user's calendar day.
+window.localDateStr = function (date) {
+  var d = date || new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+};
+
 // React hooks and Lucide icons - attached to window for cross-file access
 const {
   useState,
@@ -937,6 +946,12 @@ function useFormManager({
           }
         } catch (pdfErr) {
           console.error('PDF generation error:', pdfErr);
+          // Surface to user — silent failure here meant they thought the form
+          // was fully backed up but actually no PDF on disk and no Drive copy.
+          if (typeof ToastNotifier !== 'undefined') {
+            ToastNotifier.warning('Form saved, but PDF could not be generated. Open the form from Recent and try Download PDF again.');
+          }
+          if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(pdfErr, 'pdf-auto-save');
         }
       }, 500);
 
@@ -1594,10 +1609,14 @@ function useDataSync({
           StorageQuotaManager.safeFormsWrite(mergedForms);
           console.log('Forms synced:', mergedForms.length, 'total');
         } else {
-          // Firebase returned empty. Only republish local forms if there is an actual
-          // queued local form write waiting to sync; otherwise treat Firebase as the
-          // source of truth so remote deletes clear stale local cache instead of
-          // resurrecting forms on other devices.
+          // Firebase returned empty. This is dangerous — it can also mean a
+          // transient permission glitch or rules-not-yet-loaded state at boot,
+          // not a genuine remote-empty. NEVER wipe local forms on the very
+          // first listener fire, because a fresh device that gets a glitched
+          // empty payload would lose all locally-cached forms it just loaded
+          // from localStorage. Only honor "remote empty ⇒ clear local" if we
+          // have observed a non-empty remote at least once this session
+          // (proves the listener works) AND there is no pending sync queue.
           let freshLocalForms = [];
           try {
             const freshLocal = localStorage.getItem('jmart-safety-forms');
@@ -1606,11 +1625,18 @@ function useDataSync({
           if (freshLocalForms.length > 0 && hasQueuedFormSync()) {
             console.log('Firebase empty, pushing local forms to Firebase');
             FirebaseSync.syncForms(freshLocalForms);
-          } else {
+          } else if (previousRemoteIds.size > 0 && !hasQueuedFormSync()) {
+            // We've seen a non-empty remote before this fire — a real deletion
+            // happened. Safe to clear local.
             formsFromFirebaseRef.current = true;
             setForms([]);
             StorageQuotaManager.safeFormsWrite([]);
-            console.log('Firebase empty, clearing local forms cache');
+            console.log('Firebase empty after non-empty observation, clearing local forms cache');
+          } else {
+            // First-fire empty payload OR queue still pending. Keep local data
+            // exactly as-is until the listener proves itself with non-empty
+            // data, or until the queue drains.
+            console.log('Firebase empty on first observation — keeping local cache (avoiding accidental wipe)');
           }
         }
         var pendingAfterMerge = typeof FirebaseSync.getPendingCount === 'function' ? FirebaseSync.getPendingCount() : 0;
@@ -2421,6 +2447,23 @@ window.readSavedPrestartTemplates = readSavedPrestartTemplates;
 // Modal & Banner Components
 // Extracted from app.jsx for maintainability
 
+// Shared hook: dismisses the modal when Escape is pressed. Modals previously
+// had no keyboard escape — keyboard users had to tap. Mounted as a side-effect
+// so it cleans up on unmount.
+function useEscapeToClose(isOpen, onClose) {
+  useEffect(() => {
+    if (!isOpen || typeof onClose !== 'function') return;
+    const handler = e => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [isOpen, onClose]);
+}
+
 // =============================================
 // Success Modal - shown after form submission
 // =============================================
@@ -2429,6 +2472,7 @@ function SuccessModal({
   onDownloadPDF,
   onClose
 }) {
+  useEscapeToClose(!!successModal, onClose);
   const [templateStatus, setTemplateStatus] = useState(successModal?.templateStatus || null);
   useEffect(() => {
     setTemplateStatus(successModal?.templateStatus || null);
@@ -2479,6 +2523,7 @@ function ViewFormModal({
   onDownloadPDF,
   onDelete
 }) {
+  useEscapeToClose(!!viewFormModal, onClose);
   if (!viewFormModal) return null;
   return /*#__PURE__*/React.createElement("div", {
     className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4"
@@ -2506,6 +2551,32 @@ function ViewFormModal({
   })), viewFormModal.data && Object.entries(viewFormModal.data).map(([key, value]) => {
     if (!value || typeof value === 'object') return null;
     const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+    // Signatures and photos are stored as data: URIs (base64). Don't dump
+    // the raw string into the DOM — it's multi-KB unbroken text and can
+    // push action buttons offscreen on mobile. Render as image instead.
+    if (typeof value === 'string' && /^data:image\//.test(value)) {
+      return /*#__PURE__*/React.createElement("div", {
+        key: key,
+        className: "border-b border-gray-100 pb-2"
+      }, /*#__PURE__*/React.createElement("p", {
+        className: "text-xs text-gray-500"
+      }, label), /*#__PURE__*/React.createElement("img", {
+        src: value,
+        alt: label,
+        className: "max-h-32 mt-1 rounded border bg-white"
+      }));
+    }
+    // Skip any other multi-KB strings just in case (e.g. legacy fields).
+    if (typeof value === 'string' && value.length > 1000) {
+      return /*#__PURE__*/React.createElement("div", {
+        key: key,
+        className: "border-b border-gray-100 pb-2"
+      }, /*#__PURE__*/React.createElement("p", {
+        className: "text-xs text-gray-500"
+      }, label), /*#__PURE__*/React.createElement("p", {
+        className: "text-xs text-gray-400 italic"
+      }, "[", value.length, " chars \u2014 not rendered]"));
+    }
     return /*#__PURE__*/React.createElement("div", {
       key: key,
       className: "border-b border-gray-100 pb-2"
@@ -2538,6 +2609,7 @@ function DeleteConfirmModal({
   onDelete,
   onCancel
 }) {
+  useEscapeToClose(!!deleteConfirmModal, onCancel);
   if (!deleteConfirmModal) return null;
   return /*#__PURE__*/React.createElement("div", {
     className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[110] p-4"
@@ -2585,6 +2657,7 @@ function UpdateConfirmModal({
   onContinueEditing,
   onCancel
 }) {
+  useEscapeToClose(!!updateConfirmModal, onCancel);
   if (!updateConfirmModal) return null;
   return /*#__PURE__*/React.createElement("div", {
     className: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[120] p-4"
@@ -3295,6 +3368,15 @@ function JMartSteelSafetyApp({
   }, [deleteForm]);
   const handleEditRecentPrestart = useCallback((formId, newDate, newTime) => {
     if (!formId) return;
+    // Locked forms can only be edited by admins (matches the rest of the app's
+    // immutability guarantees). Without this guard, the dashboard date/time
+    // edit silently mutated locked submitted forms with no audit trail.
+    const target = (forms || []).find(f => f && f.id === formId);
+    if (!target) return;
+    if (target.locked && !DeviceAuthManager.isAdmin) {
+      if (typeof ToastNotifier !== 'undefined') ToastNotifier.warning('This form is locked. Only admins can edit submitted forms.');
+      return;
+    }
     setForms(prev => {
       const updated = prev.map(f => {
         if (f.id !== formId) return f;
@@ -3307,7 +3389,8 @@ function JMartSteelSafetyApp({
           },
           updatedAt: new Date().toISOString(),
           modifiedBy: DeviceAuthManager.deviceId || 'unknown',
-          modifiedByName: localStorage.getItem('jmart-user-name') || 'Unknown User'
+          modifiedByName: localStorage.getItem('jmart-user-name') || 'Unknown User',
+          version: (f.version || 1) + 1
         };
         return updatedForm;
       });
@@ -3319,9 +3402,20 @@ function JMartSteelSafetyApp({
           console.warn('Edit prestart sync error:', err?.message || err);
         });
       }
+      // Audit trail for compliance — every form mutation must be logged.
+      if (typeof AuditLogManager !== 'undefined' && changedForm) {
+        AuditLogManager.log('update', {
+          formId: changedForm.id,
+          formType: changedForm.type,
+          site: changedForm.data && (changedForm.data.siteConducted || changedForm.data.site) || 'Unknown',
+          action: 'Date/time edited from dashboard card',
+          newDate: newDate,
+          newTime: newTime || '00:00'
+        });
+      }
       return updated;
     });
-  }, [setForms]);
+  }, [setForms, forms]);
   const handleModifyRecentPrestart = useCallback(form => {
     if (!form) return;
     setEditingForm(form);
@@ -3839,7 +3933,7 @@ function Dashboard({
       return;
     }
     const formDate = form.data?.date ? new Date(form.data.date) : new Date(form.updatedAt || form.createdAt);
-    const dateStr = formDate.toISOString().split('T')[0];
+    const dateStr = localDateStr(formDate);
     const timeStr = formDate.toTimeString().slice(0, 5);
     setEditDateTimeModal({
       form,
@@ -5222,7 +5316,7 @@ function PrestartView({
       className: "flex gap-2 mt-2"
     }, /*#__PURE__*/React.createElement("input", {
       type: "date",
-      value: formDate.toISOString().split('T')[0],
+      value: localDateStr(formDate),
       onChange: e => {
         const newDate = new Date(formDate);
         const [year, month, day] = e.target.value.split('-');
@@ -5699,7 +5793,7 @@ function IncidentView({
   const [step, setStep] = useState(isEditing ? 2 : 1);
   const [formData, setFormData] = useState({
     type: editData.type || '',
-    date: editData.date || new Date().toISOString().split('T')[0],
+    date: editData.date || localDateStr(),
     time: editData.time || new Date().toTimeString().slice(0, 5),
     location: editData.location || '',
     description: editData.description || '',
@@ -5738,15 +5832,19 @@ function IncidentView({
     setStep(editingForm ? 2 : 1);
     setFormData({
       type: data.type || '',
-      date: data.date || new Date().toISOString().split('T')[0],
+      date: data.date || localDateStr(),
       time: data.time || new Date().toTimeString().slice(0, 5),
-      location: data.location || '',
-      description: data.description || '',
-      injuries: data.injuries || 'none',
-      injuryDetails: data.injuryDetails || '',
-      witnesses: data.witnesses || '',
-      immediateActions: data.immediateActions || '',
-      reportedBy: data.reportedBy || ''
+      // Use ?? (nullish coalesce) for fields where '' is a meaningful value the
+      // user might have set deliberately. With || an empty string was being
+      // silently replaced — e.g. cleared "injuries" turned back into 'none' on
+      // edit, changing the audit trail without the user knowing.
+      location: data.location ?? '',
+      description: data.description ?? '',
+      injuries: data.injuries ?? 'none',
+      injuryDetails: data.injuryDetails ?? '',
+      witnesses: data.witnesses ?? '',
+      immediateActions: data.immediateActions ?? '',
+      reportedBy: data.reportedBy ?? ''
     });
     setReporterSignature(data.reporterSignature || null);
     setSigningReporter(false);
@@ -5810,7 +5908,7 @@ function IncidentView({
         setStep(1);
         setFormData({
           type: '',
-          date: new Date().toISOString().split('T')[0],
+          date: localDateStr(),
           time: new Date().toTimeString().slice(0, 5),
           location: '',
           description: '',

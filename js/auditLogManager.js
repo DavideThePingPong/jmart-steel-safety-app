@@ -51,12 +51,26 @@ const AuditLogManager = {
       if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(e, 'audit-local');
     }
 
-    // Sync to Firebase if connected
-    if (typeof firebaseDb !== 'undefined' && firebaseDb && typeof isFirebaseConfigured !== 'undefined' && isFirebaseConfigured) {
+    // Sync to Firebase via the retry queue so offline / auth-not-yet-ready
+    // entries don't silently disappear (local cap is 200 entries, so a stuck
+    // direct-write entry would eventually rotate out without ever syncing).
+    // FirebaseSync.syncAuditEntry handles auth-wait, queueing, and retry.
+    if (typeof FirebaseSync !== 'undefined' && typeof FirebaseSync.syncAuditEntry === 'function') {
+      try {
+        FirebaseSync.syncAuditEntry(this._sanitize(logEntry)).catch(function(e) {
+          console.warn('Audit entry queued for retry:', e && e.message);
+        });
+      } catch (e) {
+        console.error('Audit sync setup failed:', e);
+        if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(e, 'audit-firebase');
+      }
+    } else if (typeof firebaseDb !== 'undefined' && firebaseDb && typeof isFirebaseConfigured !== 'undefined' && isFirebaseConfigured) {
+      // Fallback for very early audit writes before FirebaseSync loads — best
+      // effort direct write. The retry queue takes over once FirebaseSync is up.
       try {
         await firebaseDb.ref('jmart-safety/auditLog/' + logEntry.id).set(this._sanitize(logEntry));
       } catch (e) {
-        console.error('Error syncing audit log to Firebase:', e);
+        console.error('Error syncing audit log to Firebase (fallback path):', e);
         if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(e, 'audit-firebase');
       }
     }

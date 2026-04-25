@@ -510,6 +510,11 @@ const FirebaseSync = {
       case 'delete-form-assets':
         await this.writeWithFallback('jmart-safety/formAssets/' + item.data.formId, 'delete');
         break;
+      case 'audit':
+        if (item.data && item.data.id) {
+          await this.writeWithFallback('jmart-safety/auditLog/' + item.data.id, 'set', item.data);
+        }
+        break;
       default:
         throw new Error('Unknown sync type: ' + item.type);
     }
@@ -651,6 +656,32 @@ const FirebaseSync = {
     } catch (error) {
       console.error('Error syncing signatures, adding to retry queue:', error);
       this.addToQueue('signatures', payload);
+      return { success: false, queued: true, error: error.message };
+    }
+  },
+
+  // Sync a single audit log entry. Goes through the retry queue so offline
+  // or auth-not-yet-ready entries get persisted to Firebase eventually,
+  // instead of being dropped (local cap rotates entries out after 200).
+  // Audit log is append-only: each entry is keyed by its id so re-queueing
+  // the same entry is idempotent at the Firebase level.
+  syncAuditEntry: async function(entry) {
+    if (!entry || !entry.id) return { success: false, error: 'Missing id' };
+    if (!firebaseDb || !isFirebaseConfigured) {
+      this.addToQueue('audit', entry);
+      return { success: false, queued: true };
+    }
+    var authOk = await this._ensureAuth();
+    if (!authOk) {
+      this.addToQueue('audit', entry);
+      return { success: false, queued: true, error: 'Auth not ready' };
+    }
+    try {
+      await firebaseDb.ref('jmart-safety/auditLog/' + entry.id).set(entry);
+      return { success: true };
+    } catch (error) {
+      console.error('Error syncing audit entry, adding to retry queue:', error);
+      this.addToQueue('audit', entry);
       return { success: false, queued: true, error: error.message };
     }
   },

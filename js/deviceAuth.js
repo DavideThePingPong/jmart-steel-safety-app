@@ -466,6 +466,17 @@ const DeviceAuth = {
         }
       }
 
+      // Compliance: log every device approval (one of the most security-
+      // sensitive admin actions). Includes which admin approved which device,
+      // and whether they granted admin privileges.
+      if (typeof AuditLogManager !== 'undefined') {
+        AuditLogManager.log('device_approved', {
+          targetDeviceId: deviceId,
+          targetDeviceName: approvedData.name || deviceData.name || 'Unknown',
+          grantedAdmin: !!makeAdmin,
+          approvedBy: this.deviceId
+        });
+      }
       console.log('Device approved:', deviceId);
       return true;
     } catch (error) {
@@ -498,6 +509,12 @@ const DeviceAuth = {
         }
       }
 
+      if (typeof AuditLogManager !== 'undefined') {
+        AuditLogManager.log('device_denied', {
+          targetDeviceId: deviceId,
+          deniedBy: this.deviceId
+        });
+      }
       console.log('Device denied:', deviceId);
       return true;
     } catch (error) {
@@ -532,6 +549,12 @@ const DeviceAuth = {
         }
       }
       await firebaseDb.ref('jmart-safety/devices/approved/' + deviceId).remove();
+      if (typeof AuditLogManager !== 'undefined') {
+        AuditLogManager.log('device_revoked', {
+          targetDeviceId: deviceId,
+          revokedBy: this.deviceId
+        });
+      }
       console.log('Device revoked:', deviceId);
       return true;
     } catch (error) {

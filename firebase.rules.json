@@ -23,7 +23,9 @@
         "$uid": {
           ".read": "auth != null && (auth.uid === $uid || root.child('jmart-safety/adminAuthUids/' + auth.uid).exists())",
           ".write": "auth != null && (root.child('jmart-safety/adminAuthUids/' + auth.uid).exists() || (auth.uid === $uid && newData.child('deviceId').isString() && root.child('jmart-safety/devices/approved/' + newData.child('deviceId').val()).child('authUid').val() === auth.uid))",
-          ".validate": "!newData.exists() || (newData.hasChildren(['deviceId', 'approvedAt', 'lastSeen']) && newData.child('deviceId').isString() && newData.child('approvedAt').isString() && newData.child('lastSeen').isString())"
+          // isAdmin is immutable for self-writes — only existing admins can change it.
+          // This prevents a non-admin self-writer from claiming admin via this map.
+          ".validate": "!newData.exists() || (newData.hasChildren(['deviceId', 'approvedAt', 'lastSeen']) && newData.child('deviceId').isString() && newData.child('approvedAt').isString() && newData.child('lastSeen').isString() && (root.child('jmart-safety/adminAuthUids/' + auth.uid).exists() || !data.exists() || newData.child('isAdmin').val() === data.child('isAdmin').val()))"
         }
       },
 
@@ -43,7 +45,13 @@
             //   (a) No approved devices exist yet (first-device setup), OR
             //   (b) Writer is an existing admin (auth.uid in adminAuthUids), OR
             //   (c) Writer is updating their own existing approved record (authUid matches)
-            ".write": "auth != null && (!root.child('jmart-safety/devices/approved').exists() || root.child('jmart-safety/adminAuthUids/' + auth.uid).exists() || (data.exists() && data.child('authUid').val() === auth.uid))"
+            ".write": "auth != null && (!root.child('jmart-safety/devices/approved').exists() || root.child('jmart-safety/adminAuthUids/' + auth.uid).exists() || (data.exists() && data.child('authUid').val() === auth.uid))",
+            // CRITICAL — privilege flag immutability. A non-admin updating their
+            // own record (rule case c above) MUST NOT be able to flip isAdmin,
+            // canRevokeDevices, or canViewDevices to true. Only existing admins
+            // (writer in adminAuthUids) OR first-device bootstrap (no approved
+            // devices yet) can change those flags. Closes the self-promotion bug.
+            ".validate": "!newData.exists() || root.child('jmart-safety/adminAuthUids/' + auth.uid).exists() || !root.child('jmart-safety/devices/approved').exists() || !data.exists() || ((newData.child('isAdmin').val() === data.child('isAdmin').val() || (!newData.child('isAdmin').exists() && !data.child('isAdmin').exists())) && (newData.child('canRevokeDevices').val() === data.child('canRevokeDevices').val() || (!newData.child('canRevokeDevices').exists() && !data.child('canRevokeDevices').exists())) && (newData.child('canViewDevices').val() === data.child('canViewDevices').val() || (!newData.child('canViewDevices').exists() && !data.child('canViewDevices').exists())))"
           }
         },
         "pending": {
@@ -178,7 +186,12 @@
         ".read": "auth != null && root.child('jmart-safety/authDevices/' + auth.uid).child('approvedAt').exists()",
         "$logId": {
           ".write": "auth != null && root.child('jmart-safety/authDevices/' + auth.uid).child('approvedAt').exists() && !data.exists()",
-          ".validate": "newData.hasChildren(['action', 'deviceId', 'timestamp']) && newData.child('action').isString() && newData.child('action').val().length < 500 && newData.child('deviceId').isString() && newData.child('timestamp').isNumber()"
+          // Bind deviceId to the writer's auth UID via authDevices mapping.
+          // Closes the impersonation gap where a malicious device could log
+          // entries claiming to be a different device. Append-only is enforced
+          // by !data.exists() in the .write rule above; this validate locks
+          // the deviceId to the actual writer.
+          ".validate": "newData.hasChildren(['action', 'deviceId', 'timestamp']) && newData.child('action').isString() && newData.child('action').val().length < 500 && newData.child('deviceId').isString() && newData.child('timestamp').isNumber() && (root.child('jmart-safety/adminAuthUids/' + auth.uid).exists() || newData.child('deviceId').val() === root.child('jmart-safety/authDevices/' + auth.uid).child('deviceId').val())"
         }
       }
     },

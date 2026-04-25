@@ -132,6 +132,15 @@ function JMartSteelSafetyApp({ isAdmin = false }) {
 
   const handleEditRecentPrestart = useCallback((formId, newDate, newTime) => {
     if (!formId) return;
+    // Locked forms can only be edited by admins (matches the rest of the app's
+    // immutability guarantees). Without this guard, the dashboard date/time
+    // edit silently mutated locked submitted forms with no audit trail.
+    const target = (forms || []).find((f) => f && f.id === formId);
+    if (!target) return;
+    if (target.locked && !DeviceAuthManager.isAdmin) {
+      if (typeof ToastNotifier !== 'undefined') ToastNotifier.warning('This form is locked. Only admins can edit submitted forms.');
+      return;
+    }
     setForms((prev) => {
       const updated = prev.map((f) => {
         if (f.id !== formId) return f;
@@ -141,7 +150,8 @@ function JMartSteelSafetyApp({ isAdmin = false }) {
           data: { ...f.data, date: dateTimeISO },
           updatedAt: new Date().toISOString(),
           modifiedBy: DeviceAuthManager.deviceId || 'unknown',
-          modifiedByName: localStorage.getItem('jmart-user-name') || 'Unknown User'
+          modifiedByName: localStorage.getItem('jmart-user-name') || 'Unknown User',
+          version: (f.version || 1) + 1
         };
         return updatedForm;
       });
@@ -153,9 +163,20 @@ function JMartSteelSafetyApp({ isAdmin = false }) {
           console.warn('Edit prestart sync error:', err?.message || err);
         });
       }
+      // Audit trail for compliance — every form mutation must be logged.
+      if (typeof AuditLogManager !== 'undefined' && changedForm) {
+        AuditLogManager.log('update', {
+          formId: changedForm.id,
+          formType: changedForm.type,
+          site: (changedForm.data && (changedForm.data.siteConducted || changedForm.data.site)) || 'Unknown',
+          action: 'Date/time edited from dashboard card',
+          newDate: newDate,
+          newTime: newTime || '00:00'
+        });
+      }
       return updated;
     });
-  }, [setForms]);
+  }, [setForms, forms]);
 
   const handleModifyRecentPrestart = useCallback((form) => {
     if (!form) return;

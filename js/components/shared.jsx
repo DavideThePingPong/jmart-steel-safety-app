@@ -11,6 +11,15 @@
   }
 })();
 
+// Helper: format a Date as YYYY-MM-DD in the LOCAL timezone (not UTC).
+// `new Date().toISOString().split('T')[0]` returns the UTC date — for Sydney
+// (UTC+10/+11) any time after ~13:00 UTC shows tomorrow's date in form inputs.
+// Use this anywhere a `<input type="date">` default needs the user's calendar day.
+window.localDateStr = function(date) {
+  var d = date || new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+};
+
 // React hooks and Lucide icons - attached to window for cross-file access
 const { useState, useRef, useEffect, useMemo, useCallback } = React;
 window.useState = useState;
