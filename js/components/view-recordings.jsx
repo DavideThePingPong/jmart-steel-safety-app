@@ -503,8 +503,15 @@ function RecordingsView({ forms, sites }) {
                 </div>
               )}
               <div className="grid grid-cols-3 gap-2">
-                {viewingRecording.photos.map((photo, idx) => (
-                  photo.data && photo.data !== '[in-firebase]' && photo.data.startsWith('data:') ? (
+                {viewingRecording.photos.map((photo, idx) => {
+                  // Whitelist data: URLs to actual image MIME types only.
+                  // The previous startsWith('data:') check let
+                  // data:text/html,<script>... through, which would execute
+                  // on click via window.open/<a href>. SVGs (data:image/svg+xml)
+                  // also blocked because they can carry inline <script>.
+                  const isSafeImage = photo.data && photo.data !== '[in-firebase]'
+                    && /^data:image\/(jpeg|jpg|png|webp|gif);base64,/i.test(photo.data);
+                  return isSafeImage ? (
                     <img
                       key={idx}
                       src={photo.data}
@@ -530,8 +537,8 @@ function RecordingsView({ forms, sites }) {
                     <div key={idx} className="w-full h-24 bg-gray-100 rounded-lg flex items-center justify-center text-xs text-gray-400">
                       ☁️ In cloud
                     </div>
-                  )
-                ))}
+                  );
+                })}
               </div>
             </div>
             <div className="p-4 border-t border-gray-200 space-y-2">

@@ -9660,30 +9660,38 @@ function RecordingsView({
     className: "text-green-700 text-sm"
   }, "\u2601\uFE0F Uploaded to Google Drive")), /*#__PURE__*/React.createElement("div", {
     className: "grid grid-cols-3 gap-2"
-  }, viewingRecording.photos.map((photo, idx) => photo.data && photo.data !== '[in-firebase]' && photo.data.startsWith('data:') ? /*#__PURE__*/React.createElement("img", {
-    key: idx,
-    src: photo.data,
-    alt: `Photo ${idx + 1}`,
-    className: "w-full h-24 object-cover rounded-lg cursor-pointer hover:opacity-80",
-    onClick: () => {
-      const win = window.open('', '_blank');
-      if (!win) {
-        const link = document.createElement('a');
-        link.href = photo.data;
-        link.download = `photo-${idx + 1}.jpg`;
-        link.click();
-        return;
+  }, viewingRecording.photos.map((photo, idx) => {
+    // Whitelist data: URLs to actual image MIME types only.
+    // The previous startsWith('data:') check let
+    // data:text/html,<script>... through, which would execute
+    // on click via window.open/<a href>. SVGs (data:image/svg+xml)
+    // also blocked because they can carry inline <script>.
+    const isSafeImage = photo.data && photo.data !== '[in-firebase]' && /^data:image\/(jpeg|jpg|png|webp|gif);base64,/i.test(photo.data);
+    return isSafeImage ? /*#__PURE__*/React.createElement("img", {
+      key: idx,
+      src: photo.data,
+      alt: `Photo ${idx + 1}`,
+      className: "w-full h-24 object-cover rounded-lg cursor-pointer hover:opacity-80",
+      onClick: () => {
+        const win = window.open('', '_blank');
+        if (!win) {
+          const link = document.createElement('a');
+          link.href = photo.data;
+          link.download = `photo-${idx + 1}.jpg`;
+          link.click();
+          return;
+        }
+        const img = win.document.createElement('img');
+        img.src = photo.data;
+        img.style.maxWidth = '100%';
+        img.style.height = 'auto';
+        win.document.body.appendChild(img);
       }
-      const img = win.document.createElement('img');
-      img.src = photo.data;
-      img.style.maxWidth = '100%';
-      img.style.height = 'auto';
-      win.document.body.appendChild(img);
-    }
-  }) : /*#__PURE__*/React.createElement("div", {
-    key: idx,
-    className: "w-full h-24 bg-gray-100 rounded-lg flex items-center justify-center text-xs text-gray-400"
-  }, "\u2601\uFE0F In cloud")))), /*#__PURE__*/React.createElement("div", {
+    }) : /*#__PURE__*/React.createElement("div", {
+      key: idx,
+      className: "w-full h-24 bg-gray-100 rounded-lg flex items-center justify-center text-xs text-gray-400"
+    }, "\u2601\uFE0F In cloud");
+  }))), /*#__PURE__*/React.createElement("div", {
     className: "p-4 border-t border-gray-200 space-y-2"
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => {

