@@ -134,15 +134,36 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
 
   // Listen to this device's own name (works for ALL users, including non-admins).
   // Renames sync across devices because they all read the same Firebase node.
+  // Polls for firebaseDb readiness — at component mount it may not be ready yet,
+  // so a single early-return useEffect would silently never attach the listener.
   useEffect(() => {
-    if (!isFirebaseConfigured || !window.firebaseDb) return;
-    const myId = DeviceAuthManager.deviceId;
-    if (!myId) return;
-    const ref = window.firebaseDb.ref('jmart-safety/devices/approved/' + myId + '/name');
-    const handler = (snap) => setMyDeviceName(snap.val() || '');
-    ref.on('value', handler);
-    return () => ref.off('value', handler);
+    if (!isFirebaseConfigured) return;
+    let unsubscribe = null;
+    let cancelled = false;
+    const attach = () => {
+      if (cancelled) return;
+      if (!window.firebaseDb || !DeviceAuthManager.deviceId) {
+        setTimeout(attach, 200);
+        return;
+      }
+      const ref = window.firebaseDb.ref('jmart-safety/devices/approved/' + DeviceAuthManager.deviceId + '/name');
+      const handler = (snap) => setMyDeviceName(snap.val() || '');
+      ref.on('value', handler);
+      unsubscribe = () => ref.off('value', handler);
+    };
+    attach();
+    return () => {
+      cancelled = true;
+      if (unsubscribe) unsubscribe();
+    };
   }, []);
+
+  // Also derive from devices.approved when it's populated (admin/viewer users).
+  // Belt-and-suspenders for the case where the dedicated listener is slow to attach.
+  useEffect(() => {
+    const me = devices.approved.find(d => d.id === DeviceAuthManager.deviceId);
+    if (me && me.name !== undefined) setMyDeviceName(me.name || '');
+  }, [devices.approved]);
 
   // Listen for Google Drive connection status changes (real-time, no timeout)
   useEffect(() => {
