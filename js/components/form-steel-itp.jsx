@@ -145,6 +145,45 @@ function SteelITPView({ onSubmit, onUpdate, editingForm, sites = [] }) {
     setValidationErrors([]);
   }, [editingForm]);
 
+  // Autosave draft (everything except signatures and submitted/step UI flags)
+  const steelDraftData = {
+    siteConducted, preparedBy, location, jobStructure,
+    preConstMeeting, highRiskWorkshop, shopdrawingsApproved, allItemsSignedOff,
+    materialsOrdered, materialsCorrect, visualCheck, shopdrawingsCurrent,
+    setoutCorrect, tackWeld, fullyWelded, packLoad,
+    finishConfirmed, deliveryBooked, sentToPainter, deliveryVehicle, afterDeliveryFinish,
+    drawingsConfirmed, surveyorMeasurements, surveyorName, clashesDetected,
+    chemicalAnchors, anchorsInstalled, levelPlumb, boltsTorqued, weldingCompleted,
+    groutingCompleted, itemsChecked, finishAcceptable, fixingsTorqued,
+    weldTestingBooked, testingIssues, weldsPassed,
+    colourConfirmed, defectsChecked, handoverAccepted,
+    managerName, builderName
+  };
+  const steelDraft = useAutoSave('steel-itp', isEditing ? null : steelDraftData);
+  useEffect(() => {
+    if (isEditing) return;
+    const draft = steelDraft.loadDraft();
+    if (!draft || !draft.data) return;
+    const d = draft.data;
+    const setters = {
+      siteConducted: setSiteConducted, preparedBy: setPreparedBy, location: setLocation, jobStructure: setJobStructure,
+      preConstMeeting: setPreConstMeeting, highRiskWorkshop: setHighRiskWorkshop, shopdrawingsApproved: setShopdrawingsApproved, allItemsSignedOff: setAllItemsSignedOff,
+      materialsOrdered: setMaterialsOrdered, materialsCorrect: setMaterialsCorrect, visualCheck: setVisualCheck, shopdrawingsCurrent: setShopdrawingsCurrent,
+      setoutCorrect: setSetoutCorrect, tackWeld: setTackWeld, fullyWelded: setFullyWelded, packLoad: setPackLoad,
+      finishConfirmed: setFinishConfirmed, deliveryBooked: setDeliveryBooked, sentToPainter: setSentToPainter, deliveryVehicle: setDeliveryVehicle, afterDeliveryFinish: setAfterDeliveryFinish,
+      drawingsConfirmed: setDrawingsConfirmed, surveyorMeasurements: setSurveyorMeasurements, surveyorName: setSurveyorName, clashesDetected: setClashesDetected,
+      chemicalAnchors: setChemicalAnchors, anchorsInstalled: setAnchorsInstalled, levelPlumb: setLevelPlumb, boltsTorqued: setBoltsTorqued, weldingCompleted: setWeldingCompleted,
+      groutingCompleted: setGroutingCompleted, itemsChecked: setItemsChecked, finishAcceptable: setFinishAcceptable, fixingsTorqued: setFixingsTorqued,
+      weldTestingBooked: setWeldTestingBooked, testingIssues: setTestingIssues, weldsPassed: setWeldsPassed,
+      colourConfirmed: setColourConfirmed, defectsChecked: setDefectsChecked, handoverAccepted: setHandoverAccepted,
+      managerName: setManagerName, builderName: setBuilderName
+    };
+    Object.keys(setters).forEach((k) => { if (d[k] !== undefined) setters[k](d[k]); });
+    if (typeof ToastNotifier !== 'undefined') {
+      ToastNotifier.info('Restored unsaved Steel ITP draft from ' + (draft.ageMinutes || 0) + ' min ago');
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleSubmit = () => {
     let errors = [];
     if (window.formValidator) {
@@ -178,6 +217,7 @@ function SteelITPView({ onSubmit, onUpdate, editingForm, sites = [] }) {
       onUpdate(editingForm.id, 'steel-itp', data);
     } else {
       onSubmit(data);
+      try { steelDraft.clearDraft(); } catch (_) {}
       setSubmitted(true);
     }
   };

@@ -49,6 +49,25 @@ function SubcontractorInspectionView({ onSubmit, onUpdate, editingForm, sites = 
     setValidationErrors([]);
   }, [editingForm]);
 
+  // Autosave draft (skips signature; captures inspectionItems Yes/No/N/A grid).
+  const inspDraft = useAutoSave('inspection', isEditing ? null : {
+    siteConducted, preparedBy, location, completedBy, inspectionItems
+  });
+  useEffect(() => {
+    if (isEditing) return;
+    const draft = inspDraft.loadDraft();
+    if (!draft || !draft.data) return;
+    const d = draft.data;
+    if (d.siteConducted !== undefined) setSiteConducted(d.siteConducted);
+    if (d.preparedBy !== undefined) setPreparedBy(d.preparedBy);
+    if (d.location !== undefined) setLocation(d.location);
+    if (d.completedBy !== undefined) setCompletedBy(d.completedBy);
+    if (d.inspectionItems) setInspectionItems(d.inspectionItems);
+    if (typeof ToastNotifier !== 'undefined') {
+      ToastNotifier.info('Restored unsaved Inspection draft from ' + (draft.ageMinutes || 0) + ' min ago');
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const inspectionQuestions = [
     { id: 'siteBoxes', text: 'Site boxes in good condition and lockable' },
     { id: 'electricalLeads', text: 'Electrical leads and tools are tagged and tested up to date' },
@@ -114,6 +133,7 @@ function SubcontractorInspectionView({ onSubmit, onUpdate, editingForm, sites = 
       onUpdate(editingForm.id, 'inspection', submitData);
     } else {
       onSubmit(submitData);
+      try { inspDraft.clearDraft(); } catch (_) {}
       setSubmitted(true);
     }
   };

@@ -87,6 +87,47 @@ function PrestartView({ onSubmit, onUpdate, editingForm, sites = [], savedTempla
     setValidationErrors([]);
   }, [editingForm, ensureMediaStructure]);
 
+  // Autosave draft for new forms (skip when editing existing). Captures text
+  // and selection fields — NOT signatures/photos (would blow up localStorage).
+  // Restored on mount; cleared after successful submit.
+  const draftSnapshot = isEditing ? null : {
+    checkType, checks, notes, supervisorName, siteConducted, builder, address,
+    workAreas, tasksThisShift, machineryControls, siteHazards, permitsRequired,
+    isPlantEquipmentUsed, highRiskWorks, worksCoveredBySWMS, hasSafetyIssues,
+    safetyIssuesPreviousShift, translatorRequired, translatorName,
+  };
+  const { loadDraft, clearDraft } = useAutoSave('prestart', draftSnapshot);
+  useEffect(() => {
+    if (isEditing) return;
+    const draft = loadDraft();
+    if (!draft || !draft.data) return;
+    const d = draft.data;
+    if (d.checkType !== undefined) setCheckType(d.checkType);
+    if (d.checks) setChecks(d.checks);
+    if (d.notes !== undefined) setNotes(d.notes);
+    if (d.supervisorName !== undefined) setSupervisorName(d.supervisorName);
+    if (d.siteConducted !== undefined) setSiteConducted(d.siteConducted);
+    if (d.builder !== undefined) setBuilder(d.builder);
+    if (d.address !== undefined) setAddress(d.address);
+    if (d.workAreas) setWorkAreas(ensureMediaStructure(d.workAreas));
+    if (d.tasksThisShift) setTasksThisShift(ensureMediaStructure(d.tasksThisShift));
+    if (d.machineryControls) setMachineryControls(ensureMediaStructure(d.machineryControls));
+    if (d.siteHazards) setSiteHazards(ensureMediaStructure(d.siteHazards));
+    if (d.permitsRequired) setPermitsRequired(ensureMediaStructure(d.permitsRequired));
+    if (d.isPlantEquipmentUsed !== undefined) setIsPlantEquipmentUsed(d.isPlantEquipmentUsed);
+    if (d.highRiskWorks !== undefined) setHighRiskWorks(d.highRiskWorks);
+    if (d.worksCoveredBySWMS !== undefined) setWorksCoveredBySWMS(d.worksCoveredBySWMS);
+    if (d.hasSafetyIssues !== undefined) setHasSafetyIssues(d.hasSafetyIssues);
+    if (d.safetyIssuesPreviousShift) setSafetyIssuesPreviousShift(ensureMediaStructure(d.safetyIssuesPreviousShift));
+    if (d.translatorRequired !== undefined) setTranslatorRequired(d.translatorRequired);
+    if (d.translatorName !== undefined) setTranslatorName(d.translatorName);
+    if (typeof ToastNotifier !== 'undefined') {
+      ToastNotifier.info('Restored unsaved Pre-Start draft from ' + (draft.ageMinutes || 0) + ' min ago');
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Expose clearDraft to submit handlers via window.__prestartClearDraft (set below in render).
+  if (typeof window !== 'undefined') window.__prestartClearDraft = clearDraft;
+
   const displayDate = formDate.toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const displayTime = formDate.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
   const builders = FORM_CONSTANTS.builders;
@@ -238,6 +279,9 @@ function PrestartView({ onSubmit, onUpdate, editingForm, sites = [], savedTempla
           templateJobName
         }
       });
+      // Submission success — drop any auto-saved draft so a returning user
+      // doesn't get prompted to restore the form they just submitted.
+      try { clearDraft(); } catch (_) {}
       setLastSubmittedTemplate(reusableTemplate);
       setTemplateAction({ mode: nextTemplateStatus, key: templateKey || '' });
       setSubmitted(true);

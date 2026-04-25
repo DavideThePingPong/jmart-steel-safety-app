@@ -4899,6 +4899,65 @@ function PrestartView({
     setSubmitted(false);
     setValidationErrors([]);
   }, [editingForm, ensureMediaStructure]);
+
+  // Autosave draft for new forms (skip when editing existing). Captures text
+  // and selection fields — NOT signatures/photos (would blow up localStorage).
+  // Restored on mount; cleared after successful submit.
+  const draftSnapshot = isEditing ? null : {
+    checkType,
+    checks,
+    notes,
+    supervisorName,
+    siteConducted,
+    builder,
+    address,
+    workAreas,
+    tasksThisShift,
+    machineryControls,
+    siteHazards,
+    permitsRequired,
+    isPlantEquipmentUsed,
+    highRiskWorks,
+    worksCoveredBySWMS,
+    hasSafetyIssues,
+    safetyIssuesPreviousShift,
+    translatorRequired,
+    translatorName
+  };
+  const {
+    loadDraft,
+    clearDraft
+  } = useAutoSave('prestart', draftSnapshot);
+  useEffect(() => {
+    if (isEditing) return;
+    const draft = loadDraft();
+    if (!draft || !draft.data) return;
+    const d = draft.data;
+    if (d.checkType !== undefined) setCheckType(d.checkType);
+    if (d.checks) setChecks(d.checks);
+    if (d.notes !== undefined) setNotes(d.notes);
+    if (d.supervisorName !== undefined) setSupervisorName(d.supervisorName);
+    if (d.siteConducted !== undefined) setSiteConducted(d.siteConducted);
+    if (d.builder !== undefined) setBuilder(d.builder);
+    if (d.address !== undefined) setAddress(d.address);
+    if (d.workAreas) setWorkAreas(ensureMediaStructure(d.workAreas));
+    if (d.tasksThisShift) setTasksThisShift(ensureMediaStructure(d.tasksThisShift));
+    if (d.machineryControls) setMachineryControls(ensureMediaStructure(d.machineryControls));
+    if (d.siteHazards) setSiteHazards(ensureMediaStructure(d.siteHazards));
+    if (d.permitsRequired) setPermitsRequired(ensureMediaStructure(d.permitsRequired));
+    if (d.isPlantEquipmentUsed !== undefined) setIsPlantEquipmentUsed(d.isPlantEquipmentUsed);
+    if (d.highRiskWorks !== undefined) setHighRiskWorks(d.highRiskWorks);
+    if (d.worksCoveredBySWMS !== undefined) setWorksCoveredBySWMS(d.worksCoveredBySWMS);
+    if (d.hasSafetyIssues !== undefined) setHasSafetyIssues(d.hasSafetyIssues);
+    if (d.safetyIssuesPreviousShift) setSafetyIssuesPreviousShift(ensureMediaStructure(d.safetyIssuesPreviousShift));
+    if (d.translatorRequired !== undefined) setTranslatorRequired(d.translatorRequired);
+    if (d.translatorName !== undefined) setTranslatorName(d.translatorName);
+    if (typeof ToastNotifier !== 'undefined') {
+      ToastNotifier.info('Restored unsaved Pre-Start draft from ' + (draft.ageMinutes || 0) + ' min ago');
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Expose clearDraft to submit handlers via window.__prestartClearDraft (set below in render).
+  if (typeof window !== 'undefined') window.__prestartClearDraft = clearDraft;
   const displayDate = formDate.toLocaleDateString('en-AU', {
     weekday: 'long',
     day: 'numeric',
@@ -5066,6 +5125,11 @@ function PrestartView({
           templateJobName
         }
       });
+      // Submission success — drop any auto-saved draft so a returning user
+      // doesn't get prompted to restore the form they just submitted.
+      try {
+        clearDraft();
+      } catch (_) {}
       setLastSubmittedTemplate(reusableTemplate);
       setTemplateAction({
         mode: nextTemplateStatus,
@@ -5877,6 +5941,25 @@ function IncidentView({
     setSigningReporter(false);
     setValidationError('');
   }, [editingForm]);
+
+  // Autosave draft (formData covers all text/select fields; skip signature).
+  const incDraft = useAutoSave('incident', isEditing ? null : {
+    formData
+  });
+  useEffect(() => {
+    if (isEditing) return;
+    const draft = incDraft.loadDraft();
+    if (draft && draft.data && draft.data.formData) {
+      setFormData(prev => ({
+        ...prev,
+        ...draft.data.formData
+      }));
+      if (typeof ToastNotifier !== 'undefined') {
+        ToastNotifier.info('Restored unsaved Incident Report draft from ' + (draft.ageMinutes || 0) + ' min ago');
+      }
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleIncidentSubmit = () => {
     // Use centralized validator for comprehensive WHS-compliant checks
     const validationData = {
@@ -5900,6 +5983,9 @@ function IncidentView({
       onUpdate(editingForm.id, 'incident', submitData);
     } else {
       onSubmit(submitData);
+      try {
+        incDraft.clearDraft();
+      } catch (_) {}
       setStep(4);
     }
   };
@@ -6187,6 +6273,37 @@ function ToolboxView({
     setSignatures(data.signatures || FORM_CONSTANTS.emptySignatures());
     setValidationErrors([]);
   }, [editingForm]);
+
+  // Autosave draft for new toolbox forms (text/select fields only).
+  const tbDraftSnapshot = isEditing ? null : {
+    siteConducted,
+    builder,
+    address,
+    preparedBy,
+    selectedTopics,
+    otherTopic,
+    correctiveAction,
+    feedbackResponses
+  };
+  const tbDraft = useAutoSave('toolbox', tbDraftSnapshot);
+  useEffect(() => {
+    if (isEditing) return;
+    const draft = tbDraft.loadDraft();
+    if (!draft || !draft.data) return;
+    const d = draft.data;
+    if (d.siteConducted !== undefined) setSiteConducted(d.siteConducted);
+    if (d.builder !== undefined) setBuilder(d.builder);
+    if (d.address !== undefined) setAddress(d.address);
+    if (d.preparedBy !== undefined) setPreparedBy(d.preparedBy);
+    if (Array.isArray(d.selectedTopics)) setSelectedTopics(d.selectedTopics);
+    if (d.otherTopic !== undefined) setOtherTopic(d.otherTopic);
+    if (d.correctiveAction !== undefined) setCorrectiveAction(d.correctiveAction);
+    if (d.feedbackResponses !== undefined) setFeedbackResponses(d.feedbackResponses);
+    if (typeof ToastNotifier !== 'undefined') {
+      ToastNotifier.info('Restored unsaved Toolbox Talk draft from ' + (draft.ageMinutes || 0) + ' min ago');
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const getLocation = () => {
     setIsLocating(true);
     if (navigator.geolocation) {
@@ -6242,8 +6359,14 @@ function ToolboxView({
     };
     if (isEditing && onUpdate) {
       onUpdate(editingForm.id, 'toolbox', submitData);
+      try {
+        tbDraft.clearDraft();
+      } catch (_) {}
     } else {
       onSubmit(submitData);
+      try {
+        tbDraft.clearDraft();
+      } catch (_) {}
       setStep(3);
     }
   };
@@ -6528,6 +6651,30 @@ function SubcontractorInspectionView({
     setSubmitted(false);
     setValidationErrors([]);
   }, [editingForm]);
+
+  // Autosave draft (skips signature; captures inspectionItems Yes/No/N/A grid).
+  const inspDraft = useAutoSave('inspection', isEditing ? null : {
+    siteConducted,
+    preparedBy,
+    location,
+    completedBy,
+    inspectionItems
+  });
+  useEffect(() => {
+    if (isEditing) return;
+    const draft = inspDraft.loadDraft();
+    if (!draft || !draft.data) return;
+    const d = draft.data;
+    if (d.siteConducted !== undefined) setSiteConducted(d.siteConducted);
+    if (d.preparedBy !== undefined) setPreparedBy(d.preparedBy);
+    if (d.location !== undefined) setLocation(d.location);
+    if (d.completedBy !== undefined) setCompletedBy(d.completedBy);
+    if (d.inspectionItems) setInspectionItems(d.inspectionItems);
+    if (typeof ToastNotifier !== 'undefined') {
+      ToastNotifier.info('Restored unsaved Inspection draft from ' + (draft.ageMinutes || 0) + ' min ago');
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const inspectionQuestions = [{
     id: 'siteBoxes',
     text: 'Site boxes in good condition and lockable'
@@ -6621,6 +6768,9 @@ function SubcontractorInspectionView({
       onUpdate(editingForm.id, 'inspection', submitData);
     } else {
       onSubmit(submitData);
+      try {
+        inspDraft.clearDraft();
+      } catch (_) {}
       setSubmitted(true);
     }
   };
@@ -6955,6 +7105,77 @@ function ITPFormView({
     setSubmitted(false);
     setValidationErrors([]);
   }, [editingForm]);
+
+  // Autosave draft — captures every text/select state field. Skips signatures
+  // (would blow up draft size) and ephemeral UI flags. Restored on mount.
+  const itpDraft = useAutoSave('itp', isEditing ? null : {
+    siteConducted,
+    conductedOn,
+    preparedBy,
+    location,
+    preConstructionMeeting,
+    highRiskWorkshop,
+    shopdrawingsApproved,
+    allItemsSignedOff,
+    shopdrawingRevision,
+    orderedGlassFrom,
+    glassSpecification,
+    glassFreeFromDamage,
+    specificationOfFixings,
+    setoutCompletedBy,
+    installationMethod,
+    glassInstalledCorrectRL,
+    glassLockedWedgedGlued,
+    removeWedgesCaulk,
+    handrailSpecConfirmed,
+    spigotsCouplingsTight,
+    handrailCompliantHeight,
+    threadOnFixings,
+    fullWeldingJunctions,
+    allGlassNoDefects,
+    allHandrailNoDefects,
+    balustradeAsPerDesign,
+    builderSignoffName,
+    futureCorrespondence
+  });
+  useEffect(() => {
+    if (isEditing) return;
+    const draft = itpDraft.loadDraft();
+    if (!draft || !draft.data) return;
+    const d = draft.data;
+    if (d.siteConducted !== undefined) setSiteConducted(d.siteConducted);
+    if (d.conductedOn !== undefined) setConductedOn(d.conductedOn);
+    if (d.preparedBy !== undefined) setPreparedBy(d.preparedBy);
+    if (d.location !== undefined) setLocation(d.location);
+    if (d.preConstructionMeeting !== undefined) setPreConstructionMeeting(d.preConstructionMeeting);
+    if (d.highRiskWorkshop !== undefined) setHighRiskWorkshop(d.highRiskWorkshop);
+    if (d.shopdrawingsApproved !== undefined) setShopdrawingsApproved(d.shopdrawingsApproved);
+    if (d.allItemsSignedOff !== undefined) setAllItemsSignedOff(d.allItemsSignedOff);
+    if (d.shopdrawingRevision !== undefined) setShopdrawingRevision(d.shopdrawingRevision);
+    if (d.orderedGlassFrom !== undefined) setOrderedGlassFrom(d.orderedGlassFrom);
+    if (d.glassSpecification !== undefined) setGlassSpecification(d.glassSpecification);
+    if (d.glassFreeFromDamage !== undefined) setGlassFreeFromDamage(d.glassFreeFromDamage);
+    if (d.specificationOfFixings !== undefined) setSpecificationOfFixings(d.specificationOfFixings);
+    if (d.setoutCompletedBy !== undefined) setSetoutCompletedBy(d.setoutCompletedBy);
+    if (d.installationMethod !== undefined) setInstallationMethod(d.installationMethod);
+    if (d.glassInstalledCorrectRL !== undefined) setGlassInstalledCorrectRL(d.glassInstalledCorrectRL);
+    if (d.glassLockedWedgedGlued !== undefined) setGlassLockedWedgedGlued(d.glassLockedWedgedGlued);
+    if (d.removeWedgesCaulk !== undefined) setRemoveWedgesCaulk(d.removeWedgesCaulk);
+    if (d.handrailSpecConfirmed !== undefined) setHandrailSpecConfirmed(d.handrailSpecConfirmed);
+    if (d.spigotsCouplingsTight !== undefined) setSpigotsCouplingsTight(d.spigotsCouplingsTight);
+    if (d.handrailCompliantHeight !== undefined) setHandrailCompliantHeight(d.handrailCompliantHeight);
+    if (d.threadOnFixings !== undefined) setThreadOnFixings(d.threadOnFixings);
+    if (d.fullWeldingJunctions !== undefined) setFullWeldingJunctions(d.fullWeldingJunctions);
+    if (d.allGlassNoDefects !== undefined) setAllGlassNoDefects(d.allGlassNoDefects);
+    if (d.allHandrailNoDefects !== undefined) setAllHandrailNoDefects(d.allHandrailNoDefects);
+    if (d.balustradeAsPerDesign !== undefined) setBalustradeAsPerDesign(d.balustradeAsPerDesign);
+    if (d.builderSignoffName !== undefined) setBuilderSignoffName(d.builderSignoffName);
+    if (d.futureCorrespondence !== undefined) setFutureCorrespondence(d.futureCorrespondence);
+    if (typeof ToastNotifier !== 'undefined') {
+      ToastNotifier.info('Restored unsaved ITP draft from ' + (draft.ageMinutes || 0) + ' min ago');
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const getLocation = () => {
     setIsLocating(true);
     if (navigator.geolocation) {
@@ -7032,6 +7253,9 @@ function ITPFormView({
       onUpdate(editingForm.id, 'itp', submitData);
     } else {
       onSubmit(submitData);
+      try {
+        itpDraft.clearDraft();
+      } catch (_) {}
       setSubmitted(true);
     }
   };
@@ -7504,6 +7728,110 @@ function SteelITPView({
     setSubmitted(false);
     setValidationErrors([]);
   }, [editingForm]);
+
+  // Autosave draft (everything except signatures and submitted/step UI flags)
+  const steelDraftData = {
+    siteConducted,
+    preparedBy,
+    location,
+    jobStructure,
+    preConstMeeting,
+    highRiskWorkshop,
+    shopdrawingsApproved,
+    allItemsSignedOff,
+    materialsOrdered,
+    materialsCorrect,
+    visualCheck,
+    shopdrawingsCurrent,
+    setoutCorrect,
+    tackWeld,
+    fullyWelded,
+    packLoad,
+    finishConfirmed,
+    deliveryBooked,
+    sentToPainter,
+    deliveryVehicle,
+    afterDeliveryFinish,
+    drawingsConfirmed,
+    surveyorMeasurements,
+    surveyorName,
+    clashesDetected,
+    chemicalAnchors,
+    anchorsInstalled,
+    levelPlumb,
+    boltsTorqued,
+    weldingCompleted,
+    groutingCompleted,
+    itemsChecked,
+    finishAcceptable,
+    fixingsTorqued,
+    weldTestingBooked,
+    testingIssues,
+    weldsPassed,
+    colourConfirmed,
+    defectsChecked,
+    handoverAccepted,
+    managerName,
+    builderName
+  };
+  const steelDraft = useAutoSave('steel-itp', isEditing ? null : steelDraftData);
+  useEffect(() => {
+    if (isEditing) return;
+    const draft = steelDraft.loadDraft();
+    if (!draft || !draft.data) return;
+    const d = draft.data;
+    const setters = {
+      siteConducted: setSiteConducted,
+      preparedBy: setPreparedBy,
+      location: setLocation,
+      jobStructure: setJobStructure,
+      preConstMeeting: setPreConstMeeting,
+      highRiskWorkshop: setHighRiskWorkshop,
+      shopdrawingsApproved: setShopdrawingsApproved,
+      allItemsSignedOff: setAllItemsSignedOff,
+      materialsOrdered: setMaterialsOrdered,
+      materialsCorrect: setMaterialsCorrect,
+      visualCheck: setVisualCheck,
+      shopdrawingsCurrent: setShopdrawingsCurrent,
+      setoutCorrect: setSetoutCorrect,
+      tackWeld: setTackWeld,
+      fullyWelded: setFullyWelded,
+      packLoad: setPackLoad,
+      finishConfirmed: setFinishConfirmed,
+      deliveryBooked: setDeliveryBooked,
+      sentToPainter: setSentToPainter,
+      deliveryVehicle: setDeliveryVehicle,
+      afterDeliveryFinish: setAfterDeliveryFinish,
+      drawingsConfirmed: setDrawingsConfirmed,
+      surveyorMeasurements: setSurveyorMeasurements,
+      surveyorName: setSurveyorName,
+      clashesDetected: setClashesDetected,
+      chemicalAnchors: setChemicalAnchors,
+      anchorsInstalled: setAnchorsInstalled,
+      levelPlumb: setLevelPlumb,
+      boltsTorqued: setBoltsTorqued,
+      weldingCompleted: setWeldingCompleted,
+      groutingCompleted: setGroutingCompleted,
+      itemsChecked: setItemsChecked,
+      finishAcceptable: setFinishAcceptable,
+      fixingsTorqued: setFixingsTorqued,
+      weldTestingBooked: setWeldTestingBooked,
+      testingIssues: setTestingIssues,
+      weldsPassed: setWeldsPassed,
+      colourConfirmed: setColourConfirmed,
+      defectsChecked: setDefectsChecked,
+      handoverAccepted: setHandoverAccepted,
+      managerName: setManagerName,
+      builderName: setBuilderName
+    };
+    Object.keys(setters).forEach(k => {
+      if (d[k] !== undefined) setters[k](d[k]);
+    });
+    if (typeof ToastNotifier !== 'undefined') {
+      ToastNotifier.info('Restored unsaved Steel ITP draft from ' + (draft.ageMinutes || 0) + ' min ago');
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleSubmit = () => {
     let errors = [];
     if (window.formValidator) {
@@ -7573,6 +7901,9 @@ function SteelITPView({
       onUpdate(editingForm.id, 'steel-itp', data);
     } else {
       onSubmit(data);
+      try {
+        steelDraft.clearDraft();
+      } catch (_) {}
       setSubmitted(true);
     }
   };

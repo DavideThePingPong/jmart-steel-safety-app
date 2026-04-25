@@ -37,6 +37,19 @@ function IncidentView({ onSubmit, onUpdate, editingForm }) {
     setValidationError('');
   }, [editingForm]);
 
+  // Autosave draft (formData covers all text/select fields; skip signature).
+  const incDraft = useAutoSave('incident', isEditing ? null : { formData });
+  useEffect(() => {
+    if (isEditing) return;
+    const draft = incDraft.loadDraft();
+    if (draft && draft.data && draft.data.formData) {
+      setFormData(prev => ({ ...prev, ...draft.data.formData }));
+      if (typeof ToastNotifier !== 'undefined') {
+        ToastNotifier.info('Restored unsaved Incident Report draft from ' + (draft.ageMinutes || 0) + ' min ago');
+      }
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleIncidentSubmit = () => {
     // Use centralized validator for comprehensive WHS-compliant checks
     const validationData = { ...formData, reporterSignature, incidentType: formData.type, incidentDate: formData.date, incidentTime: formData.time };
@@ -51,6 +64,7 @@ function IncidentView({ onSubmit, onUpdate, editingForm }) {
       onUpdate(editingForm.id, 'incident', submitData);
     } else {
       onSubmit(submitData);
+      try { incDraft.clearDraft(); } catch (_) {}
       setStep(4);
     }
   };

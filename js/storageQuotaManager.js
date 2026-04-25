@@ -251,7 +251,13 @@ const StorageQuotaManager = {
   StorageQuotaManager._origSetItem = function(key, value) {
     _origSetItem.call(localStorage, key, value);
   };
-  // Patch localStorage.setItem globally for quota awareness
+  // Patch localStorage.setItem globally for quota awareness.
+  // Reentrancy guard: cleanup() itself writes to localStorage (via the same
+  // patched setter), so an out-of-quota cleanup write that ALSO fails could
+  // recursively trigger more cleanups → tab freeze under storage pressure.
+  // Once we're inside the quota-recovery path, route subsequent writes
+  // through _origSetItem directly, skipping the cleanup attempt.
+  StorageQuotaManager._cleaningUp = false;
   Storage.prototype.setItem = function(key, value) {
     try {
       _origSetItem.call(this, key, value);
@@ -265,6 +271,13 @@ const StorageQuotaManager = {
     } catch (e) {
       // Only handle genuine QuotaExceededError on localStorage
       if (this === localStorage && (e.name === 'QuotaExceededError' || e.code === 22 || e.code === 1014)) {
+        // If we're already inside cleanup, don't recurse — propagate so the
+        // caller (cleanup itself) can react instead of triggering another
+        // cleanup pass that tries to write more data and fails again.
+        if (StorageQuotaManager._cleaningUp) {
+          StorageQuotaManager.notifyListeners({ error: 'quota_exceeded', ...StorageQuotaManager.getUsage() });
+          throw e;
+        }
         var currentUsage = StorageQuotaManager.getUsage();
         console.error('[StorageQuotaManager] Quota error on key:', key,
           '| Usage:', currentUsage.megabytes, 'MB (' + currentUsage.percentUsed + '%)',
@@ -272,18 +285,23 @@ const StorageQuotaManager = {
 
         // Only attempt cleanup if storage is actually getting full (>50%)
         if (parseFloat(currentUsage.percentUsed) > 50) {
-          StorageQuotaManager.cleanup();
+          StorageQuotaManager._cleaningUp = true;
           try {
-            _origSetItem.call(this, key, value);
-            return; // Success after cleanup
-          } catch (e2) {
-            if (e2.name === 'QuotaExceededError' || e2.code === 22 || e2.code === 1014) {
-              StorageQuotaManager.notifyListeners({ error: 'quota_exceeded', ...StorageQuotaManager.getUsage() });
-              throw new Error('Storage full! Please connect Google Drive to back up forms, then clear old data in Settings.');
+            StorageQuotaManager.cleanup();
+            try {
+              _origSetItem.call(this, key, value);
+              return; // Success after cleanup
+            } catch (e2) {
+              if (e2.name === 'QuotaExceededError' || e2.code === 22 || e2.code === 1014) {
+                StorageQuotaManager.notifyListeners({ error: 'quota_exceeded', ...StorageQuotaManager.getUsage() });
+                throw new Error('Storage full! Please connect Google Drive to back up forms, then clear old data in Settings.');
+              }
+              // Non-quota error on retry — re-throw original error, not a misleading "Storage full!" message
+              console.error('[StorageQuotaManager] Non-quota error on retry:', e2.name, e2.message);
+              throw e2;
             }
-            // Non-quota error on retry — re-throw original error, not a misleading "Storage full!" message
-            console.error('[StorageQuotaManager] Non-quota error on retry:', e2.name, e2.message);
-            throw e2;
+          } finally {
+            StorageQuotaManager._cleaningUp = false;
           }
         } else {
           // Storage is NOT full but browser threw QuotaExceededError (e.g., private browsing, security restriction)

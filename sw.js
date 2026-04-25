@@ -9,7 +9,7 @@
  * - v4: Pinned CDN versions (supply-chain hardening)
  */
 
-const CACHE_VERSION = 'v101';
+const CACHE_VERSION = 'v102';
 const STATIC_CACHE = `jmart-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `jmart-dynamic-${CACHE_VERSION}`;
 const CDN_CACHE = `jmart-cdn-${CACHE_VERSION}`;
@@ -136,9 +136,14 @@ async function cacheFirst(request, cacheName) {
     const isCDN = CDN_RESOURCES.some(cdn => url === cdn || url.startsWith(cdn.split('?')[0]));
     const fetchRequest = isCDN ? new Request(url, { mode: 'cors' }) : request;
     const response = await fetch(fetchRequest);
-    if (response.ok) {
-      const cache = await caches.open(cacheName);
-      cache.put(request, response.clone());
+    // Skip caching partial (206) and redirected responses — both can poison
+    // the cache (incomplete bytes, or wrong-URL redirect target). Wrap put
+    // in try/catch because cache.put rejects on any of these conditions.
+    if (response.ok && response.status !== 206 && !response.redirected) {
+      try {
+        const cache = await caches.open(cacheName);
+        await cache.put(request, response.clone());
+      } catch (e) { console.warn('[SW] cache.put failed:', e.message); }
     }
     return response;
   } catch (error) {
@@ -159,9 +164,11 @@ async function cacheFirst(request, cacheName) {
 async function networkFirst(request, cacheName) {
   try {
     const response = await fetch(request);
-    if (response.ok) {
-      const cache = await caches.open(cacheName);
-      cache.put(request, response.clone());
+    if (response.ok && response.status !== 206 && !response.redirected) {
+      try {
+        const cache = await caches.open(cacheName);
+        await cache.put(request, response.clone());
+      } catch (e) { console.warn('[SW] cache.put failed:', e.message); }
     }
     return response;
   } catch (error) {
@@ -186,9 +193,11 @@ async function staleWhileRevalidate(request, cacheName) {
 
   // Start network fetch in background
   const fetchPromise = fetch(request).then(async (response) => {
-    if (response.ok) {
-      const cache = await caches.open(cacheName);
-      await cache.put(request, response.clone());
+    if (response.ok && response.status !== 206 && !response.redirected) {
+      try {
+        const cache = await caches.open(cacheName);
+        await cache.put(request, response.clone());
+      } catch (e) { console.warn('[SW] cache.put failed:', e.message); }
     }
     return response;
   }).catch(() => null);
@@ -341,6 +350,11 @@ self.addEventListener('fetch', (event) => {
   // The SW's forced CORS mode + cache-first strategy breaks the GSI sign-in library.
   if (event.request.url.includes('accounts.google.com') ||
       event.request.url.includes('apis.google.com')) return;
+
+  // Skip range requests (HTTP 206 partial responses). iOS Safari uses these
+  // for <video>/<audio> and PDF preview; if we cached the partial response,
+  // subsequent full-resource requests would get the partial slice and break.
+  if (event.request.headers.has('range')) return;
 
   const strategy = getStrategy(event.request);
   const url = new URL(event.request.url);

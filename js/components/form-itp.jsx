@@ -133,6 +133,56 @@ function ITPFormView({ onSubmit, onUpdate, editingForm, sites = [] }) {
     setValidationErrors([]);
   }, [editingForm]);
 
+  // Autosave draft — captures every text/select state field. Skips signatures
+  // (would blow up draft size) and ephemeral UI flags. Restored on mount.
+  const itpDraft = useAutoSave('itp', isEditing ? null : {
+    siteConducted, conductedOn, preparedBy, location,
+    preConstructionMeeting, highRiskWorkshop, shopdrawingsApproved, allItemsSignedOff,
+    shopdrawingRevision, orderedGlassFrom, glassSpecification,
+    glassFreeFromDamage, specificationOfFixings, setoutCompletedBy, installationMethod,
+    glassInstalledCorrectRL, glassLockedWedgedGlued, removeWedgesCaulk,
+    handrailSpecConfirmed, spigotsCouplingsTight, handrailCompliantHeight, threadOnFixings, fullWeldingJunctions,
+    allGlassNoDefects, allHandrailNoDefects, balustradeAsPerDesign,
+    builderSignoffName, futureCorrespondence
+  });
+  useEffect(() => {
+    if (isEditing) return;
+    const draft = itpDraft.loadDraft();
+    if (!draft || !draft.data) return;
+    const d = draft.data;
+    if (d.siteConducted !== undefined) setSiteConducted(d.siteConducted);
+    if (d.conductedOn !== undefined) setConductedOn(d.conductedOn);
+    if (d.preparedBy !== undefined) setPreparedBy(d.preparedBy);
+    if (d.location !== undefined) setLocation(d.location);
+    if (d.preConstructionMeeting !== undefined) setPreConstructionMeeting(d.preConstructionMeeting);
+    if (d.highRiskWorkshop !== undefined) setHighRiskWorkshop(d.highRiskWorkshop);
+    if (d.shopdrawingsApproved !== undefined) setShopdrawingsApproved(d.shopdrawingsApproved);
+    if (d.allItemsSignedOff !== undefined) setAllItemsSignedOff(d.allItemsSignedOff);
+    if (d.shopdrawingRevision !== undefined) setShopdrawingRevision(d.shopdrawingRevision);
+    if (d.orderedGlassFrom !== undefined) setOrderedGlassFrom(d.orderedGlassFrom);
+    if (d.glassSpecification !== undefined) setGlassSpecification(d.glassSpecification);
+    if (d.glassFreeFromDamage !== undefined) setGlassFreeFromDamage(d.glassFreeFromDamage);
+    if (d.specificationOfFixings !== undefined) setSpecificationOfFixings(d.specificationOfFixings);
+    if (d.setoutCompletedBy !== undefined) setSetoutCompletedBy(d.setoutCompletedBy);
+    if (d.installationMethod !== undefined) setInstallationMethod(d.installationMethod);
+    if (d.glassInstalledCorrectRL !== undefined) setGlassInstalledCorrectRL(d.glassInstalledCorrectRL);
+    if (d.glassLockedWedgedGlued !== undefined) setGlassLockedWedgedGlued(d.glassLockedWedgedGlued);
+    if (d.removeWedgesCaulk !== undefined) setRemoveWedgesCaulk(d.removeWedgesCaulk);
+    if (d.handrailSpecConfirmed !== undefined) setHandrailSpecConfirmed(d.handrailSpecConfirmed);
+    if (d.spigotsCouplingsTight !== undefined) setSpigotsCouplingsTight(d.spigotsCouplingsTight);
+    if (d.handrailCompliantHeight !== undefined) setHandrailCompliantHeight(d.handrailCompliantHeight);
+    if (d.threadOnFixings !== undefined) setThreadOnFixings(d.threadOnFixings);
+    if (d.fullWeldingJunctions !== undefined) setFullWeldingJunctions(d.fullWeldingJunctions);
+    if (d.allGlassNoDefects !== undefined) setAllGlassNoDefects(d.allGlassNoDefects);
+    if (d.allHandrailNoDefects !== undefined) setAllHandrailNoDefects(d.allHandrailNoDefects);
+    if (d.balustradeAsPerDesign !== undefined) setBalustradeAsPerDesign(d.balustradeAsPerDesign);
+    if (d.builderSignoffName !== undefined) setBuilderSignoffName(d.builderSignoffName);
+    if (d.futureCorrespondence !== undefined) setFutureCorrespondence(d.futureCorrespondence);
+    if (typeof ToastNotifier !== 'undefined') {
+      ToastNotifier.info('Restored unsaved ITP draft from ' + (draft.ageMinutes || 0) + ' min ago');
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const getLocation = () => {
     setIsLocating(true);
     if (navigator.geolocation) {
@@ -185,6 +235,7 @@ function ITPFormView({ onSubmit, onUpdate, editingForm, sites = [] }) {
       onUpdate(editingForm.id, 'itp', submitData);
     } else {
       onSubmit(submitData);
+      try { itpDraft.clearDraft(); } catch (_) {}
       setSubmitted(true);
     }
   };

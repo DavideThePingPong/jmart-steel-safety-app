@@ -60,6 +60,30 @@ function ToolboxView({ onSubmit, onUpdate, editingForm, sites = [] }) {
     setValidationErrors([]);
   }, [editingForm]);
 
+  // Autosave draft for new toolbox forms (text/select fields only).
+  const tbDraftSnapshot = isEditing ? null : {
+    siteConducted, builder, address, preparedBy,
+    selectedTopics, otherTopic, correctiveAction, feedbackResponses
+  };
+  const tbDraft = useAutoSave('toolbox', tbDraftSnapshot);
+  useEffect(() => {
+    if (isEditing) return;
+    const draft = tbDraft.loadDraft();
+    if (!draft || !draft.data) return;
+    const d = draft.data;
+    if (d.siteConducted !== undefined) setSiteConducted(d.siteConducted);
+    if (d.builder !== undefined) setBuilder(d.builder);
+    if (d.address !== undefined) setAddress(d.address);
+    if (d.preparedBy !== undefined) setPreparedBy(d.preparedBy);
+    if (Array.isArray(d.selectedTopics)) setSelectedTopics(d.selectedTopics);
+    if (d.otherTopic !== undefined) setOtherTopic(d.otherTopic);
+    if (d.correctiveAction !== undefined) setCorrectiveAction(d.correctiveAction);
+    if (d.feedbackResponses !== undefined) setFeedbackResponses(d.feedbackResponses);
+    if (typeof ToastNotifier !== 'undefined') {
+      ToastNotifier.info('Restored unsaved Toolbox Talk draft from ' + (draft.ageMinutes || 0) + ' min ago');
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const getLocation = () => {
     setIsLocating(true);
     if (navigator.geolocation) {
@@ -104,8 +128,10 @@ function ToolboxView({ onSubmit, onUpdate, editingForm, sites = [] }) {
     };
     if (isEditing && onUpdate) {
       onUpdate(editingForm.id, 'toolbox', submitData);
+      try { tbDraft.clearDraft(); } catch (_) {}
     } else {
       onSubmit(submitData);
+      try { tbDraft.clearDraft(); } catch (_) {}
       setStep(3);
     }
   };

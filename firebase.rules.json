@@ -233,7 +233,12 @@
       ".read": "auth != null && root.child('jmart-safety/authDevices/' + auth.uid).child('approvedAt').exists()",
       ".write": "auth != null && root.child('jmart-safety/authDevices/' + auth.uid).child('approvedAt').exists()",
       "$signatureId": {
-        ".validate": "!newData.exists() || newData.val() === null || (newData.isString() && newData.val().length < 500000)"
+        // Per-entry cap reduced from 500 KB → 150 KB (no signature image needs
+        // more — a typical 800px PNG is 30-50 KB). Combined with the key
+        // length cap, an insider can no longer balloon Firebase storage by
+        // writing thousands of huge garbage-keyed entries.
+        // Key length cap (≤ 200 chars) prevents signatures/AAAA…AAAA junk.
+        ".validate": "!newData.exists() || newData.val() === null || (newData.isString() && newData.val().length < 150000 && $signatureId.length < 200)"
       }
     }
   }

@@ -853,29 +853,24 @@ const DeviceAuth = {
   // Load password hash from Firebase (uses REST API fallback)
   // Caches locally so login works even when Firebase is slow/unavailable
   loadPasswordHash: async function() {
-    // Always try local cache first for instant availability
-    try {
-      var cached = localStorage.getItem('jmart-password-hash');
-      if (cached) {
-        this.APP_PASSWORD_HASH = cached;
-        console.log('[loadPasswordHash] Loaded from local cache');
-      }
-    } catch (e) { /* localStorage might not be available */ }
+    // No localStorage caching — hash stays in memory only.
+    // Persisting it to localStorage meant any read-access to the user's
+    // browser storage exposed the hash for offline cracking. The password
+    // is only validated during device setup (always online), so an
+    // in-memory copy for the session is sufficient.
+    if (this.APP_PASSWORD_HASH) return; // already loaded this session
+    // Migrate: clear any legacy cached hash from prior versions.
+    try { localStorage.removeItem('jmart-password-hash'); } catch (e) {}
 
     if (!isFirebaseConfigured) return;
     try {
       var result = await firebaseRead('jmart-safety/config/appPasswordHash', this.AUTH_READ_TIMEOUT_MS || 1200);
       if (result.val) {
         this.APP_PASSWORD_HASH = result.val;
-        // Cache locally for next time
-        try { localStorage.setItem('jmart-password-hash', result.val); } catch (e) {}
-        console.log('[loadPasswordHash] Loaded via', result.source, '(cached locally)');
+        console.log('[loadPasswordHash] Loaded via', result.source, '(memory only — not cached locally)');
       }
     } catch (e) {
       console.warn('Could not load password hash from Firebase:', e.message);
-      if (this.APP_PASSWORD_HASH) {
-        console.log('[loadPasswordHash] Using local cache as fallback');
-      }
     }
   },
 
