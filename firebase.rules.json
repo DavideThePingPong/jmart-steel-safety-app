@@ -155,13 +155,19 @@
         }
       },
 
-      // Hanna - Receipts (authenticated devices only)
+      // Hanna - Receipts (any approved device — boss's non-admin hub needs
+      // to scan too). Validate now requires store_name + total to be present
+      // and correctly typed; previously a partial OCR result with garbage
+      // types could write through and crash the recent-list rendering on
+      // `.toFixed`. ID accepts string OR number (client now generates string
+      // ids with random suffix so two devices saving in the same ms don't
+      // collide on Date.now()).
       "hanna": {
         "receipts": {
           ".read": "auth != null && root.child('jmart-safety/authDevices/' + auth.uid).child('approvedAt').exists()",
           "$receiptId": {
             ".write": "auth != null && root.child('jmart-safety/authDevices/' + auth.uid).child('approvedAt').exists()",
-            ".validate": "!newData.exists() || (newData.hasChildren(['id', 'saved_at']) && newData.child('id').isNumber() && newData.child('saved_at').isString() && newData.child('saved_at').val().length < 100)"
+            ".validate": "!newData.exists() || (newData.hasChildren(['id', 'saved_at', 'store_name', 'total']) && (newData.child('id').isString() || newData.child('id').isNumber()) && newData.child('saved_at').isString() && newData.child('saved_at').val().length < 100 && newData.child('store_name').isString() && newData.child('store_name').val().length < 240 && newData.child('total').isNumber() && newData.child('total').val() >= 0 && newData.child('total').val() < 1000000)"
           }
         }
       },

@@ -1398,15 +1398,53 @@ function sanitizeReceiptItem(value) {
 
 function sanitizeHannaReceipt(value) {
   const safe = sanitizeObject(value);
+  // Helper: clamp a numeric field into [0, max] and reject NaN/negative.
+  const clampMoney = function(v, max) {
+    const n = Number(v);
+    if (!Number.isFinite(n) || n < 0) return 0;
+    return n > max ? max : n;
+  };
+  // Cap individual receipt total at A$99,999 — no plausible receipt is bigger,
+  // and unbounded values let an OCR hallucination inflate the GST stat.
+  const total = clampMoney(safe.total, 99999);
+  // GST is bounded by total — if Claude hallucinated gst > total (happens on
+  // blurry receipts), clamp. Australian GST is 10%, so a sensible upper
+  // bound is ~10% of total, but we accept up to total to be lenient.
+  let gst = clampMoney(safe.gst, total);
+  if (gst > total) gst = total;
+  const subtotal = clampMoney(safe.subtotal, total);
+  // Reject dates more than 30 days in the future (clock-skew tolerance) —
+  // sanitizeDate already validates shape, but doesn't check sensibility.
+  let date = sanitizeDate(safe.date);
+  if (date) {
+    const tryParse = new Date(date.split('/').reverse().join('-'));
+    if (!isNaN(tryParse.getTime()) && tryParse.getTime() > Date.now() + 30 * 24 * 3600 * 1000) {
+      date = '';
+    }
+  }
   return {
     store_name: sanitizeText(safe.store_name || safe.store, 240),
-    date: sanitizeDate(safe.date),
-    subtotal: Number.isFinite(Number(safe.subtotal)) ? Number(safe.subtotal) : 0,
-    gst: Number.isFinite(Number(safe.gst)) ? Number(safe.gst) : 0,
-    total: Number.isFinite(Number(safe.total)) ? Number(safe.total) : 0,
+    date: date,
+    subtotal: subtotal,
+    gst: gst,
+    total: total,
     items: Array.isArray(safe.items) ? safe.items.slice(0, 40).map(sanitizeReceiptItem) : [],
     confidence: Number.isFinite(Number(safe.confidence)) ? Number(safe.confidence) : 0,
   };
+}
+
+// Hanna-specific JSON extractor — prefers the balanced parser so a receipt
+// containing literal '}' characters (e.g. malicious printed text trying to
+// truncate parsing) doesn't fool the greedy `\{[\s\S]*\}` regex into
+// grabbing the wrong slice. Falls back to the greedy variant if the
+// balanced parser can't find a top-level object.
+function extractHannaJson(text, fallbackMessage) {
+  const stripped = stripCodeFence(text || "");
+  try {
+    const balanced = extractBalancedJsonObject(stripped);
+    if (balanced) return JSON.parse(balanced);
+  } catch (e) { /* fall through */ }
+  return extractJsonObject(stripped, fallbackMessage);
 }
 
 async function extractHannaReceiptData(filename, mediaType, buffer, secrets) {
@@ -1440,7 +1478,7 @@ async function extractHannaReceiptData(filename, mediaType, buffer, secrets) {
         },
       ],
     });
-    return sanitizeHannaReceipt(extractJsonObject(extractResponseText(payload), "Receipt extraction returned invalid JSON"));
+    return sanitizeHannaReceipt(extractHannaJson(extractResponseText(payload), "Receipt extraction returned invalid JSON"));
   }
 
   if (mediaType === "application/pdf" || ext === ".pdf") {
@@ -1461,7 +1499,7 @@ async function extractHannaReceiptData(filename, mediaType, buffer, secrets) {
           },
         ],
       });
-      return sanitizeHannaReceipt(extractJsonObject(extractResponseText(payload), "Receipt extraction returned invalid JSON"));
+      return sanitizeHannaReceipt(extractHannaJson(extractResponseText(payload), "Receipt extraction returned invalid JSON"));
     }
 
     payload = await callAnthropicMessages({
@@ -1488,7 +1526,7 @@ async function extractHannaReceiptData(filename, mediaType, buffer, secrets) {
         },
       ],
     });
-    return sanitizeHannaReceipt(extractJsonObject(extractResponseText(payload), "Receipt extraction returned invalid JSON"));
+    return sanitizeHannaReceipt(extractHannaJson(extractResponseText(payload), "Receipt extraction returned invalid JSON"));
   }
 
   throw { status: 400, detail: "Unsupported receipt type" };

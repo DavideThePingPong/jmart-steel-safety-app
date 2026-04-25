@@ -6837,26 +6837,36 @@
         hannaFirebaseListenerActive = false;
     }
 
+    // Persist localStorage only. Firebase writes are now per-receipt via the
+    // dedicated push/remove helpers below — never bulk update with null'd
+    // missing keys, because that pattern clobbered cross-device receipts:
+    // device A saving its new receipt would null-out device B's just-added
+    // receipt that A's listener hadn't received yet.
     function hannaSaveReceipts() {
-        if (firebaseDb) {
-            try {
-                const updates = {};
-                const currentKeys = new Set();
-                hannaReceipts.forEach((receipt) => {
-                    const key = hannaReceiptFirebaseKey(receipt);
-                    currentKeys.add(key);
-                    updates[key] = sanitizeForFirebase(receipt);
-                });
-                hannaKnownReceiptKeys.forEach((key) => {
-                    if (!currentKeys.has(key)) updates[key] = null;
-                });
-                if (Object.keys(updates).length > 0) {
-                    firebaseDb.ref('jmart-safety/hanna/receipts').update(updates);
-                }
-                hannaKnownReceiptKeys = currentKeys;
-            } catch (e) { console.warn('Hanna Firebase save failed:', e.message); }
-        }
-        localStorage.setItem('hannaReceipts', JSON.stringify(hannaReceipts));
+        try { localStorage.setItem('hannaReceipts', JSON.stringify(hannaReceipts)); } catch (e) {}
+    }
+
+    // Push ONE receipt to Firebase + local — single-key set, no clobber.
+    function hannaPushReceiptToFirebase(receipt) {
+        if (!firebaseDb || !receipt) return;
+        try {
+            const key = hannaReceiptFirebaseKey(receipt);
+            hannaKnownReceiptKeys.add(key);
+            firebaseDb.ref('jmart-safety/hanna/receipts/' + key)
+                .set(sanitizeForFirebase(receipt))
+                .catch(e => console.warn('Hanna receipt save failed for ' + key + ':', e.message));
+        } catch (e) { console.warn('Hanna receipt save failed:', e.message); }
+    }
+
+    // Remove ONE receipt from Firebase + local — explicit delete only.
+    function hannaRemoveReceiptFromFirebase(key) {
+        if (!firebaseDb || !key) return;
+        try {
+            hannaKnownReceiptKeys.delete(key);
+            firebaseDb.ref('jmart-safety/hanna/receipts/' + key)
+                .remove()
+                .catch(e => console.warn('Hanna receipt delete failed for ' + key + ':', e.message));
+        } catch (e) { console.warn('Hanna receipt delete failed:', e.message); }
     }
 
     function hannaStartSync() {
@@ -6883,22 +6893,72 @@
         }, (err) => { console.warn('Hanna sync listener error:', err.message); hannaFirebaseListenerActive = false; });
     }
 
+    // Downscale a receipt image to a max long-edge before uploading.
+    // Receipt OCR works fine at 1600px; full-resolution iPhone HEIC photos
+    // are 4032×3024 = ~5MB JPEG, base64-inflated to ~7MB. Downscaling cuts
+    // the Anthropic vision token cost roughly proportionally with no quality
+    // loss for legible printed text.
+    function hannaDownscaleImage(file, maxEdge) {
+        return new Promise(function(resolve) {
+            try {
+                const reader = new FileReader();
+                reader.onload = function(ev) {
+                    const img = new Image();
+                    img.onload = function() {
+                        const longEdge = Math.max(img.width, img.height);
+                        if (longEdge <= maxEdge) { resolve(file); return; } // already small enough
+                        const scale = maxEdge / longEdge;
+                        const w = Math.round(img.width * scale);
+                        const h = Math.round(img.height * scale);
+                        const canvas = document.createElement('canvas');
+                        canvas.width = w; canvas.height = h;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, w, h);
+                        canvas.toBlob(function(blob) {
+                            if (!blob) { resolve(file); return; }
+                            // Wrap as File so multipart upload still has a filename + type
+                            const downscaled = new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' });
+                            resolve(downscaled);
+                        }, 'image/jpeg', 0.85);
+                    };
+                    img.onerror = function() { resolve(file); };
+                    img.src = ev.target.result;
+                };
+                reader.onerror = function() { resolve(file); };
+                reader.readAsDataURL(file);
+            } catch (e) { resolve(file); }
+        });
+    }
+
     function hannaFileSelected(event) {
         const file = event.target.files[0];
         if (!file) return;
+        // Hard cap on raw file size — protects against bulk-upload of huge
+        // images blowing up Anthropic API costs (Frank/Victor have this; Hanna
+        // didn't until now). 8MB raw is generous for legible receipts.
+        if (file.size > 8 * 1024 * 1024) {
+            document.getElementById('hannaConsole').textContent = '⚠️ Receipt too large (' + (file.size/1024/1024).toFixed(1) + 'MB). Max 8MB.';
+            event.target.value = '';
+            return;
+        }
 
-        hannaCurrentFile = file;
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            document.getElementById('hannaPreviewImage').src = e.target.result;
-            document.getElementById('hannaPreview').style.display = 'block';
-            document.getElementById('hannaUploadZone').style.display = 'none';
-            document.getElementById('hannaConsole').textContent = `📷 Image loaded: ${file.name}`;
-
-            // Auto-scan after upload
-            hannaScanReceipt();
-        };
-        reader.readAsDataURL(file);
+        document.getElementById('hannaConsole').textContent = '🖼️ Optimizing receipt for upload…';
+        // PDFs go through unchanged — only resize images.
+        const isImage = (file.type || '').indexOf('image/') === 0;
+        const prepare = isImage ? hannaDownscaleImage(file, 1600) : Promise.resolve(file);
+        prepare.then(function(uploadFile) {
+            hannaCurrentFile = uploadFile;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                document.getElementById('hannaPreviewImage').src = e.target.result;
+                document.getElementById('hannaPreview').style.display = 'block';
+                document.getElementById('hannaUploadZone').style.display = 'none';
+                document.getElementById('hannaConsole').textContent = `📷 Image loaded: ${file.name}` + (uploadFile !== file ? ' (resized to ' + (uploadFile.size/1024).toFixed(0) + ' KB)' : '');
+                // Auto-scan after upload
+                hannaScanReceipt();
+            };
+            reader.readAsDataURL(uploadFile);
+        });
     }
 
     function hannaClearPreview() {
@@ -6918,12 +6978,65 @@
         hannaCurrentResult = null;
     }
 
+    // Mirror of server-side sanitizeHannaReceipt for the browser-direct path.
+    // When getSteelApiBase() is empty + getApiKey() is set, the AI response is
+    // parsed by JSON.parse and never run through the server sanitizer — so a
+    // string total like "$140.00" would crash hannaDisplayResult on .toFixed.
+    // Coerces all numeric fields, clamps GST <= total, rejects future dates.
+    function hannaCoerceReceipt(parsed) {
+        if (!parsed || typeof parsed !== 'object') return null;
+        const num = function(v, max) {
+            const n = Number(v);
+            if (!Number.isFinite(n) || n < 0) return 0;
+            return max && n > max ? max : n;
+        };
+        const total = num(parsed.total, 99999);
+        let gst = num(parsed.gst, total);
+        if (gst > total) gst = total; // clamp absurd OCR results
+        const subtotal = num(parsed.subtotal, total);
+        // Date sanity: reject anything more than 30 days in the future.
+        let dateStr = typeof parsed.date === 'string' ? parsed.date : '';
+        if (dateStr) {
+            const tryDate = new Date(dateStr.split('/').reverse().join('-')); // DD/MM/YYYY → ISO
+            if (!isNaN(tryDate.getTime())) {
+                const future = Date.now() + 30 * 24 * 3600 * 1000;
+                if (tryDate.getTime() > future) dateStr = '';
+            }
+        }
+        const items = Array.isArray(parsed.items)
+            ? parsed.items.slice(0, 40).map(function(it) {
+                if (!it || typeof it !== 'object') return null;
+                return {
+                    name: String(it.name || '').slice(0, 240),
+                    qty: num(it.qty, 9999) || 1,
+                    price: num(it.price, 99999)
+                };
+              }).filter(Boolean)
+            : [];
+        return {
+            store_name: String(parsed.store_name || 'Unknown Store').slice(0, 240),
+            date: dateStr,
+            subtotal: subtotal,
+            gst: gst,
+            total: total,
+            items: items,
+            confidence: num(parsed.confidence, 1)
+        };
+    }
+
+    let hannaScanInFlight = false;
+
     async function hannaScanReceipt() {
+        if (hannaScanInFlight) {
+            document.getElementById('hannaConsole').textContent = '⌛ Scan already in progress…';
+            return;
+        }
         if (!hannaCurrentFile) {
             document.getElementById('hannaConsole').textContent = '⚠️ Please upload a receipt first';
             return;
         }
 
+        hannaScanInFlight = true;
         // Show scanning animation
         document.getElementById('hannaScanning').style.display = 'flex';
         document.getElementById('hannaConsole').textContent = '🔍 Scanning receipt with AI...';
@@ -6977,15 +7090,22 @@
 
             if (!parsed) throw new Error('Could not parse receipt data');
 
-            hannaCurrentResult = parsed;
-            hannaDisplayResult(parsed);
-            document.getElementById('hannaConsole').textContent = '✅ Receipt scanned! Store: ' + (parsed.store_name || 'Unknown') + ', Total: $' + (parsed.total || 0).toFixed(2);
+            // Always run through the client coercer — protects the
+            // browser-direct path (where the server sanitizer never runs)
+            // from string-typed totals or absurd OCR outputs that crash
+            // .toFixed in hannaDisplayResult.
+            const coerced = hannaCoerceReceipt(parsed);
+            if (!coerced) throw new Error('Receipt data was unreadable');
+            hannaCurrentResult = coerced;
+            hannaDisplayResult(coerced);
+            document.getElementById('hannaConsole').textContent = '✅ Receipt scanned! Store: ' + (coerced.store_name || 'Unknown') + ', Total: $' + coerced.total.toFixed(2);
 
         } catch (error) {
             console.error('Scan error:', error);
             document.getElementById('hannaConsole').textContent = '⚠️ ' + error.message;
         } finally {
             document.getElementById('hannaScanning').style.display = 'none';
+            hannaScanInFlight = false;
         }
     }
 
@@ -7035,7 +7155,12 @@
         document.getElementById('hannaConsole').textContent = `✅ Receipt scanned! Store: ${result.store_name}, Total: $${result.total?.toFixed(2) || '0.00'}`;
     }
 
+    // Module-scoped flag prevents the user mashing Save and producing N
+    // duplicate receipts before the first Firebase write completes.
+    let hannaSaveInFlight = false;
+
     function hannaSaveReceipt() {
+        if (hannaSaveInFlight) return;
         if (!hannaCurrentResult) {
             document.getElementById('hannaConsole').textContent = '⚠️ No receipt to save';
             return;
@@ -7046,29 +7171,117 @@
                     'Uncategorized';
         const notes = document.getElementById('hannaNotes').value;
 
+        // Use a stable random id so two devices saving "the same" receipt
+        // (which is fine — they're probably scanning different copies) don't
+        // collide on Date.now() if their clocks are aligned to the same ms.
+        const stableId = String(Date.now()) + '-' + Math.random().toString(36).slice(2, 8);
+
         const receipt = {
-            id: Date.now(),
+            id: stableId,
             ...hannaCurrentResult,
             job: job,
             notes: notes,
             saved_at: new Date().toISOString()
         };
 
-        // Save to Firebase + localStorage
-        hannaReceipts.unshift(receipt);
-        if (hannaReceipts.length > 100) hannaReceipts = hannaReceipts.slice(0, 100); // Keep last 100
-        hannaSaveReceipts();
+        // Dedup: if a receipt with the same store+date+total already exists,
+        // ask the user before adding a second copy. Prevents the "scanned
+        // twice" double-counting of GST in finance stats.
+        const dedupMatch = (hannaReceipts || []).find(function(r) {
+            if (!r) return false;
+            return (r.store_name || '') === (receipt.store_name || '')
+                && (r.date || '') === (receipt.date || '')
+                && Number(r.total || 0) === Number(receipt.total || 0);
+        });
+        if (dedupMatch) {
+            const ok = window.confirm('A receipt for "' + (receipt.store_name || 'Unknown') + '" on ' + (receipt.date || '?') + ' for $' + (Number(receipt.total) || 0).toFixed(2) + ' is already saved.\n\nSave a duplicate anyway?');
+            if (!ok) {
+                document.getElementById('hannaConsole').textContent = '↩️ Save cancelled (duplicate detected)';
+                return;
+            }
+        }
 
-        // Update UI
+        hannaSaveInFlight = true;
+        try {
+            // Add to local + write the new key to Firebase (per-key set, no clobber).
+            hannaReceipts.unshift(receipt);
+            hannaPushReceiptToFirebase(receipt);
+
+            // Trim cap: if we now exceed 100, explicitly remove the oldest entries
+            // from Firebase too (per-key delete) instead of relying on a bulk update
+            // that could clobber another device's writes.
+            if (hannaReceipts.length > 100) {
+                const dropped = hannaReceipts.slice(100);
+                hannaReceipts = hannaReceipts.slice(0, 100);
+                dropped.forEach(function(d) {
+                    if (d) hannaRemoveReceiptFromFirebase(hannaReceiptFirebaseKey(d));
+                });
+            }
+            hannaSaveReceipts(); // localStorage only
+
+            hannaUpdateRecentList();
+            hannaUpdateStats();
+            hannaClearAll();
+
+            document.getElementById('hannaConsole').textContent = `💾 Receipt saved to "${job}"! Total: $${(Number(receipt.total) || 0).toFixed(2)}`;
+
+            hubDriveBackupReceipt(receipt, 0);
+        } finally {
+            hannaSaveInFlight = false;
+        }
+    }
+
+    // Edit a receipt's mutable fields (store, total, gst, date, notes).
+    // Bad OCR was previously permanent — no UI path to correct $1,400 misread
+    // from $140.00, so it compounded month-over-month in finance stats.
+    function hannaEditReceipt(receiptId) {
+        const r = hannaReceipts.find(function(x) { return x && String(x.id) === String(receiptId); });
+        if (!r) return;
+        const newStore = window.prompt('Store name:', r.store_name || '');
+        if (newStore === null) return;
+        const newTotalStr = window.prompt('Total (AUD):', String(Number(r.total) || 0));
+        if (newTotalStr === null) return;
+        const newGstStr = window.prompt('GST (AUD):', String(Number(r.gst) || 0));
+        if (newGstStr === null) return;
+        const newDate = window.prompt('Date (DD/MM/YYYY):', r.date || '');
+        if (newDate === null) return;
+        const newJob = window.prompt('Job:', r.job || '');
+        if (newJob === null) return;
+
+        const total = Math.max(0, Math.min(99999, Number(newTotalStr) || 0));
+        let gst = Math.max(0, Math.min(total, Number(newGstStr) || 0));
+        const updated = Object.assign({}, r, {
+            store_name: String(newStore || '').slice(0, 240),
+            total: total,
+            gst: gst,
+            date: String(newDate || '').slice(0, 32),
+            job: String(newJob || '').slice(0, 120),
+            edited_at: new Date().toISOString()
+        });
+        // Replace in array (preserve order) and push the single key.
+        hannaReceipts = hannaReceipts.map(function(x) { return x && String(x.id) === String(receiptId) ? updated : x; });
+        hannaPushReceiptToFirebase(updated);
+        hannaSaveReceipts();
         hannaUpdateRecentList();
         hannaUpdateStats();
-        hannaClearAll();
-
-        document.getElementById('hannaConsole').textContent = `💾 Receipt saved to "${job}"! Total: $${receipt.total?.toFixed(2) || '0.00'}`;
-
-        // Auto-backup to Google Drive
-        hubDriveBackupReceipt(receipt, 0);
+        document.getElementById('hannaConsole').textContent = '✏️ Receipt updated';
     }
+
+    function hannaDeleteReceipt(receiptId) {
+        const r = hannaReceipts.find(function(x) { return x && String(x.id) === String(receiptId); });
+        if (!r) return;
+        const ok = window.confirm('Delete the ' + (r.store_name || 'Unknown') + ' receipt for $' + (Number(r.total) || 0).toFixed(2) + '?');
+        if (!ok) return;
+        const key = hannaReceiptFirebaseKey(r);
+        hannaReceipts = hannaReceipts.filter(function(x) { return x && String(x.id) !== String(receiptId); });
+        hannaRemoveReceiptFromFirebase(key);
+        hannaSaveReceipts();
+        hannaUpdateRecentList();
+        hannaUpdateStats();
+        document.getElementById('hannaConsole').textContent = '🗑️ Receipt deleted';
+    }
+    window.hannaEditReceipt = hannaEditReceipt;
+    window.hannaDeleteReceipt = hannaDeleteReceipt;
 
     function hannaUpdateRecentList() {
         const list = document.getElementById('hannaRecentList');
@@ -7081,7 +7294,11 @@
             <div class="hanna-recent-item">
                 <div class="hanna-recent-store">${escapeHtml(r.store_name || 'Unknown')}</div>
                 <div class="hanna-recent-job">${escapeHtml(r.job || '-')}</div>
-                <div class="hanna-recent-total">$${escapeHtml((r.total || 0).toFixed(2))}</div>
+                <div class="hanna-recent-total">$${escapeHtml((Number(r.total) || 0).toFixed(2))}</div>
+                <div class="hanna-recent-actions" style="display:flex;gap:6px;margin-left:8px;">
+                    <button onclick="hannaEditReceipt('${escapeHtml(String(r.id))}')" title="Edit" style="background:transparent;border:none;color:#7eb8ff;cursor:pointer;font-size:14px;padding:2px 6px;">✏️</button>
+                    <button onclick="hannaDeleteReceipt('${escapeHtml(String(r.id))}')" title="Delete" style="background:transparent;border:none;color:#ff7e7e;cursor:pointer;font-size:14px;padding:2px 6px;">🗑️</button>
+                </div>
             </div>
         `).join('');
     }
@@ -7534,6 +7751,23 @@
             const tm = setTimeout(() => ctrl.abort(), 30000);
             let resp;
             try { resp = await fetch(url, { ...options, signal: ctrl.signal }); } finally { clearTimeout(tm); }
+
+            // Retry transient Drive failures (429 rate limit, 5xx server)
+            // with exponential backoff. Without this, a 503 during a 7pm
+            // bulk backup silently lost every receipt PDF that hit it —
+            // caller just got a non-ok response and bailed.
+            if ([429, 500, 502, 503, 504].indexOf(resp.status) >= 0) {
+                const attempt = options.__retryAttempt || 0;
+                if (attempt < 3) {
+                    const retryAfter = resp.headers && resp.headers.get && resp.headers.get('Retry-After');
+                    const backoffMs = retryAfter ? Math.min(parseInt(retryAfter, 10) * 1000, 10000) : (Math.pow(2, attempt) * 1000);
+                    console.warn('[HubDrive] Transient ' + resp.status + ' — retrying in ' + backoffMs + 'ms (attempt ' + (attempt + 1) + '/3)');
+                    await new Promise(function(r) { setTimeout(r, backoffMs); });
+                    return this.apiCall(url, Object.assign({}, options, { __retryAttempt: attempt + 1 }));
+                }
+                console.error('[HubDrive] Transient failure persisted after 3 retries:', resp.status, url);
+            }
+
             if (resp.status === 401) {
                 // Token expired — try silent refresh
                 this.accessToken = null;
