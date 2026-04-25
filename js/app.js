@@ -1218,6 +1218,10 @@ function useFormManager({
         updatedAt: now,
         version: (formToArchive.version || 1) + 1
       };
+      // We're about to update local AND immediately sync the targeted form to
+      // Firebase. Suppress the syncFormsEffect's bulk re-sync that would otherwise
+      // fire from the setForms below — we don't need to re-send every form.
+      suppressNextFormsSyncRef.current = true;
       setForms(prev => {
         const updated = prev.map(f => f && f.id === formToArchive.id ? {
           ...f,
@@ -1230,8 +1234,12 @@ function useFormManager({
         FirebaseSync.syncForms([{
           ...formToArchive,
           ...updates
-        }]).catch(err => {
-          console.warn('[auto-archive] Firebase sync warning (will retry from queue):', err && err.message);
+        }]).then(result => {
+          if (result && !result.success) {
+            console.warn('[auto-archive] Firebase sync queued for retry:', result.error || 'unknown');
+          }
+        }).catch(err => {
+          console.warn('[auto-archive] Firebase sync rejected:', err && err.message);
         });
       }
       AuditLogManager.log('archive', {
@@ -1262,10 +1270,18 @@ function useFormManager({
     if (!site) return;
     // Read latest forms via ref — closure captured at addForm time would be stale.
     const current = formsRef.current || [];
-    const forSite = current.filter(f => f && f.status !== 'archived' && f.data && (f.data.siteConducted === site || f.data.site === site));
-    if (forSite.length <= MAX_ACTIVE_FORMS_PER_SITE) return;
-    const sorted = forSite.slice().sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
-    const toArchive = sorted.slice(0, forSite.length - MAX_ACTIVE_FORMS_PER_SITE);
+    const allForSite = current.filter(f => f && f.status !== 'archived' && f.data && (f.data.siteConducted === site || f.data.site === site));
+    if (allForSite.length <= MAX_ACTIVE_FORMS_PER_SITE) return;
+    // Clock-skew guard: forms created in the last 60s are NOT eligible for archiving,
+    // even if their createdAt looks earlier than peers (e.g. tablet clock off).
+    // The just-saved form falls in this window and is protected from being
+    // picked as "oldest" — we only archive forms older than 60s.
+    const cutoff = Date.now() - 60 * 1000;
+    const archivable = allForSite.filter(f => (Date.parse(f.createdAt || '') || 0) <= cutoff);
+    if (archivable.length === 0) return; // Everyone's too fresh to rotate; try again on next save.
+    const sorted = archivable.slice().sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+    const overage = allForSite.length - MAX_ACTIVE_FORMS_PER_SITE;
+    const toArchive = sorted.slice(0, Math.min(overage, archivable.length));
     // Sequential await so each archive's setForms applies before we try the next —
     // prevents the same form being targeted twice when archiving multiple at once.
     for (const f of toArchive) {
@@ -1521,20 +1537,39 @@ function useDataSync({
             });
           });
 
-          // Merge with local-only forms (forms not yet in Firebase)
+          // Merge with local forms. Critical: preserve a local form when its
+          // updatedAt is newer than the remote one. Without this, an in-flight
+          // local change (e.g. just-archived form whose Firebase write hasn't
+          // completed yet) gets clobbered by the listener echoing the stale
+          // remote state. Especially matters for the auto-archive flow:
+          // _autoArchiveForm sets status='archived' locally, queues the
+          // Firebase write, and during that window any listener fire would
+          // un-archive the form locally (orphaning the Drive PDF).
           let currentLocalForms = [];
           try {
             const freshLocal = localStorage.getItem('jmart-safety-forms');
             if (freshLocal) currentLocalForms = JSON.parse(freshLocal);
           } catch (e) {/* ignore */}
           const preserveLocalOnlyForms = hasQueuedFormSync();
+          const tsOf = f => {
+            const t = f && (f.updatedAt || f.createdAt);
+            const n = t ? Date.parse(t) : 0;
+            return Number.isFinite(n) ? n : 0;
+          };
           currentLocalForms.forEach(localForm => {
             if (!localForm || deletedIds.has(localForm.id)) return;
-            if (!formMap.has(localForm.id)) {
+            const remote = formMap.get(localForm.id);
+            if (!remote) {
               if (!preserveLocalOnlyForms) return;
               formMap.set(localForm.id, {
                 ...localForm,
                 source: 'local'
+              });
+            } else if (tsOf(localForm) > tsOf(remote)) {
+              // Local is newer — keep local. Prevents the archive-clobber race.
+              formMap.set(localForm.id, {
+                ...localForm,
+                source: 'local-newer'
               });
             }
           });
@@ -3771,7 +3806,7 @@ function Dashboard({
   };
   const handleArchivePrestart = async (form, siteName) => {
     if (!onArchivePrestart || !form?.id) return;
-    const confirmed = await ConfirmDialog.show(`Archive "${siteName}"? This keeps it in Firebase and uploads an archive PDF to Google Drive when connected.`, {
+    const confirmed = await ConfirmDialog.show(`Archive "${siteName}"? Requires Google Drive to be connected — the PDF is backed up to Drive before the form is hidden from the live list.`, {
       title: 'Archive Pre-Start',
       confirmLabel: 'Archive'
     });

@@ -93,7 +93,7 @@ function Dashboard({
 
   const handleArchivePrestart = async (form, siteName) => {
     if (!onArchivePrestart || !form?.id) return;
-    const confirmed = await ConfirmDialog.show(`Archive "${siteName}"? This keeps it in Firebase and uploads an archive PDF to Google Drive when connected.`, { title: 'Archive Pre-Start', confirmLabel: 'Archive' });
+    const confirmed = await ConfirmDialog.show(`Archive "${siteName}"? Requires Google Drive to be connected — the PDF is backed up to Drive before the form is hidden from the live list.`, { title: 'Archive Pre-Start', confirmLabel: 'Archive' });
     if (!confirmed) return;
 
     setArchivingIds((prev) => [...prev, form.id]);

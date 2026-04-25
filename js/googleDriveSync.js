@@ -304,22 +304,32 @@ const GoogleDriveSync = {
   },
 
   // Helper: Get or create nested folder path (e.g., "01_Safety_Compliance/Pre-Start_Checklists")
+  // Caches in-flight and resolved folder IDs by full path so two concurrent
+  // archive uploads for the same site don't race to create duplicate folders.
+  _folderPromiseCache: {},
   getOrCreateNestedFolder: async function(folderPath, parentId = null) {
     if (!this.accessToken) return null;
 
-    let parent = parentId || this.folderId;
-    if (!parent) {
-      parent = await this.getOrCreateFolder();
-      if (!parent) {
-        console.error('getOrCreateNestedFolder: Could not resolve parent folder');
-        return null;
-      }
+    // Cache key includes parent so the same path under different parents stays distinct.
+    const cacheKey = (parentId || this.folderId || 'root') + '::' + folderPath;
+    if (this._folderPromiseCache[cacheKey]) {
+      return this._folderPromiseCache[cacheKey];
     }
 
-    const parts = folderPath.split('/').filter(p => p.trim());
-    let currentParent = parent;
+    const promise = (async () => {
+      let parent = parentId || this.folderId;
+      if (!parent) {
+        parent = await this.getOrCreateFolder();
+        if (!parent) {
+          console.error('getOrCreateNestedFolder: Could not resolve parent folder');
+          return null;
+        }
+      }
 
-    for (const folderName of parts) {
+      const parts = folderPath.split('/').filter(p => p.trim());
+      let currentParent = parent;
+
+      for (const folderName of parts) {
       try {
         // Search for folder
         const searchResponse = await this.apiCall(
@@ -356,7 +366,15 @@ const GoogleDriveSync = {
       }
     }
 
-    return currentParent;
+      return currentParent;
+    })();
+
+    // Store the promise so concurrent callers await the same in-flight create.
+    // Drop from cache on rejection so a future retry can succeed.
+    this._folderPromiseCache[cacheKey] = promise;
+    promise.catch(() => { delete this._folderPromiseCache[cacheKey]; });
+    promise.then((id) => { if (!id) delete this._folderPromiseCache[cacheKey]; });
+    return promise;
   },
 
   // Upload a PDF to Google Drive (with optional subfolder)
