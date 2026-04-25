@@ -383,24 +383,40 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
   const MAX_ACTIVE_FORMS_PER_SITE = 3;
   const formsRef = useRef(forms);
   useEffect(() => { formsRef.current = forms; }, [forms]);
+  // Lock to prevent concurrent rotations from archiving the same form twice.
+  // Tracks form IDs currently being archived; cleared on success or failure.
+  const archivingInFlightRef = useRef(new Set());
 
   const _autoArchiveForm = async (formToArchive) => {
     if (!formToArchive || !formToArchive.id) return false;
+    if (archivingInFlightRef.current.has(formToArchive.id)) {
+      console.log('[auto-archive] Already archiving', formToArchive.id, '— skipping duplicate');
+      return false;
+    }
     if (typeof PDFGenerator === 'undefined' || typeof GoogleDriveSync === 'undefined') return false;
     if (!GoogleDriveSync.isConnected()) {
       // Drive offline — bail. The form stays active. Next save will retry.
       console.log('[auto-archive] Drive not connected, skipping rotation for form', formToArchive.id);
       return false;
     }
+    archivingInFlightRef.current.add(formToArchive.id);
     try {
       const generated = PDFGenerator.generate(formToArchive);
-      if (!generated || !generated.doc) return false;
+      if (!generated || !generated.doc) {
+        console.warn('[auto-archive] PDF generation failed for type', formToArchive.type, '— leaving form active');
+        return false;
+      }
       const pdfBlob = generated.doc.output('blob');
       const date = new Date(formToArchive.createdAt || Date.now());
       const stamp = date.toISOString().slice(0, 16).replace(/[:T]/g, '-');
       const typeLabel = (formToArchive.type || 'form').replace(/[^a-z0-9-]/gi, '');
       const archiveFilename = stamp + '_' + typeLabel + '_' + formToArchive.id + '.pdf';
       const site = (formToArchive.data && (formToArchive.data.siteConducted || formToArchive.data.site)) || 'Unsorted';
+      // Re-check connection right before upload — token may have expired.
+      if (!GoogleDriveSync.isConnected()) {
+        console.warn('[auto-archive] Drive disconnected between PDF generation and upload — leaving form active');
+        return false;
+      }
       const upload = await GoogleDriveSync.uploadArchivedPDF(pdfBlob, archiveFilename, site);
       if (!upload || !upload.id) {
         console.warn('[auto-archive] Drive upload failed — leaving form active');
@@ -423,7 +439,9 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
         return updated;
       });
       if (FirebaseSync.isConnected()) {
-        FirebaseSync.syncForms([{ ...formToArchive, ...updates }]).catch(() => {});
+        FirebaseSync.syncForms([{ ...formToArchive, ...updates }]).catch((err) => {
+          console.warn('[auto-archive] Firebase sync warning (will retry from queue):', err && err.message);
+        });
       }
       AuditLogManager.log('archive', { formId: formToArchive.id, formType: formToArchive.type, site, action: 'Auto-archived (rotation)', driveFileId: upload.id });
       const typeLabelPretty = ({ prestart: 'Pre-Start', toolbox: 'Toolbox Talk', incident: 'Incident', itp: 'ITP', 'steel-itp': 'Steel ITP', inspection: 'Inspection' }[formToArchive.type] || 'Form');
@@ -432,10 +450,12 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
     } catch (e) {
       console.error('[auto-archive] error:', e);
       return false;
+    } finally {
+      archivingInFlightRef.current.delete(formToArchive.id);
     }
   };
 
-  const _rotateOldFormsForSite = (site) => {
+  const _rotateOldFormsForSite = async (site) => {
     if (!site) return;
     // Read latest forms via ref — closure captured at addForm time would be stale.
     const current = formsRef.current || [];
@@ -443,68 +463,30 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
     if (forSite.length <= MAX_ACTIVE_FORMS_PER_SITE) return;
     const sorted = forSite.slice().sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
     const toArchive = sorted.slice(0, forSite.length - MAX_ACTIVE_FORMS_PER_SITE);
-    toArchive.forEach(f => { _autoArchiveForm(f); });
+    // Sequential await so each archive's setForms applies before we try the next —
+    // prevents the same form being targeted twice when archiving multiple at once.
+    for (const f of toArchive) {
+      await _autoArchiveForm(f);
+    }
   };
 
+  // Manual archive — same Drive-first guarantee as auto-rotation. If Drive
+  // upload fails, the form stays active and the user gets a clear toast,
+  // instead of being silently hidden without a backup.
   const archiveForm = async (formId) => {
     const existingForm = (forms || []).find((form) => form && form.id === formId);
     if (!existingForm) return false;
-
-    const now = new Date().toISOString();
-    const archivedForm = {
-      ...existingForm,
-      status: 'archived',
-      archivedAt: now,
-      archivedBy: DeviceAuthManager.deviceId || 'unknown',
-      archivedByName: localStorage.getItem('jmart-user-name') || 'Unknown User',
-      updatedAt: now,
-      modifiedBy: DeviceAuthManager.deviceId || 'unknown',
-      modifiedByName: localStorage.getItem('jmart-user-name') || 'Unknown User',
-      version: (existingForm.version || 1) + 1
-    };
-
-    setForms((prevForms) => {
-      const updatedForms = prevForms.map((form) => (form.id === formId ? archivedForm : form));
-      StorageQuotaManager.safeFormsWrite(updatedForms);
-      return updatedForms;
-    });
-
-    try {
-      if (!window.__JMART_E2E__ && typeof PDFGenerator !== 'undefined' && typeof GoogleDriveSync !== 'undefined') {
-        const generated = PDFGenerator.generate(archivedForm);
-        if (generated && generated.doc) {
-          const pdfBlob = generated.doc.output('blob');
-          const archiveFilename = String(generated.filename || `prestart-${formId}.pdf`).replace(/\.pdf$/i, '-archive.pdf');
-          if (GoogleDriveSync.isConnected()) {
-            const uploadResult = await GoogleDriveSync.uploadPDF(pdfBlob, archiveFilename, archivedForm.type);
-            if (uploadResult) {
-              markAsBackedUp(formId);
-            }
-          } else if (typeof ToastNotifier !== 'undefined') {
-            ToastNotifier.warning('Archived in Firebase. Connect Google Drive to upload the archive PDF.');
-          }
-        }
-      }
-    } catch (archiveError) {
-      console.error('Archive upload error:', archiveError);
+    if (typeof GoogleDriveSync === 'undefined' || !GoogleDriveSync.isConnected()) {
       if (typeof ToastNotifier !== 'undefined') {
-        ToastNotifier.warning('Archived in Firebase, but Drive upload failed.');
+        ToastNotifier.warning('Connect Google Drive first — archive needs a confirmed backup before hiding the form.');
       }
+      return false;
     }
-
-    AuditLogManager.log('archive', {
-      formId: archivedForm.id,
-      formType: archivedForm.type,
-      site: archivedForm.data?.siteConducted || archivedForm.data?.site || 'Unknown',
-      action: 'Form archived'
-    });
-
-    if (typeof ToastNotifier !== 'undefined') {
-      const typeLabel = ({ prestart: 'Pre-Start', toolbox: 'Toolbox Talk', incident: 'Incident', itp: 'ITP', 'steel-itp': 'Steel ITP', inspection: 'Inspection' }[archivedForm.type] || 'Form');
-      ToastNotifier.success(typeLabel + ' archived to Drive');
+    const ok = await _autoArchiveForm(existingForm);
+    if (!ok && typeof ToastNotifier !== 'undefined') {
+      ToastNotifier.error('Archive failed — Drive upload did not succeed. Form stays active.');
     }
-
-    return true;
+    return ok;
   };
 
   // Delete form (with backup check) — uses setForms callback to avoid stale closure

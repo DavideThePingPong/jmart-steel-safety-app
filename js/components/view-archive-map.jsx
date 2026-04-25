@@ -45,7 +45,12 @@ function ArchiveMapView({ forms = [] }) {
   });
 
   const totalArchived = archived.length;
-  const orderedTypes = Object.keys(TYPE_META).filter(t => tree[t]);
+  const knownTypes = Object.keys(TYPE_META).filter(t => tree[t]);
+  // Include any types the tree has but TYPE_META doesn't — so unknown/future
+  // form types still show up instead of silently disappearing from the view.
+  const unknownTypes = Object.keys(tree).filter(t => !TYPE_META[t]);
+  const orderedTypes = [...knownTypes, ...unknownTypes];
+  const FALLBACK_META = { label: 'Other', emoji: '\u{1F4C4}', color: 'bg-gray-500', bg: 'bg-gray-50', text: 'text-gray-700' };
 
   return (
     <div className="space-y-4">
@@ -69,7 +74,7 @@ function ArchiveMapView({ forms = [] }) {
       ) : (
         <div className="space-y-3">
           {orderedTypes.map(type => {
-            const meta = TYPE_META[type];
+            const meta = TYPE_META[type] || { ...FALLBACK_META, label: type ? type.replace(/-/g, ' ') : 'Other' };
             const sites = Object.keys(tree[type]).sort();
             const typeCount = sites.reduce((n, s) => n + tree[type][s].length, 0);
             return (
