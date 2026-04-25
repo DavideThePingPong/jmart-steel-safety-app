@@ -121,5 +121,27 @@ HUB_DIRECTORIES.forEach((relativePath) => copyDirectory(relativePath, {
   required: true
 }));
 
+// Stamp the build version into index.html so every deploy busts asset URLs.
+// Without this, __JMART_ASSET_VERSION__ stays static and SW caches old app.js.
+const buildVersion = 'b' + Date.now();
+['index.html', 'jmart-safety-app.html', 'artsteel-hub.html'].forEach((relativePath) => {
+  const file = path.join(DIST, relativePath);
+  if (!fs.existsSync(file)) return;
+  let content = fs.readFileSync(file, 'utf8');
+  const before = content;
+  content = content.replace(
+    /window\.__JMART_ASSET_VERSION__\s*=\s*['"][^'"]*['"]/,
+    `window.__JMART_ASSET_VERSION__ = '${buildVersion}'`
+  );
+  if (content !== before) {
+    fs.writeFileSync(file, content, 'utf8');
+    console.log('  stamped version:', relativePath, '→', buildVersion);
+  }
+});
+
+// Write a tiny version.json for the runtime force-update check.
+fs.writeFileSync(path.join(DIST, 'version.json'), JSON.stringify({ version: buildVersion, builtAt: new Date().toISOString() }), 'utf8');
+console.log('  wrote version.json:', buildVersion);
+
 console.log('');
 console.log('Deploy bundle ready at dist/');

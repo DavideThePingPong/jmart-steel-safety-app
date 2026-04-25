@@ -92,6 +92,38 @@
   <script>
     window.__JMART_ASSET_VERSION__ = '20260404-safetyfinal';
 
+    // Force-update check: every page load, fetch /version.json (no-cache, cache-buster).
+    // If it doesn't match the version stored locally, nuke caches + service workers and
+    // reload — guarantees the latest deploy reaches the user even if a prior SW had
+    // pinned old assets. The version is stamped into index.html at build time and the
+    // matching version.json sits next to it; both are no-cache via firebase.json.
+    (function forceUpdateCheck() {
+      var thisVersion = window.__JMART_ASSET_VERSION__;
+      var stored = null;
+      try { stored = localStorage.getItem('jmart-asset-version'); } catch (_) {}
+      if (stored && stored !== thisVersion) {
+        console.log('[FORCE-UPDATE] Version mismatch — wiping caches/SW and reloading. ' + stored + ' → ' + thisVersion);
+        var nukes = [];
+        if ('serviceWorker' in navigator) {
+          nukes.push(navigator.serviceWorker.getRegistrations().then(function(rs) {
+            return Promise.all(rs.map(function(r) { return r.unregister(); }));
+          }).catch(function() {}));
+        }
+        if (window.caches) {
+          nukes.push(caches.keys().then(function(keys) {
+            return Promise.all(keys.map(function(k) { return caches.delete(k); }));
+          }).catch(function() {}));
+        }
+        Promise.all(nukes).then(function() {
+          try { localStorage.setItem('jmart-asset-version', thisVersion); } catch (_) {}
+          location.reload();
+        });
+        // Stop further script execution while we wipe + reload
+        throw new Error('Forcing update reload');
+      }
+      try { localStorage.setItem('jmart-asset-version', thisVersion); } catch (_) {}
+    })();
+
     // Service scripts that depend on Firebase and other CDN libs
     var serviceScripts = [
       'js/config.js', 'js/intervalRegistry.js', 'js/storageQuotaManager.js',
