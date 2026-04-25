@@ -296,19 +296,31 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
         await GoogleDriveSync.deleteOldFormPDFs(form.id, siteName);
       }
 
-      setForms(prevForms => {
-        const updatedForms = prevForms.map(f => {
-          if (f.id === form.id) {
-            return { ...f, data: formData, updatedAt: new Date().toISOString(), version: form.version, modifiedBy: form.modifiedBy, modifiedByName: form.modifiedByName, previousVersion: form.previousVersion, status: form.status || 'completed' };
-          }
-          return f;
-        });
+      // Build the updated form object once so we can reuse for state + Firebase.
+      const updatedForm = { ...form, data: formData, updatedAt: new Date().toISOString(), version: form.version, modifiedBy: form.modifiedBy, modifiedByName: form.modifiedByName, previousVersion: form.previousVersion, status: form.status || 'completed' };
 
+      // Suppress the bulk syncFormsEffect — we send the targeted update below.
+      // Without this guard, the listener short-circuit (formsFromFirebaseRef set
+      // by the version-check read above) could leave the bulk effect skipping
+      // the sync and our edits would never reach Firebase.
+      suppressNextFormsSyncRef.current = true;
+      setForms(prevForms => {
+        const updatedForms = prevForms.map(f => f.id === form.id ? updatedForm : f);
         StorageQuotaManager.safeFormsWrite(updatedForms);
         console.log('Updated form saved to localStorage');
-
         return updatedForms;
       });
+
+      // Explicit, targeted Firebase write of just this form. Eliminates the
+      // race where the bulk effect was the only sync path and could be
+      // short-circuited by the version-check read flagging formsFromFirebaseRef.
+      if (FirebaseSync.isConnected()) {
+        FirebaseSync.syncForms([updatedForm]).then((res) => {
+          if (res && !res.success) console.warn('[update] Firebase sync queued for retry:', res.error);
+        }).catch((err) => {
+          console.warn('[update] Firebase sync rejected:', err && err.message);
+        });
+      }
 
       try {
         if (window.__JMART_E2E__) {
@@ -844,6 +856,25 @@ function useDataSync({ setForms, setSites, deletingFormRef, deletedFormIdsRef, s
         setSyncError(null);
       };
 
+      // Seed local deletedFormIdsRef from Firebase tombstones on startup.
+      // Without this, a fresh device that joins the team would not know about
+      // forms deleted by other devices and would resurrect them via the
+      // listener merge. Tombstones persist deletions across device wipes and
+      // re-installs.
+      try {
+        if (typeof firebaseRead === 'function') {
+          firebaseRead('jmart-safety/deletedForms', 2000).then(function(result) {
+            if (result && result.val && deletedFormIdsRef && deletedFormIdsRef.current) {
+              Object.keys(result.val).forEach(function(formId) {
+                deletedFormIdsRef.current.add(formId);
+              });
+              try { localStorage.setItem('jmart-deleted-form-ids', JSON.stringify([...deletedFormIdsRef.current])); } catch (_) {}
+              console.log('Seeded ' + Object.keys(result.val).length + ' deletion tombstones from Firebase');
+            }
+          }).catch(function() { /* offline / first-time, ok */ });
+        }
+      } catch (_) {}
+
       const unsubForms = FirebaseSync.onFormsChange((firebaseForms) => {
         applyRemoteForms(firebaseForms);
       });
@@ -1225,7 +1256,13 @@ function useDeviceAuth() {
         setCanRevokeDevices(result.canRevokeDevices || result.admin);
 
         if (result.admin) {
-          DeviceAuth.requestNotificationPermission();
+          // DON'T request notification permission on mount — modern browsers
+          // require a user-gesture context and silently deny otherwise. The
+          // permission is now requested lazily inside showBrowserNotification
+          // (already wrapped in a try/catch) and via an explicit "Enable
+          // notifications" button in Settings if/when one is added. Calling
+          // it here on mount caused the prompt to be silently denied, which
+          // meant admin device-approval notifications never worked.
 
           const unsubNotify = DeviceAuth.onNotification((type, data) => {
             if (type === 'new_device') {

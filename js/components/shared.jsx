@@ -174,15 +174,37 @@ function SignaturePad({ onSave, onCancel, name }) {
   // Check if this person has a saved signature
   const hasSavedSignature = savedSignatures[name] && savedSignatures[name].startsWith('data:image');
 
+  // Set up canvas for high-DPI screens. Without this, on a retina iPad the
+  // canvas was rasterized at 350×150 then upscaled — signatures looked
+  // pixelated/jagged in generated PDFs (legal compliance concern). Now we
+  // scale the canvas to clientWidth*DPR and ctx.scale(DPR,DPR) so drawing
+  // operations remain in CSS pixels but pixel data is high-resolution.
+  useEffect(() => {
+    var canvas = canvasRef.current;
+    if (!canvas) return;
+    var dpr = window.devicePixelRatio || 1;
+    var cssW = canvas.clientWidth || 350;
+    var cssH = canvas.clientHeight || 150;
+    canvas.width = Math.round(cssW * dpr);
+    canvas.height = Math.round(cssH * dpr);
+    var ctx = canvas.getContext('2d');
+    ctx.setTransform(1, 0, 0, 1, 0, 0); // reset before scaling
+    ctx.scale(dpr, dpr);
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#1a1a1a';
+  }, []);
+
   const getCoordinates = (e) => {
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
+    // After DPR scaling, drawing operations use CSS pixels — we just need
+    // the offset within the canvas, NOT scaled to pixel space (the ctx
+    // transform handles that).
     if (e.touches) {
-      return { x: (e.touches[0].clientX - rect.left) * scaleX, y: (e.touches[0].clientY - rect.top) * scaleY };
+      return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
     }
-    return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
   };
 
   const startDrawing = (e) => {
@@ -200,17 +222,22 @@ function SignaturePad({ onSave, onCancel, name }) {
     const ctx = canvasRef.current.getContext('2d');
     const { x, y } = getCoordinates(e);
     ctx.lineTo(x, y);
-    ctx.strokeStyle = '#1a1a1a';
-    ctx.lineWidth = 2;
-    ctx.lineCap = 'round';
     ctx.stroke();
     setHasSignature(true);
   };
 
   const stopDrawing = () => setIsDrawing(false);
   const clearSignature = () => {
-    const ctx = canvasRef.current.getContext('2d');
-    ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+    var canvas = canvasRef.current;
+    var ctx = canvas.getContext('2d');
+    // Reset transform to clear the full bitmap, then re-apply DPR scaling.
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    var dpr = window.devicePixelRatio || 1;
+    ctx.scale(dpr, dpr);
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#1a1a1a';
     setHasSignature(false);
   };
   const saveSignature = () => onSave(canvasRef.current.toDataURL('image/png'));
@@ -229,16 +256,6 @@ function SignaturePad({ onSave, onCancel, name }) {
     }
   };
 
-  const showVerification = false;
-  const selectedMember = name;
-  const verificationCode = '';
-  const verificationError = '';
-  const setShowVerification = function() {};
-  const setVerificationCode = function() {};
-  const setVerificationError = function() {};
-  const verifyAndApplySignature = function() {};
-  const membersWithSignatures = [];
-
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl w-full max-w-md">
@@ -247,46 +264,7 @@ function SignaturePad({ onSave, onCancel, name }) {
           <p className="text-sm text-gray-500">Draw your signature below or use a saved one</p>
         </div>
 
-        {/* Verification Modal */}
-        {false && (
-          <div className="p-4 bg-amber-50 border-b border-amber-200">
-            <p className="text-sm text-amber-800 mb-2 font-medium">🔐 Signature Verification Required</p>
-            <p className="text-xs text-amber-700 mb-3">
-              To use {selectedMember}'s saved signature, please enter your personal verification code.
-              <br/>
-              <span className="text-amber-600">(Hint: Your code is based on your name)</span>
-            </p>
-            <input
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              maxLength={4}
-              value={verificationCode}
-              onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, ''))}
-              placeholder="Enter 4-digit code"
-              className="w-full border border-amber-300 rounded-lg px-3 py-2 mb-2 text-center text-lg tracking-widest"
-            />
-            {verificationError && (
-              <p className="text-red-600 text-sm mb-2">{verificationError}</p>
-            )}
-            <div className="flex gap-2">
-              <button
-                onClick={() => { setShowVerification(false); setVerificationCode(''); setVerificationError(''); }}
-                className="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={verifyAndApplySignature}
-                className="flex-1 bg-amber-600 text-white py-2 rounded-lg font-medium"
-              >
-                Verify & Sign
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Saved Signature Option - only show if not in verification mode */}
+        {/* Saved Signature Option */}
         {hasSavedSignature && (
           <div className="p-4 bg-green-50 border-b border-green-100">
             <p className="text-sm text-green-700 mb-2">✓ {name} has a saved signature</p>
@@ -299,24 +277,14 @@ function SignaturePad({ onSave, onCancel, name }) {
           </div>
         )}
 
-        {/* Info about signature security */}
-        {false && (
-          <div className="px-4 pt-3">
-            <p className="text-xs text-gray-500 italic">
-              🔒 Security: Each team member must sign their own signature.
-              Saved signatures require verification before use.
-            </p>
-          </div>
-        )}
-
         <div className="p-4">
           <p className="text-xs text-gray-500 mb-2">Or draw a new signature:</p>
-          <div className="border-2 border-gray-300 rounded-lg bg-gray-50 relative">
-            <canvas ref={canvasRef} width={350} height={150} data-testid="signature-canvas" className="w-full touch-none"
+          <div className="border-2 border-gray-300 rounded-lg bg-gray-50 relative" style={{ height: '150px' }}>
+            <canvas ref={canvasRef} data-testid="signature-canvas" className="w-full h-full touch-none block"
               onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing}
               onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={stopDrawing} />
-            <div className="absolute bottom-2 left-2 right-2 border-t border-gray-400"></div>
-            <span className="absolute bottom-3 left-3 text-xs text-gray-400">Sign here</span>
+            <div className="absolute bottom-2 left-2 right-2 border-t border-gray-400 pointer-events-none"></div>
+            <span className="absolute bottom-3 left-3 text-xs text-gray-400 pointer-events-none">Sign here</span>
           </div>
         </div>
         <div className="p-4 border-t flex gap-3">

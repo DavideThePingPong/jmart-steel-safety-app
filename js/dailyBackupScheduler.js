@@ -57,9 +57,21 @@ const DailyBackupScheduler = {
     var today = now.toDateString();
     this.lastBackupDate = localStorage.getItem('last-drive-backup-date');
 
-    // If it's already past 7pm and we haven't backed up today, do it now
-    if (now.getHours() >= 19 && this.lastBackupDate !== today) {
-      console.log('Missed backup detected - running now');
+    // Run backup if EITHER: it's past 7pm today and we haven't backed up,
+    // OR the last backup was before yesterday (we missed entire prior days
+    // because the device was offline/asleep at 7pm on those days).
+    // Previously the >=19h check also gated the missed-day case, so a phone
+    // closed at 5pm and reopened at 8am the next morning would skip the
+    // missed day forever.
+    var lastBackupMs = 0;
+    if (this.lastBackupDate) {
+      try { lastBackupMs = new Date(this.lastBackupDate).getTime(); } catch (e) { lastBackupMs = 0; }
+    }
+    var oneDayAgoMs = now.getTime() - 24 * 3600 * 1000;
+    var missedPriorDay = !this.lastBackupDate || lastBackupMs < oneDayAgoMs;
+    var pastSevenPmToday = now.getHours() >= 19 && this.lastBackupDate !== today;
+    if (pastSevenPmToday || missedPriorDay) {
+      console.log('Missed backup detected (priorDay=' + missedPriorDay + ', past7pm=' + pastSevenPmToday + ') — running now');
       this.performBackup();
     }
   },
@@ -81,9 +93,49 @@ const DailyBackupScheduler = {
     this._scheduleNext();
   },
 
+  // Try to claim the distributed backup lock for today's date. Uses a Firebase
+  // transaction so only one device wins per day across the team. Returns true
+  // if we own the lock, false if another device already claimed it (we bail).
+  // Without this, every device runs the 7pm backup independently — three
+  // devices = three duplicate Drive uploads of every form, every night.
+  _claimBackupLock: async function() {
+    if (typeof firebaseDb === 'undefined' || !firebaseDb) return true; // no Firebase = can't coordinate, run anyway
+    if (typeof DeviceAuthManager === 'undefined' || !DeviceAuthManager.deviceId) return true; // no identity = can't coordinate
+    var dateKey = new Date().toISOString().slice(0, 10); // YYYY-MM-DD UTC, stable across devices
+    var deviceId = DeviceAuthManager.deviceId;
+    try {
+      var ref = firebaseDb.ref('jmart-safety/backupLock/' + dateKey);
+      var result = await ref.transaction(function(current) {
+        if (current === null) {
+          return { deviceId: deviceId, claimedAt: Date.now() };
+        }
+        // Lock exists — abort transaction (returns undefined keeps existing).
+        return undefined;
+      });
+      var winner = result && result.snapshot && result.snapshot.val();
+      var weWon = winner && winner.deviceId === deviceId;
+      if (!weWon) {
+        console.log('[DailyBackup] Another device already claimed today\'s backup lock — skipping');
+      }
+      return !!weWon;
+    } catch (e) {
+      console.warn('[DailyBackup] Lock claim failed (running backup anyway):', e.message);
+      return true; // fail-open: better duplicate uploads than missed backup
+    }
+  },
+
   performBackup: async function() {
     if (typeof GoogleDriveSync === 'undefined' || !GoogleDriveSync.isConnected()) {
       console.log('Google Drive not connected - skipping backup');
+      return;
+    }
+
+    // Distributed lock: only one device per day actually performs the backup.
+    var weHoldLock = await this._claimBackupLock();
+    if (!weHoldLock) {
+      // Mark locally as done so we don't re-attempt today; another device handled it.
+      this.lastBackupDate = new Date().toDateString();
+      localStorage.setItem('last-drive-backup-date', this.lastBackupDate);
       return;
     }
 

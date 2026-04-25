@@ -61,7 +61,39 @@ const GoogleDriveSync = {
           localStorage.setItem('google-drive-auto-connect', 'true');
           console.log('Google Drive connected!');
           self._notifyConnectionChange(true, null);
-          self.getOrCreateFolder();
+          // Account mismatch detection: fetch the email of the just-signed-in
+          // account. If it differs from the previously-stored one, the user
+          // signed in with a DIFFERENT Google account — our cached folderId
+          // points to the prior account's folder which we no longer have
+          // drive.file access to. Clear caches so we re-resolve the folder
+          // structure under the new account, and tell the user.
+          (async function() {
+            try {
+              var resp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                headers: { 'Authorization': 'Bearer ' + response.access_token }
+              });
+              if (!resp.ok) return;
+              var info = await resp.json();
+              var newEmail = (info && info.email) || null;
+              if (!newEmail) return;
+              var prevEmail = null;
+              try { prevEmail = localStorage.getItem('google-drive-email'); } catch (_) {}
+              localStorage.setItem('google-drive-email', newEmail);
+              if (prevEmail && prevEmail !== newEmail) {
+                console.warn('[Drive] Account changed: ' + prevEmail + ' → ' + newEmail + '. Clearing folder cache.');
+                self.folderId = null;
+                self._folderPromiseCache = {};
+                if (typeof ToastNotifier !== 'undefined') {
+                  ToastNotifier.warning('Connected to a different Google account (' + newEmail + '). New folder structure will be created under it.');
+                }
+              } else if (typeof ToastNotifier !== 'undefined' && !prevEmail) {
+                ToastNotifier.success('Connected to ' + newEmail);
+              }
+            } catch (e) {
+              console.warn('[Drive] Could not verify account email:', e.message);
+            }
+            self.getOrCreateFolder();
+          })();
         },
         error_callback: (error) => {
           console.error('Google OAuth error:', error);

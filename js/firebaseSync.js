@@ -510,6 +510,16 @@ const FirebaseSync = {
       case 'delete-form-assets':
         await this.writeWithFallback('jmart-safety/formAssets/' + item.data.formId, 'delete');
         break;
+      case 'delete-form-multi': {
+        // Atomic multi-path delete (used when deleteForm's primary path failed)
+        var mp = {};
+        var devId = (typeof DeviceAuthManager !== 'undefined' && DeviceAuthManager.deviceId) ? DeviceAuthManager.deviceId : 'unknown';
+        mp['jmart-safety/forms/' + item.data.formId] = null;
+        mp['jmart-safety/formAssets/' + item.data.formId] = null;
+        mp['jmart-safety/deletedForms/' + item.data.formId] = { deletedAt: Date.now(), deletedBy: devId };
+        await firebaseDb.ref().update(mp);
+        break;
+      }
       case 'audit':
         if (item.data && item.data.id) {
           await this.writeWithFallback('jmart-safety/auditLog/' + item.data.id, 'set', item.data);
@@ -566,13 +576,22 @@ const FirebaseSync = {
       return { success: false, queued: true, error: 'Auth not ready' };
     }
 
+    // Atomic multi-path delete + tombstone: form, formAssets, and a tombstone
+    // entry under deletedForms/{id} all go away/get-written in one update.
+    // Tombstone makes the deletion durable across device wipes — without it,
+    // a device that deletes a form offline, loses localStorage tracking, and
+    // re-syncs would see Firebase still has the form and resurrect it.
     try {
-      await this.writeWithFallback('jmart-safety/forms/' + formId, 'delete');
-      await this.writeWithFallback('jmart-safety/formAssets/' + formId, 'delete');
+      var deviceId = (typeof DeviceAuthManager !== 'undefined' && DeviceAuthManager.deviceId) ? DeviceAuthManager.deviceId : 'unknown';
+      var multiPath = {};
+      multiPath['jmart-safety/forms/' + formId] = null;
+      multiPath['jmart-safety/formAssets/' + formId] = null;
+      multiPath['jmart-safety/deletedForms/' + formId] = { deletedAt: Date.now(), deletedBy: deviceId };
+      await firebaseDb.ref().update(multiPath);
       return { success: true };
     } catch (error) {
-      this.addToQueue('delete-form', { formId: formId });
-      this.addToQueue('delete-form-assets', { formId: formId });
+      // Single retry path covers all three — re-attempt as one atomic update.
+      this.addToQueue('delete-form-multi', { formId: formId });
       return { success: false, queued: true, error: error.message };
     }
   },

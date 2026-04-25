@@ -181,6 +181,32 @@
         }
       },
 
+      // Deleted-form tombstones — persistent record of deletions so the
+      // Firebase listener can suppress resurrection of forms that were
+      // deleted by another device or in a prior session whose local
+      // deletedFormIdsRef is no longer in localStorage. Append-only:
+      // writes only allowed if the entry doesn't already exist.
+      "deletedForms": {
+        ".read": "auth != null && root.child('jmart-safety/authDevices/' + auth.uid).child('approvedAt').exists()",
+        "$formId": {
+          ".write": "auth != null && root.child('jmart-safety/authDevices/' + auth.uid).child('approvedAt').exists() && !data.exists()",
+          ".validate": "newData.hasChildren(['deletedAt', 'deletedBy']) && newData.child('deletedAt').isNumber() && newData.child('deletedBy').isString()"
+        }
+      },
+
+      // Daily backup lock — distributed coordination for the 7pm scheduler.
+      // First device to write the lock for a given date wins; others bail.
+      // Approved devices can claim the lock; nobody (not even admins via this
+      // path) should overwrite an existing lock until it expires (handled
+      // client-side by date key, so each new day creates a fresh entry).
+      "backupLock": {
+        ".read": "auth != null && root.child('jmart-safety/authDevices/' + auth.uid).child('approvedAt').exists()",
+        "$dateKey": {
+          ".write": "auth != null && root.child('jmart-safety/authDevices/' + auth.uid).child('approvedAt').exists() && (!data.exists() || newData.child('deviceId').val() === data.child('deviceId').val())",
+          ".validate": "newData.hasChildren(['deviceId', 'claimedAt']) && newData.child('deviceId').isString() && newData.child('claimedAt').isNumber()"
+        }
+      },
+
       // Audit log - any authenticated user can read, append only (no deletes/updates)
       "auditLog": {
         ".read": "auth != null && root.child('jmart-safety/authDevices/' + auth.uid).child('approvedAt').exists()",
