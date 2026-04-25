@@ -947,6 +947,16 @@ function useFormManager({
         site: formData.siteConducted || formData.site || 'Unknown',
         action: 'Form created'
       });
+
+      // Tidy rotation: keep at most 3 active forms per site (any type).
+      // When a save brings the site over 3, archive the oldest — backup-then-hide.
+      // Defer so the new form is in state and Firebase before we touch others.
+      const siteForRotation = formData.siteConducted || formData.site;
+      if (siteForRotation) {
+        setTimeout(() => {
+          _rotateOldFormsForSite(siteForRotation);
+        }, 1500);
+      }
       setSuccessModal({
         form: newForm,
         type: formType,
@@ -1149,6 +1159,22 @@ function useFormManager({
     setEditingForm(null);
     setCurrentView('dashboard');
   };
+
+  // Tidy rotation: keep at most 3 active forms per siteConducted across all
+  // form types. When a save brings the site over 3, the oldest gets archived
+  // (PDF to Drive, then hidden from the live list). Drive failure leaves the
+  // form active so nothing disappears without a backup.
+  const MAX_ACTIVE_FORMS_PER_SITE = 3;
+  const _rotateOldFormsForSite = site => {
+    if (!site) return;
+    const forSite = (forms || []).filter(f => f && f.status !== 'archived' && f.data && (f.data.siteConducted === site || f.data.site === site));
+    if (forSite.length <= MAX_ACTIVE_FORMS_PER_SITE) return;
+    const sorted = forSite.slice().sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+    const toArchive = sorted.slice(0, forSite.length - MAX_ACTIVE_FORMS_PER_SITE);
+    toArchive.forEach(f => {
+      archiveForm(f.id);
+    });
+  };
   const archiveForm = async formId => {
     const existingForm = (forms || []).find(form => form && form.id === formId);
     if (!existingForm) return false;
@@ -1198,7 +1224,15 @@ function useFormManager({
       action: 'Form archived'
     });
     if (typeof ToastNotifier !== 'undefined') {
-      ToastNotifier.success('Pre-Start archived');
+      const typeLabel = {
+        prestart: 'Pre-Start',
+        toolbox: 'Toolbox Talk',
+        incident: 'Incident',
+        itp: 'ITP',
+        'steel-itp': 'Steel ITP',
+        inspection: 'Inspection'
+      }[archivedForm.type] || 'Form';
+      ToastNotifier.success(typeLabel + ' archived to Drive');
     }
     return true;
   };
@@ -3257,6 +3291,10 @@ function JMartSteelSafetyApp({
     label: 'Toolbox Talks',
     emoji: '👥'
   }, {
+    id: 'archive-map',
+    label: 'Drive Archive',
+    emoji: '🗂️'
+  }, {
     id: 'emergency',
     label: 'Emergency Info',
     emoji: '📞'
@@ -3536,6 +3574,8 @@ function JMartSteelSafetyApp({
   }), currentView === 'recordings' && /*#__PURE__*/React.createElement(RecordingsView, {
     forms: forms,
     sites: sites
+  }), currentView === 'archive-map' && /*#__PURE__*/React.createElement(ArchiveMapView, {
+    forms: forms
   })), /*#__PURE__*/React.createElement("nav", {
     className: "fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around py-2 px-1 z-30"
   }, [{
@@ -3883,7 +3923,7 @@ function Dashboard({
     className: "w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center mb-1"
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-white font-bold text-xs"
-  }, forms.filter(form => form.type === 'inspection').length)), /*#__PURE__*/React.createElement("p", {
+  }, forms.filter(form => form.type === 'inspection' && form.status !== 'archived').length)), /*#__PURE__*/React.createElement("p", {
     className: "text-gray-600 text-xs"
   }, "Inspect")), /*#__PURE__*/React.createElement("div", {
     className: "bg-white rounded-xl p-2 shadow-sm"
@@ -3891,7 +3931,7 @@ function Dashboard({
     className: "w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center mb-1"
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-white font-bold text-xs"
-  }, forms.filter(form => form.type === 'itp').length)), /*#__PURE__*/React.createElement("p", {
+  }, forms.filter(form => form.type === 'itp' && form.status !== 'archived').length)), /*#__PURE__*/React.createElement("p", {
     className: "text-gray-600 text-xs"
   }, "ITP")), /*#__PURE__*/React.createElement("div", {
     className: "bg-white rounded-xl p-2 shadow-sm"
@@ -3899,7 +3939,7 @@ function Dashboard({
     className: "w-8 h-8 bg-red-500 rounded-lg flex items-center justify-center mb-1"
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-white font-bold text-xs"
-  }, forms.filter(form => form.type === 'incident').length)), /*#__PURE__*/React.createElement("p", {
+  }, forms.filter(form => form.type === 'incident' && form.status !== 'archived').length)), /*#__PURE__*/React.createElement("p", {
     className: "text-gray-600 text-xs"
   }, "Incident")), /*#__PURE__*/React.createElement("div", {
     className: "bg-white rounded-xl p-2 shadow-sm"
@@ -3907,7 +3947,7 @@ function Dashboard({
     className: "w-8 h-8 bg-purple-500 rounded-lg flex items-center justify-center mb-1"
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-white font-bold text-xs"
-  }, forms.filter(form => form.type === 'toolbox').length)), /*#__PURE__*/React.createElement("p", {
+  }, forms.filter(form => form.type === 'toolbox' && form.status !== 'archived').length)), /*#__PURE__*/React.createElement("p", {
     className: "text-gray-600 text-xs"
   }, "Toolbox"))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h3", {
     className: "font-semibold text-gray-800 mb-3"
@@ -3955,7 +3995,14 @@ function Dashboard({
     className: "w-10 h-10 bg-red-500 rounded-full flex items-center justify-center text-lg"
   }, "\u26A0\uFE0F"), /*#__PURE__*/React.createElement("span", {
     className: "text-xs font-medium text-gray-700 text-center"
-  }, "Incident")))), sortedTemplates.length > 0 && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+  }, "Incident")), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setCurrentView('archive-map'),
+    className: "bg-white rounded-xl p-2 shadow-sm flex flex-col items-center gap-1 hover:shadow-md"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "w-10 h-10 bg-amber-500 rounded-full flex items-center justify-center text-lg"
+  }, "\uD83D\uDDC2\uFE0F"), /*#__PURE__*/React.createElement("span", {
+    className: "text-xs font-medium text-gray-700 text-center"
+  }, "Archive")))), sortedTemplates.length > 0 && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     className: "mb-3"
   }, /*#__PURE__*/React.createElement("h3", {
     className: "font-semibold text-gray-800"
@@ -9116,6 +9163,168 @@ function RecordingsView({
 
 // Export to window for cross-file access
 window.RecordingsView = RecordingsView;
+
+// === js/components/view-archive-map.jsx ===
+// ArchiveMapView — visual map of all forms archived to Drive.
+// Groups by: form type → site (job) → date. No links, no actions.
+// Reads from `forms` prop, filters to status === 'archived'.
+
+function ArchiveMapView({
+  forms = []
+}) {
+  const archived = (forms || []).filter(f => f && f.status === 'archived');
+  const TYPE_META = {
+    prestart: {
+      label: 'Pre-Start',
+      emoji: '\u{1F4CB}',
+      color: 'bg-green-500',
+      bg: 'bg-green-50',
+      text: 'text-green-700'
+    },
+    inspection: {
+      label: 'Inspection',
+      emoji: '\u{1F50D}',
+      color: 'bg-blue-500',
+      bg: 'bg-blue-50',
+      text: 'text-blue-700'
+    },
+    itp: {
+      label: 'ITP',
+      emoji: '\u{1F4DD}',
+      color: 'bg-indigo-500',
+      bg: 'bg-indigo-50',
+      text: 'text-indigo-700'
+    },
+    'steel-itp': {
+      label: 'Steel ITP',
+      emoji: '\u{1F529}',
+      color: 'bg-slate-600',
+      bg: 'bg-slate-50',
+      text: 'text-slate-700'
+    },
+    incident: {
+      label: 'Incident',
+      emoji: '\u{26A0}',
+      color: 'bg-red-500',
+      bg: 'bg-red-50',
+      text: 'text-red-700'
+    },
+    toolbox: {
+      label: 'Toolbox Talk',
+      emoji: '\u{1F6E0}',
+      color: 'bg-purple-500',
+      bg: 'bg-purple-50',
+      text: 'text-purple-700'
+    }
+  };
+  const HEADER_EMOJI = '\u{1F5C2}\u{FE0F}';
+  const EMPTY_EMOJI = '\u{1F4C2}';
+  const PIN_EMOJI = '\u{1F4CD}';
+  const BULLET = '\u2022';
+  const MIDDOT = '\u00B7';
+  const siteOf = f => f.data && (f.data.siteConducted || f.data.site) || 'Unsorted';
+  const dateOf = f => f.archivedAt || f.createdAt || null;
+  const fmtDate = iso => {
+    if (!iso) return '\u2014';
+    try {
+      return new Date(iso).toLocaleString('en-AU', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch (_) {
+      return iso;
+    }
+  };
+
+  // Group: type → site → forms[]
+  const tree = {};
+  archived.forEach(f => {
+    const type = f.type || 'unknown';
+    const site = siteOf(f);
+    if (!tree[type]) tree[type] = {};
+    if (!tree[type][site]) tree[type][site] = [];
+    tree[type][site].push(f);
+  });
+  Object.keys(tree).forEach(type => {
+    Object.keys(tree[type]).forEach(site => {
+      tree[type][site].sort((a, b) => new Date(dateOf(b) || 0) - new Date(dateOf(a) || 0));
+    });
+  });
+  const totalArchived = archived.length;
+  const orderedTypes = Object.keys(TYPE_META).filter(t => tree[t]);
+  return /*#__PURE__*/React.createElement("div", {
+    className: "space-y-4"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "bg-amber-500 rounded-xl p-4 text-white shadow-sm"
+  }, /*#__PURE__*/React.createElement("h2", {
+    className: "text-xl font-bold flex items-center gap-2"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-2xl"
+  }, HEADER_EMOJI), " Drive Archive"), /*#__PURE__*/React.createElement("p", {
+    className: "text-amber-50 text-sm mt-1"
+  }, totalArchived === 0 ? 'No forms archived yet. When a site has more than 3 forms, the oldest gets backed up to Drive automatically.' : totalArchived + ' form' + (totalArchived === 1 ? '' : 's') + ' backed up to Google Drive')), totalArchived === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "bg-white rounded-xl p-6 shadow-sm text-center"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-5xl mb-2"
+  }, EMPTY_EMOJI), /*#__PURE__*/React.createElement("p", {
+    className: "text-gray-600"
+  }, "Nothing here yet."), /*#__PURE__*/React.createElement("p", {
+    className: "text-gray-400 text-sm mt-1"
+  }, "Forms appear here once they have been auto-archived to Drive.")) : /*#__PURE__*/React.createElement("div", {
+    className: "space-y-3"
+  }, orderedTypes.map(type => {
+    const meta = TYPE_META[type];
+    const sites = Object.keys(tree[type]).sort();
+    const typeCount = sites.reduce((n, s) => n + tree[type][s].length, 0);
+    return /*#__PURE__*/React.createElement("div", {
+      key: type,
+      className: "bg-white rounded-xl shadow-sm overflow-hidden"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: meta.color + ' px-4 py-3 flex items-center gap-3 text-white'
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "text-2xl leading-none"
+    }, meta.emoji), /*#__PURE__*/React.createElement("div", {
+      className: "flex-1"
+    }, /*#__PURE__*/React.createElement("p", {
+      className: "font-semibold leading-tight"
+    }, meta.label), /*#__PURE__*/React.createElement("p", {
+      className: "text-xs opacity-90"
+    }, typeCount, " form", typeCount === 1 ? '' : 's', " ", MIDDOT, " ", sites.length, " site", sites.length === 1 ? '' : 's'))), /*#__PURE__*/React.createElement("div", {
+      className: "divide-y"
+    }, sites.map(site => {
+      const list = tree[type][site];
+      return /*#__PURE__*/React.createElement("div", {
+        key: site,
+        className: "p-3"
+      }, /*#__PURE__*/React.createElement("div", {
+        className: "flex items-center gap-2 mb-2"
+      }, /*#__PURE__*/React.createElement("span", {
+        className: 'inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold ' + meta.bg + ' ' + meta.text
+      }, /*#__PURE__*/React.createElement("span", null, PIN_EMOJI), site), /*#__PURE__*/React.createElement("span", {
+        className: "text-xs text-gray-400"
+      }, list.length, " form", list.length === 1 ? '' : 's')), /*#__PURE__*/React.createElement("ul", {
+        className: "ml-4 space-y-1"
+      }, list.map(f => /*#__PURE__*/React.createElement("li", {
+        key: f.id,
+        className: "flex items-start gap-2 text-sm"
+      }, /*#__PURE__*/React.createElement("span", {
+        className: "text-gray-300 mt-0.5"
+      }, BULLET), /*#__PURE__*/React.createElement("div", {
+        className: "flex-1 min-w-0"
+      }, /*#__PURE__*/React.createElement("span", {
+        className: "text-gray-700"
+      }, fmtDate(dateOf(f))), f.archivedByName && /*#__PURE__*/React.createElement("span", {
+        className: "text-gray-400 text-xs ml-2"
+      }, "archived by ", f.archivedByName))))));
+    })));
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-800"
+  }, /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, "How this works:"), " When a site reaches 4 forms, the oldest one is uploaded to your Google Drive (under ", /*#__PURE__*/React.createElement("code", null, "J&M Artsteel Safety / Archive / [site name]"), ") and removed from the live list. The PDFs in Drive are the source of truth \u2014 this map just shows what is in there without leaving the app.")));
+}
+window.ArchiveMapView = ArchiveMapView;
 
 // === js/components/bootstrap.jsx ===
 // App bootstrap: ReactDOM.createRoot

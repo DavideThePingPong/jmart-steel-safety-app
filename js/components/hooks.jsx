@@ -186,6 +186,14 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
         action: 'Form created'
       });
 
+      // Tidy rotation: keep at most 3 active forms per site (any type).
+      // When a save brings the site over 3, archive the oldest — backup-then-hide.
+      // Defer so the new form is in state and Firebase before we touch others.
+      const siteForRotation = formData.siteConducted || formData.site;
+      if (siteForRotation) {
+        setTimeout(() => { _rotateOldFormsForSite(siteForRotation); }, 1500);
+      }
+
       setSuccessModal({ form: newForm, type: formType, ...(options.successModalProps || {}) });
     } catch (err) {
       console.error('Error saving form:', err);
@@ -368,6 +376,22 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
     setCurrentView('dashboard');
   };
 
+  // Tidy rotation: keep at most 3 active forms per siteConducted across all
+  // form types. When a save brings the site over 3, the oldest gets archived
+  // (PDF to Drive, then hidden from the live list). Drive failure leaves the
+  // form active so nothing disappears without a backup.
+  const MAX_ACTIVE_FORMS_PER_SITE = 3;
+  const _rotateOldFormsForSite = (site) => {
+    if (!site) return;
+    const forSite = (forms || []).filter(f => f && f.status !== 'archived' && (
+      (f.data && (f.data.siteConducted === site || f.data.site === site))
+    ));
+    if (forSite.length <= MAX_ACTIVE_FORMS_PER_SITE) return;
+    const sorted = forSite.slice().sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+    const toArchive = sorted.slice(0, forSite.length - MAX_ACTIVE_FORMS_PER_SITE);
+    toArchive.forEach(f => { archiveForm(f.id); });
+  };
+
   const archiveForm = async (formId) => {
     const existingForm = (forms || []).find((form) => form && form.id === formId);
     if (!existingForm) return false;
@@ -422,7 +446,8 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
     });
 
     if (typeof ToastNotifier !== 'undefined') {
-      ToastNotifier.success('Pre-Start archived');
+      const typeLabel = ({ prestart: 'Pre-Start', toolbox: 'Toolbox Talk', incident: 'Incident', itp: 'ITP', 'steel-itp': 'Steel ITP', inspection: 'Inspection' }[archivedForm.type] || 'Form');
+      ToastNotifier.success(typeLabel + ' archived to Drive');
     }
 
     return true;

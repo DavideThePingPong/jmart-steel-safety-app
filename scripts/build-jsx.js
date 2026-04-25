@@ -35,6 +35,7 @@ const FILES = [
   'js/components/view-emergency.jsx',
   'js/components/view-settings.jsx',
   'js/components/view-recordings.jsx',
+  'js/components/view-archive-map.jsx',
   'js/components/bootstrap.jsx'
 ];
 

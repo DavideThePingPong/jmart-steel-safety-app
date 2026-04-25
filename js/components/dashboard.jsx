@@ -318,25 +318,25 @@ function Dashboard({
         </div>
         <div className="bg-white rounded-xl p-2 shadow-sm">
           <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center mb-1">
-            <span className="text-white font-bold text-xs">{forms.filter((form) => form.type === 'inspection').length}</span>
+            <span className="text-white font-bold text-xs">{forms.filter((form) => form.type === 'inspection' && form.status !== 'archived').length}</span>
           </div>
           <p className="text-gray-600 text-xs">Inspect</p>
         </div>
         <div className="bg-white rounded-xl p-2 shadow-sm">
           <div className="w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center mb-1">
-            <span className="text-white font-bold text-xs">{forms.filter((form) => form.type === 'itp').length}</span>
+            <span className="text-white font-bold text-xs">{forms.filter((form) => form.type === 'itp' && form.status !== 'archived').length}</span>
           </div>
           <p className="text-gray-600 text-xs">ITP</p>
         </div>
         <div className="bg-white rounded-xl p-2 shadow-sm">
           <div className="w-8 h-8 bg-red-500 rounded-lg flex items-center justify-center mb-1">
-            <span className="text-white font-bold text-xs">{forms.filter((form) => form.type === 'incident').length}</span>
+            <span className="text-white font-bold text-xs">{forms.filter((form) => form.type === 'incident' && form.status !== 'archived').length}</span>
           </div>
           <p className="text-gray-600 text-xs">Incident</p>
         </div>
         <div className="bg-white rounded-xl p-2 shadow-sm">
           <div className="w-8 h-8 bg-purple-500 rounded-lg flex items-center justify-center mb-1">
-            <span className="text-white font-bold text-xs">{forms.filter((form) => form.type === 'toolbox').length}</span>
+            <span className="text-white font-bold text-xs">{forms.filter((form) => form.type === 'toolbox' && form.status !== 'archived').length}</span>
           </div>
           <p className="text-gray-600 text-xs">Toolbox</p>
         </div>
@@ -368,6 +368,10 @@ function Dashboard({
           <button onClick={() => setCurrentView('incidents')} className="bg-white rounded-xl p-2 shadow-sm flex flex-col items-center gap-1 hover:shadow-md">
             <div className="w-10 h-10 bg-red-500 rounded-full flex items-center justify-center text-lg">⚠️</div>
             <span className="text-xs font-medium text-gray-700 text-center">Incident</span>
+          </button>
+          <button onClick={() => setCurrentView('archive-map')} className="bg-white rounded-xl p-2 shadow-sm flex flex-col items-center gap-1 hover:shadow-md">
+            <div className="w-10 h-10 bg-amber-500 rounded-full flex items-center justify-center text-lg">🗂️</div>
+            <span className="text-xs font-medium text-gray-700 text-center">Archive</span>
           </button>
         </div>
       </div>

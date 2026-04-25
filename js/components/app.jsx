@@ -182,6 +182,7 @@ function JMartSteelSafetyApp({ isAdmin = false }) {
     { id: 'itp', label: 'ITP Form', emoji: '📝' },
     { id: 'incidents', label: 'Incident Reports', emoji: '⚠️' },
     { id: 'toolbox', label: 'Toolbox Talks', emoji: '👥' },
+    { id: 'archive-map', label: 'Drive Archive', emoji: '🗂️' },
     { id: 'emergency', label: 'Emergency Info', emoji: '📞' },
     { id: 'settings', label: 'Settings', emoji: '⚙️' },
   ];
@@ -404,6 +405,7 @@ function JMartSteelSafetyApp({ isAdmin = false }) {
         {currentView === 'emergency' && <EmergencyView />}
         {currentView === 'settings' && <SettingsView sites={sites} onUpdateSites={setSites} signatures={savedSignatures} onUpdateSignatures={updateSignatures} isAdmin={isAdmin} isDeviceAdmin={isDeviceAdmin} canViewDevices={canViewDevices} canRevokeDevices={canRevokeDevices} pendingDevices={pendingDevices} approvedDevices={approvedDevices} />}
         {currentView === 'recordings' && <RecordingsView forms={forms} sites={sites} />}
+        {currentView === 'archive-map' && <ArchiveMapView forms={forms} />}
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around py-2 px-1 z-30">
