@@ -414,6 +414,51 @@ const GoogleDriveSync = {
     }
   },
 
+  // Upload an archived PDF to the rotated-forms archive folder.
+  // Path: 00_Archive/{site}/{filename}. Used when auto-rotating forms past the
+  // per-site cap. Returns the upload result on success, null on failure.
+  // The caller MUST treat null as "do not mark archived locally".
+  uploadArchivedPDF: async function(pdfBlob, filename, site) {
+    if (!this.accessToken) {
+      console.error('Not connected to Google Drive — refusing archive upload');
+      return null;
+    }
+    if (!this.folderId) {
+      await this.getOrCreateFolder();
+    }
+    try {
+      const safeSite = (site || 'Unsorted').replace(/[\\/:*?"<>|]/g, '_').trim() || 'Unsorted';
+      const path = '00_Archive/' + safeSite;
+      const targetFolderId = await this.getOrCreateNestedFolder(path);
+      if (!targetFolderId) {
+        console.error('Could not create archive folder', path);
+        return null;
+      }
+      const metadata = {
+        name: filename,
+        mimeType: 'application/pdf',
+        parents: [targetFolderId],
+      };
+      const formData = new FormData();
+      formData.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+      formData.append('file', pdfBlob);
+      const response = await this.apiCall(
+        'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+        { method: 'POST', body: formData }
+      );
+      if (!response.ok) {
+        console.error('Archive upload failed:', response.status);
+        return null;
+      }
+      const data = await response.json();
+      console.log('Archived PDF to Drive:', filename, 'in', path, data.id);
+      return data;
+    } catch (error) {
+      console.error('Archive upload error:', error);
+      return null;
+    }
+  },
+
   // Upload all forms from today as PDFs
   uploadDailyForms: async function(forms) {
     if (!this.accessToken) {

@@ -378,18 +378,72 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
 
   // Tidy rotation: keep at most 3 active forms per siteConducted across all
   // form types. When a save brings the site over 3, the oldest gets archived
-  // (PDF to Drive, then hidden from the live list). Drive failure leaves the
-  // form active so nothing disappears without a backup.
+  // — Drive upload FIRST, then archive flag, only on success. Drive failure
+  // leaves the form active so nothing disappears without a confirmed backup.
   const MAX_ACTIVE_FORMS_PER_SITE = 3;
+  const formsRef = useRef(forms);
+  useEffect(() => { formsRef.current = forms; }, [forms]);
+
+  const _autoArchiveForm = async (formToArchive) => {
+    if (!formToArchive || !formToArchive.id) return false;
+    if (typeof PDFGenerator === 'undefined' || typeof GoogleDriveSync === 'undefined') return false;
+    if (!GoogleDriveSync.isConnected()) {
+      // Drive offline — bail. The form stays active. Next save will retry.
+      console.log('[auto-archive] Drive not connected, skipping rotation for form', formToArchive.id);
+      return false;
+    }
+    try {
+      const generated = PDFGenerator.generate(formToArchive);
+      if (!generated || !generated.doc) return false;
+      const pdfBlob = generated.doc.output('blob');
+      const date = new Date(formToArchive.createdAt || Date.now());
+      const stamp = date.toISOString().slice(0, 16).replace(/[:T]/g, '-');
+      const typeLabel = (formToArchive.type || 'form').replace(/[^a-z0-9-]/gi, '');
+      const archiveFilename = stamp + '_' + typeLabel + '_' + formToArchive.id + '.pdf';
+      const site = (formToArchive.data && (formToArchive.data.siteConducted || formToArchive.data.site)) || 'Unsorted';
+      const upload = await GoogleDriveSync.uploadArchivedPDF(pdfBlob, archiveFilename, site);
+      if (!upload || !upload.id) {
+        console.warn('[auto-archive] Drive upload failed — leaving form active');
+        return false;
+      }
+      // Drive succeeded — NOW mark archived locally and in Firebase.
+      const now = new Date().toISOString();
+      const updates = {
+        status: 'archived',
+        archivedAt: now,
+        archivedBy: DeviceAuthManager.deviceId || 'unknown',
+        archivedByName: localStorage.getItem('jmart-user-name') || 'Auto-rotation',
+        archiveDriveFileId: upload.id,
+        updatedAt: now,
+        version: (formToArchive.version || 1) + 1,
+      };
+      setForms((prev) => {
+        const updated = prev.map(f => (f && f.id === formToArchive.id) ? { ...f, ...updates } : f);
+        StorageQuotaManager.safeFormsWrite(updated);
+        return updated;
+      });
+      if (FirebaseSync.isConnected()) {
+        FirebaseSync.syncForms([{ ...formToArchive, ...updates }]).catch(() => {});
+      }
+      AuditLogManager.log('archive', { formId: formToArchive.id, formType: formToArchive.type, site, action: 'Auto-archived (rotation)', driveFileId: upload.id });
+      const typeLabelPretty = ({ prestart: 'Pre-Start', toolbox: 'Toolbox Talk', incident: 'Incident', itp: 'ITP', 'steel-itp': 'Steel ITP', inspection: 'Inspection' }[formToArchive.type] || 'Form');
+      if (typeof ToastNotifier !== 'undefined') ToastNotifier.success(typeLabelPretty + ' for "' + site + '" archived to Drive');
+      return true;
+    } catch (e) {
+      console.error('[auto-archive] error:', e);
+      return false;
+    }
+  };
+
   const _rotateOldFormsForSite = (site) => {
     if (!site) return;
-    const forSite = (forms || []).filter(f => f && f.status !== 'archived' && (
-      (f.data && (f.data.siteConducted === site || f.data.site === site))
-    ));
+    // Read latest forms via ref — closure captured at addForm time would be stale.
+    const current = formsRef.current || [];
+    const forSite = current.filter(f => f && f.status !== 'archived' && f.data && (f.data.siteConducted === site || f.data.site === site));
     if (forSite.length <= MAX_ACTIVE_FORMS_PER_SITE) return;
     const sorted = forSite.slice().sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
     const toArchive = sorted.slice(0, forSite.length - MAX_ACTIVE_FORMS_PER_SITE);
-    toArchive.forEach(f => { archiveForm(f.id); });
+    toArchive.forEach(f => { _autoArchiveForm(f); });
   };
 
   const archiveForm = async (formId) => {
