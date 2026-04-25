@@ -3277,9 +3277,11 @@ function JMartSteelSafetyApp({
       className: "min-h-screen bg-gray-100 flex items-center justify-center"
     }, /*#__PURE__*/React.createElement("div", {
       className: "text-center"
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "text-6xl mb-4"
-    }, "\uD83D\uDEE1\uFE0F"), /*#__PURE__*/React.createElement("h2", {
+    }, /*#__PURE__*/React.createElement("img", {
+      src: "icons/icon-192x192.png",
+      alt: "J&M Artsteel",
+      className: "w-20 h-20 rounded-2xl mx-auto mb-4"
+    }), /*#__PURE__*/React.createElement("h2", {
       className: "text-xl font-bold text-gray-800"
     }, "J&M Artsteel Safety"), /*#__PURE__*/React.createElement("p", {
       className: "text-gray-600 mt-2"
@@ -3416,9 +3418,11 @@ function JMartSteelSafetyApp({
     "aria-label": "Menu"
   }, "\u2630"), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-2"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "text-2xl"
-  }, "\uD83D\uDEE1\uFE0F"), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h1", {
+  }, /*#__PURE__*/React.createElement("img", {
+    src: "icons/icon-192x192.png",
+    alt: "J&M Artsteel",
+    className: "w-8 h-8 rounded-lg"
+  }), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h1", {
     className: "font-bold text-lg leading-tight"
   }, "J&M Artsteel"), /*#__PURE__*/React.createElement("p", {
     className: "text-xs text-orange-200"
@@ -8073,14 +8077,12 @@ function SettingsView({
     }
   };
   const deleteMember = name => {
-    // Only allow deleting custom members (not in defaultMembers)
-    if (!defaultMembers.includes(name)) {
-      const newSignatures = {
-        ...signatures
-      };
-      delete newSignatures[name];
-      onUpdateSignatures(newSignatures);
-    }
+    if (!window.confirm('Remove "' + name + '" from the worker list? Their saved signature will also be deleted.')) return;
+    const newSignatures = {
+      ...signatures
+    };
+    delete newSignatures[name];
+    onUpdateSignatures(newSignatures);
   };
   const addSite = () => {
     if (!canManageSharedSettings) return;
@@ -8573,10 +8575,12 @@ function SettingsView({
     className: `px-3 py-1 rounded-lg text-sm ${signatures[name] ? 'bg-orange-100 text-orange-600' : 'bg-green-600 text-white'}`
   }, signatures[name] ? '✏️ Update' : '➕ Add'), signatures[name] && /*#__PURE__*/React.createElement("button", {
     onClick: () => deleteSignature(name),
-    className: "text-red-500 text-lg"
-  }, "\uD83D\uDDD1\uFE0F"), !defaultMembers.includes(name) && /*#__PURE__*/React.createElement("button", {
+    className: "text-red-500 text-lg",
+    title: "Delete signature only"
+  }, "\uD83D\uDDD1\uFE0F"), /*#__PURE__*/React.createElement("button", {
     onClick: () => deleteMember(name),
-    className: "text-red-500 text-xs underline ml-1"
+    className: "text-red-600 text-xs font-medium px-2 py-1 border border-red-300 rounded hover:bg-red-50 ml-1",
+    title: "Remove worker from list"
   }, "Remove"))))))), showSignaturePad && /*#__PURE__*/React.createElement(SignaturePad, {
     name: showSignaturePad,
     onSave: sig => saveSignature(showSignaturePad, sig),

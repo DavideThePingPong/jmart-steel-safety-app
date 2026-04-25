@@ -274,12 +274,10 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
   };
 
   const deleteMember = (name) => {
-    // Only allow deleting custom members (not in defaultMembers)
-    if (!defaultMembers.includes(name)) {
-      const newSignatures = { ...signatures };
-      delete newSignatures[name];
-      onUpdateSignatures(newSignatures);
-    }
+    if (!window.confirm('Remove "' + name + '" from the worker list? Their saved signature will also be deleted.')) return;
+    const newSignatures = { ...signatures };
+    delete newSignatures[name];
+    onUpdateSignatures(newSignatures);
   };
 
   const addSite = () => {
@@ -832,11 +830,9 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
                       {signatures[name] ? '✏️ Update' : '➕ Add'}
                     </button>
                     {signatures[name] && (
-                      <button onClick={() => deleteSignature(name)} className="text-red-500 text-lg">🗑️</button>
+                      <button onClick={() => deleteSignature(name)} className="text-red-500 text-lg" title="Delete signature only">🗑️</button>
                     )}
-                    {!defaultMembers.includes(name) && (
-                      <button onClick={() => deleteMember(name)} className="text-red-500 text-xs underline ml-1">Remove</button>
-                    )}
+                    <button onClick={() => deleteMember(name)} className="text-red-600 text-xs font-medium px-2 py-1 border border-red-300 rounded hover:bg-red-50 ml-1" title="Remove worker from list">Remove</button>
                   </>
                 )}
               </div>

@@ -93,14 +93,14 @@ const GoogleDriveSync = {
           } else {
             // Token expired — clear it and try silent reconnect
             localStorage.removeItem('google-drive-token');
-            if (localStorage.getItem('google-drive-auto-connect') === 'true') {
-              console.log('Google Drive token expired, attempting silent reconnect...');
-              this._silentReconnect();
-            }
+            console.log('Google Drive token expired, attempting silent reconnect...');
+            this._silentReconnect();
           }
-        } else if (localStorage.getItem('google-drive-auto-connect') === 'true') {
-          // No token stored but user previously connected — try silent reconnect
-          console.log('Google Drive previously connected, attempting silent reconnect...');
+        } else {
+          // No token stored — attempt silent reconnect on EVERY app load.
+          // If the user has never authorized, this fails silently with no popup.
+          // If they've authorized in this browser before, Google reconnects without prompting.
+          console.log('No stored Drive token, attempting silent reconnect...');
           this._silentReconnect();
         }
       } catch (e) {

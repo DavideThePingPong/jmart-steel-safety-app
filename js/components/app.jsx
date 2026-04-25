@@ -197,7 +197,7 @@ function JMartSteelSafetyApp({ isAdmin = false }) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
         <div className="text-center">
-          <div className="text-6xl mb-4">🛡️</div>
+          <img src="icons/icon-192x192.png" alt="J&M Artsteel" className="w-20 h-20 rounded-2xl mx-auto mb-4" />
           <h2 className="text-xl font-bold text-gray-800">J&M Artsteel Safety</h2>
           <p className="text-gray-600 mt-2">Verifying device authorization...</p>
           <div className="mt-4">
@@ -339,7 +339,7 @@ function JMartSteelSafetyApp({ isAdmin = false }) {
       <header className="bg-orange-600 text-white p-4 flex items-center justify-between shadow-lg sticky top-0 z-50 safe-top">
         <button onClick={() => setMenuOpen(!menuOpen)} className="p-2 hover:bg-orange-700 rounded-lg text-xl" aria-label="Menu">☰</button>
         <div className="flex items-center gap-2">
-          <span className="text-2xl">🛡️</span>
+          <img src="icons/icon-192x192.png" alt="J&M Artsteel" className="w-8 h-8 rounded-lg" />
           <div>
             <h1 className="font-bold text-lg leading-tight">J&M Artsteel</h1>
             <p className="text-xs text-orange-200">
