@@ -7096,7 +7096,7 @@
                             }
                         ]
                     }],
-                    { model: HUB_BROWSER_HAIKU_MODEL, maxTokens: 1024 }
+                    { model: HUB_BROWSER_MODEL, maxTokens: 1024 }
                 );
 
                 let text = '';
@@ -8684,7 +8684,9 @@
         hubDriveUpdateStatus();
     }
 
-    const HUB_BROWSER_HAIKU_MODEL = 'claude-sonnet-4-20250514';
+    // Renamed from HUB_BROWSER_HAIKU_MODEL — actually Sonnet, not Haiku.
+    // Bumped from sonnet-4-20250514 → sonnet-4-6 (same price, newer model).
+    const HUB_BROWSER_MODEL = 'claude-sonnet-4-6';
 
     async function callClaudeAPI(messages, options = {}) {
         const apiKey = getApiKey();
@@ -8693,7 +8695,7 @@
         }
 
         const body = {
-            model: options.model || HUB_BROWSER_HAIKU_MODEL,
+            model: options.model || HUB_BROWSER_MODEL,
             max_tokens: options.maxTokens || 1024,
             messages: messages
         };
@@ -9515,7 +9517,7 @@
 
                 const result = await callClaudeAPI(
                     [{ role: 'user', content: searchPrompt }],
-                    { model: HUB_BROWSER_HAIKU_MODEL, maxTokens: 1024, tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 8 }] }
+                    { model: HUB_BROWSER_MODEL, maxTokens: 1024, tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 8 }] }
                 );
 
                 let text = '';
@@ -9749,7 +9751,7 @@
                 const result = await callClaudeAPI(
                     [{ role: 'user', content: searchPrompt }],
                     {
-                        model: HUB_BROWSER_HAIKU_MODEL,
+                        model: HUB_BROWSER_MODEL,
                         maxTokens: 1024,
                         tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 8 }]
                     }
@@ -9950,7 +9952,7 @@
                             }
                         ]
                     }],
-                    { model: HUB_BROWSER_HAIKU_MODEL, maxTokens: 1024, temperature: 0 }
+                    { model: HUB_BROWSER_MODEL, maxTokens: 1024, temperature: 0 }
                 );
 
                 let text = '';
@@ -11754,7 +11756,7 @@
             const result = await callClaudeAPI(
                 [{ role: 'user', content: userPrompt }],
                 {
-                    model: 'claude-sonnet-4-5-20250929',
+                    model: 'claude-sonnet-4-6',
                     maxTokens: 4000,
                     temperature: 0,
                     system: systemPrompt

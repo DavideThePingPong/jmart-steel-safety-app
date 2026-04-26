@@ -12,14 +12,22 @@ const { getDatabase } = require("firebase-admin/database");
 const DEFAULT_DB_URL =
   "https://jmart-steel-safety-default-rtdb.asia-southeast1.firebasedatabase.app";
 const FRANK_ATTACHMENT_MAX_BYTES = 15 * 1024 * 1024;
-const FRANK_ATTACHMENT_OPENROUTER_MODEL =
-  process.env.FRANK_ATTACHMENT_OPENROUTER_MODEL || "anthropic/claude-4-sonnet-20250522";
+// All Anthropic refs upgraded to Sonnet 4.6 — same price as Sonnet 4 on
+// both Anthropic direct and OpenRouter, just newer/better model. Each is
+// env-overridable so a future swap (e.g. Opus 4.7 for SWMS quality) is
+// a config change, no redeploy.
+const FRANK_ATTACHMENT_QWEN_MODEL =
+  process.env.FRANK_ATTACHMENT_QWEN_MODEL || "qwen/qwen3-vl-32b-instruct";
 const FRANK_GENERATION_MODEL =
-  process.env.FRANK_GENERATION_MODEL || "anthropic/claude-4-sonnet-20250522";
+  process.env.FRANK_GENERATION_MODEL || "anthropic/claude-sonnet-4.6";
 const HUB_VISION_MODEL =
-  process.env.HUB_VISION_MODEL || "claude-sonnet-4-20250514";
+  process.env.HUB_VISION_MODEL || "claude-sonnet-4-6";
 const HUB_WEB_SEARCH_MODEL =
-  process.env.HUB_WEB_SEARCH_MODEL || "claude-sonnet-4-20250514";
+  process.env.HUB_WEB_SEARCH_MODEL || "claude-sonnet-4-6";
+// Victor / Frank-attachment Qwen primary (cheap OCR/extraction).
+// Anthropic fallback fires only on OpenRouter credit failure.
+const VICTOR_QWEN_MODEL =
+  process.env.VICTOR_QWEN_MODEL || "qwen/qwen3-vl-32b-instruct";
 const ANTHROPIC_API_KEY = defineSecret("ANTHROPIC_API_KEY");
 const OPENROUTER_API_KEY = defineSecret("OPENROUTER_API_KEY");
 const FRANK_HOUSE_MODEL = Object.freeze({
@@ -1207,15 +1215,17 @@ async function extractPdfText(buffer) {
   }
 }
 
-async function extractWithOpenRouter(messages, apiKey) {
+async function extractWithOpenRouter(messages, apiKey, model) {
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
+      "HTTP-Referer": "https://jmart-steel-safety.web.app",
+      "X-Title": "JMart Hub",
     },
     body: JSON.stringify({
-      model: FRANK_ATTACHMENT_OPENROUTER_MODEL,
+      model: model || FRANK_ATTACHMENT_QWEN_MODEL,
       messages,
       max_tokens: 2048,
       temperature: 0,
@@ -1224,7 +1234,10 @@ async function extractWithOpenRouter(messages, apiKey) {
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`OpenRouter failed: ${response.status} ${text}`);
+    const err = new Error(`OpenRouter failed: ${response.status} ${text.slice(0, 300)}`);
+    err.openRouterStatus = response.status;
+    err.openRouterBody = text;
+    throw err;
   }
 
   const payload = await response.json();
@@ -1453,7 +1466,7 @@ function extractHannaJson(text, fallbackMessage) {
 // errors (bad image, parse failure) surface to the user instead of silently
 // running up Anthropic costs.
 const HANNA_OPENROUTER_MODEL =
-  process.env.HANNA_OPENROUTER_MODEL || "qwen/qwen3-vl-30b-a3b-instruct";
+  process.env.HANNA_OPENROUTER_MODEL || "qwen/qwen3-vl-32b-instruct";
 
 function isOpenRouterCreditError(status, body) {
   if (status === 402) return true;
@@ -1735,55 +1748,69 @@ function sanitizeVictorAnalyzeResult(value) {
 
 async function extractVictorSdsData(filename, mediaType, buffer, secrets) {
   const ext = path.extname(filename || "").toLowerCase();
-  const anthropicKey = secrets && secrets.anthropicKey ? secrets.anthropicKey : "";
+  const anthropicKey = (secrets && secrets.anthropicKey) || "";
+  const openRouterKey = (secrets && secrets.openRouterKey) || "";
   const prompt = buildVictorAnalyzePrompt();
-  let payload;
+
+  // Try OpenRouter Qwen first (cheap PDF-text extraction). Fall back to
+  // Anthropic only on credit-failure (same pattern as Hanna).
+  // Qwen does NOT accept PDF document blocks — must extract text first.
+  // If text extraction fails (scanned PDF), Anthropic is the only path
+  // that can read the PDF natively.
 
   if (mediaType === "application/pdf" || ext === ".pdf") {
     const pdfText = await extractPdfText(buffer);
-    if (pdfText) {
-      payload = await callAnthropicMessages({
-        apiKey: anthropicKey,
-        model: HUB_VISION_MODEL,
-        maxTokens: 1024,
-        messages: [
-          {
+    let rawText = "";
+
+    if (pdfText && openRouterKey) {
+      try {
+        rawText = await extractWithOpenRouter(
+          [{
             role: "user",
-            content:
-              "The following text was extracted from an SDS PDF.\n\n" +
-              pdfText +
-              "\n\n" +
-              prompt,
-          },
-        ],
-      });
-    } else {
-      payload = await callAnthropicMessages({
-        apiKey: anthropicKey,
-        model: HUB_VISION_MODEL,
-        maxTokens: 1024,
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "document",
-                source: {
-                  type: "base64",
-                  media_type: "application/pdf",
-                  data: buffer.toString("base64"),
-                },
-              },
-              {
-                type: "text",
-                text: prompt,
-              },
-            ],
-          },
-        ],
-      });
+            content: "The following text was extracted from an SDS PDF.\n\n" + pdfText + "\n\n" + prompt,
+          }],
+          openRouterKey,
+          VICTOR_QWEN_MODEL,
+        );
+      } catch (err) {
+        if (isOpenRouterCreditError(err.openRouterStatus, err.openRouterBody)) {
+          console.warn("[Victor] Qwen credit-fail, falling back to Anthropic");
+          rawText = "";
+        } else {
+          throw err;
+        }
+      }
     }
-    return sanitizeVictorAnalyzeResult(extractJsonObject(extractResponseText(payload), "Victor SDS extraction returned invalid JSON"));
+
+    if (!rawText) {
+      // No OpenRouter result (no key, no extractable text, or credit fail).
+      // Anthropic handles both pdf-text and pdf-document paths.
+      if (!anthropicKey) {
+        throw { status: 503, detail: "OpenRouter unavailable and no Anthropic fallback key configured" };
+      }
+      const payload = pdfText
+        ? await callAnthropicMessages({
+            apiKey: anthropicKey,
+            model: HUB_VISION_MODEL,
+            maxTokens: 1024,
+            messages: [{ role: "user", content: "The following text was extracted from an SDS PDF.\n\n" + pdfText + "\n\n" + prompt }],
+          })
+        : await callAnthropicMessages({
+            apiKey: anthropicKey,
+            model: HUB_VISION_MODEL,
+            maxTokens: 1024,
+            messages: [{
+              role: "user",
+              content: [
+                { type: "document", source: { type: "base64", media_type: "application/pdf", data: buffer.toString("base64") } },
+                { type: "text", text: prompt },
+              ],
+            }],
+          });
+      rawText = extractResponseText(payload);
+    }
+
+    return sanitizeVictorAnalyzeResult(extractJsonObject(rawText, "Victor SDS extraction returned invalid JSON"));
   }
 
   throw { status: 400, detail: "Unsupported SDS type" };
@@ -1976,6 +2003,8 @@ exports.victorSearchMsds = onRequest(
       /^http:\/\/localhost(?::\d+)?$/,
       /^http:\/\/127\.0\.0\.1(?::\d+)?$/,
     ],
+    // Stays on Anthropic — uses the web_search tool which OpenRouter/Qwen
+    // do not expose. Cannot be moved without losing search capability.
     secrets: [ANTHROPIC_API_KEY],
   },
   async (req, res) => {
@@ -2019,7 +2048,8 @@ exports.victorAnalyzeSds = onRequest(
       /^http:\/\/localhost(?::\d+)?$/,
       /^http:\/\/127\.0\.0\.1(?::\d+)?$/,
     ],
-    secrets: [ANTHROPIC_API_KEY],
+    // OpenRouter Qwen primary; Anthropic fallback only on credit-fail.
+    secrets: [OPENROUTER_API_KEY, ANTHROPIC_API_KEY],
   },
   async (req, res) => {
     if (req.method !== "POST") {
@@ -2045,6 +2075,7 @@ exports.victorAnalyzeSds = onRequest(
 
       const result = await extractVictorSdsData(filename, mimeType, buffer, {
         anthropicKey: ANTHROPIC_API_KEY.value() || "",
+        openRouterKey: OPENROUTER_API_KEY.value() || "",
       });
       res.json({ success: true, result });
     } catch (error) {
