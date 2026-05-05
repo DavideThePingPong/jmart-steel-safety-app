@@ -460,3 +460,52 @@ async function firebaseRead(path, timeoutMs) {
     throw e;
   }
 }
+
+// ========================================
+// CLOUD FUNCTIONS HELPER
+// ========================================
+// Calls a v2 onRequest Cloud Function with the current user's Firebase ID
+// token in `x-firebase-token` (the format the backend expects via
+// verifyApprovedDevice). Returns the parsed JSON response.
+const FUNCTIONS_BASE_URL = 'https://australia-southeast1-' + firebaseConfig.projectId + '.cloudfunctions.net';
+
+async function callJMartFunction(name, body, timeoutMs) {
+  if (!isFirebaseConfigured) throw new Error('Firebase not configured');
+  var user = firebase.auth().currentUser;
+  if (!user) {
+    try { await firebaseAuthReady; user = firebase.auth().currentUser; } catch (e) {}
+  }
+  if (!user) throw new Error('Not signed in');
+  var token = await user.getIdToken();
+  var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  var timer = null;
+  if (controller && timeoutMs) {
+    timer = setTimeout(function () { try { controller.abort(); } catch (_) {} }, timeoutMs);
+  }
+  try {
+    // Same-origin Hosting rewrite for functions that need to bypass
+    // browser-extension blocklists targeting cloudfunctions.net.
+    var SAMEORIGIN_FUNCTION_PATHS = { prestartAutofill: '/api/prestart-autofill' };
+    var url = SAMEORIGIN_FUNCTION_PATHS[name] || (FUNCTIONS_BASE_URL + '/' + name);
+    var res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-firebase-token': token,
+      },
+      body: JSON.stringify(body || {}),
+      signal: controller ? controller.signal : undefined,
+    });
+    var json;
+    try { json = await res.json(); } catch (_) { json = null; }
+    if (!res.ok) {
+      var detail = (json && (json.error || json.detail)) || ('HTTP ' + res.status);
+      throw new Error(detail);
+    }
+    return json;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+window.callJMartFunction = callJMartFunction;
