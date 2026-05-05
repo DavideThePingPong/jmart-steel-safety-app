@@ -537,16 +537,17 @@ const DeviceAuth = {
     }
 
     try {
-      // Remove admin auth UID if the revoked device was admin (uses REST fallback)
       const revokedResult = await firebaseRead('jmart-safety/devices/approved/' + deviceId);
-      if (revokedResult.exists) {
-        const revokedData = revokedResult.val;
-        if (revokedData.isAdmin && revokedData.authUid) {
-          await firebaseDb.ref('jmart-safety/adminAuthUids/' + revokedData.authUid).remove().catch(() => {});
-        }
-        if (revokedData.authUid) {
-          await this.removeAuthDeviceRecord(revokedData.authUid);
-        }
+      if (!revokedResult.exists) {
+        console.log('Device already revoked (idempotent no-op):', deviceId);
+        return true;
+      }
+      const revokedData = revokedResult.val;
+      if (revokedData.isAdmin && revokedData.authUid) {
+        await firebaseDb.ref('jmart-safety/adminAuthUids/' + revokedData.authUid).remove().catch(() => {});
+      }
+      if (revokedData.authUid) {
+        await this.removeAuthDeviceRecord(revokedData.authUid);
       }
       await firebaseDb.ref('jmart-safety/devices/approved/' + deviceId).remove();
       if (typeof AuditLogManager !== 'undefined') {
