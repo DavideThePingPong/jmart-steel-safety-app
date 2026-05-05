@@ -37,6 +37,7 @@ function PrestartView({ onSubmit, onUpdate, editingForm, sites = [], savedTempla
 
   const [workAreas, setWorkAreas] = useState(ensureMediaStructure(editData.workAreas));
   const [tasksThisShift, setTasksThisShift] = useState(ensureMediaStructure(editData.tasksThisShift));
+  const [methodology, setMethodology] = useState(ensureMediaStructure(editData.methodology));
   const [machineryControls, setMachineryControls] = useState(ensureMediaStructure(editData.machineryControls));
   const [siteHazards, setSiteHazards] = useState(ensureMediaStructure(editData.siteHazards));
   const [permitsRequired, setPermitsRequired] = useState(ensureMediaStructure(editData.permitsRequired));
@@ -68,6 +69,7 @@ function PrestartView({ onSubmit, onUpdate, editingForm, sites = [], savedTempla
     setFormDate(data.date ? new Date(data.date) : new Date());
     setWorkAreas(ensureMediaStructure(data.workAreas));
     setTasksThisShift(ensureMediaStructure(data.tasksThisShift));
+    setMethodology(ensureMediaStructure(data.methodology));
     setMachineryControls(ensureMediaStructure(data.machineryControls));
     setSiteHazards(ensureMediaStructure(data.siteHazards));
     setPermitsRequired(ensureMediaStructure(data.permitsRequired));
@@ -92,7 +94,7 @@ function PrestartView({ onSubmit, onUpdate, editingForm, sites = [], savedTempla
   // Restored on mount; cleared after successful submit.
   const draftSnapshot = isEditing ? null : {
     checkType, checks, notes, supervisorName, siteConducted, builder, address,
-    workAreas, tasksThisShift, machineryControls, siteHazards, permitsRequired,
+    workAreas, tasksThisShift, methodology, machineryControls, siteHazards, permitsRequired,
     isPlantEquipmentUsed, highRiskWorks, worksCoveredBySWMS, hasSafetyIssues,
     safetyIssuesPreviousShift, translatorRequired, translatorName,
   };
@@ -111,6 +113,7 @@ function PrestartView({ onSubmit, onUpdate, editingForm, sites = [], savedTempla
     if (d.address !== undefined) setAddress(d.address);
     if (d.workAreas) setWorkAreas(ensureMediaStructure(d.workAreas));
     if (d.tasksThisShift) setTasksThisShift(ensureMediaStructure(d.tasksThisShift));
+    if (d.methodology) setMethodology(ensureMediaStructure(d.methodology));
     if (d.machineryControls) setMachineryControls(ensureMediaStructure(d.machineryControls));
     if (d.siteHazards) setSiteHazards(ensureMediaStructure(d.siteHazards));
     if (d.permitsRequired) setPermitsRequired(ensureMediaStructure(d.permitsRequired));
@@ -174,6 +177,7 @@ function PrestartView({ onSubmit, onUpdate, editingForm, sites = [], savedTempla
     address: data.address || '',
     workAreas: buildReusableField(data.workAreas),
     tasksThisShift: buildReusableField(data.tasksThisShift),
+    methodology: buildReusableField(data.methodology),
     machineryControls: buildReusableField(data.machineryControls),
     siteHazards: buildReusableField(data.siteHazards),
     permitsRequired: buildReusableField(data.permitsRequired),
@@ -213,6 +217,56 @@ function PrestartView({ onSubmit, onUpdate, editingForm, sites = [], savedTempla
   // Validation for Pre-Start form - WHS compliance required fields
   const [validationErrors, setValidationErrors] = useState([]);
 
+  // RAG-powered auto-fill state. Triggered from a button next to the
+  // Task box; populates Methodology, Machinery Controls, Site Hazards,
+  // and Permits using historical prestarts + Qwen.
+  const [autofillBusy, setAutofillBusy] = useState(false);
+  const [autofillError, setAutofillError] = useState('');
+  const [autofillSources, setAutofillSources] = useState([]);
+
+  const runPrestartAutofill = async () => {
+    const taskText = (tasksThisShift.value || '').trim();
+    if (!taskText) {
+      setAutofillError('Type the task first, then auto-fill.');
+      return;
+    }
+    if (typeof window.callJMartFunction !== 'function') {
+      setAutofillError('Cloud function helper not loaded.');
+      return;
+    }
+    setAutofillBusy(true);
+    setAutofillError('');
+    setAutofillSources([]);
+    try {
+      const resp = await window.callJMartFunction(
+        'prestartAutofill',
+        { task: taskText },
+        220000,
+      );
+      if (!resp || !resp.success || !resp.fields) {
+        throw new Error('Empty auto-fill response');
+      }
+      const f = resp.fields;
+      // Only overwrite empty boxes by default — preserve anything already typed.
+      setMethodology(prev => prev.value ? prev : { ...prev, value: f.methodology || '' });
+      setMachineryControls(prev => prev.value ? prev : { ...prev, value: f.machinery || '' });
+      setSiteHazards(prev => prev.value ? prev : { ...prev, value: f.hazards || '' });
+      setPermitsRequired(prev => prev.value ? prev : { ...prev, value: f.permits || '' });
+      setAutofillSources(Array.isArray(resp.sources) ? resp.sources : []);
+      if (typeof ToastNotifier !== 'undefined') {
+        ToastNotifier.success('Auto-filled from ' + (resp.sources?.length || 0) + ' similar past prestarts');
+      }
+    } catch (err) {
+      const msg = (err && err.message) || 'Auto-fill failed';
+      setAutofillError(msg);
+      if (typeof ToastNotifier !== 'undefined') {
+        ToastNotifier.error('Auto-fill failed: ' + msg);
+      }
+    } finally {
+      setAutofillBusy(false);
+    }
+  };
+
   const validateForm = () => {
     // Use centralized validator for WHS-compliant checks
     if (window.formValidator) {
@@ -240,7 +294,7 @@ function PrestartView({ onSubmit, onUpdate, editingForm, sites = [], savedTempla
 
     const formData = {
       type: checkType, checks, notes, signatures, supervisorName, siteConducted, builder, address,
-      workAreas, tasksThisShift, machineryControls, siteHazards, permitsRequired,
+      workAreas, tasksThisShift, methodology, machineryControls, siteHazards, permitsRequired,
       isPlantEquipmentUsed, highRiskWorks, worksCoveredBySWMS, hasSafetyIssues, safetyIssuesPreviousShift,
       translatorRequired, translatorSignature, translatorName,
       date: formDate.toISOString()
@@ -357,6 +411,7 @@ function PrestartView({ onSubmit, onUpdate, editingForm, sites = [], savedTempla
     // Copy work context fields (with media)
     setWorkAreas(ensureMediaStructure(data.workAreas));
     setTasksThisShift(ensureMediaStructure(data.tasksThisShift));
+    setMethodology(ensureMediaStructure(data.methodology));
     setMachineryControls(ensureMediaStructure(data.machineryControls));
     setSiteHazards(ensureMediaStructure(data.siteHazards));
     setPermitsRequired(ensureMediaStructure(data.permitsRequired));
@@ -598,6 +653,58 @@ function PrestartView({ onSubmit, onUpdate, editingForm, sites = [], savedTempla
           onAddMedia={(item) => { console.log('Tasks onAddMedia called with:', item?.name); setTasksThisShift(prev => ({...prev, media: [...prev.media, item]})); }}
           onRemoveNote={(idx) => setTasksThisShift(prev => ({...prev, notes: prev.notes.filter((_, i) => i !== idx)}))}
           onRemoveMedia={(idx) => setTasksThisShift(prev => ({...prev, media: prev.media.filter((_, i) => i !== idx)}))} />
+
+        {/* AI Auto-fill: uses past J&M prestarts + AS standards to fill Methodology, Machinery, Hazards, Permits. */}
+        <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-xl p-4 shadow-sm">
+          <div className="flex items-start gap-3">
+            <div className="flex-1">
+              <h4 className="font-semibold text-gray-800 mb-1">✨ Auto-fill safety controls</h4>
+              <p className="text-xs text-gray-600">
+                Fills Methodology, Machinery Controls, Site Hazards, and Permits based on past J&M prestarts for similar tasks.
+                Only fills boxes that are empty — your edits are kept.
+              </p>
+              {autofillError ? (
+                <p className="text-xs text-red-600 mt-2">⚠️ {autofillError}</p>
+              ) : null}
+              {autofillSources.length > 0 ? (
+                <details className="text-xs text-gray-600 mt-2">
+                  <summary className="cursor-pointer hover:text-gray-800">
+                    Sources ({autofillSources.length})
+                  </summary>
+                  <ul className="mt-1 ml-4 list-disc">
+                    {autofillSources.map((s) => (
+                      <li key={s.id}>
+                        {s.task?.slice(0, 80)}
+                        {s.site ? <span className="text-gray-400"> — {s.site}</span> : null}
+                        <span className="text-gray-400"> ({(s.score * 100).toFixed(0)}%)</span>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              onClick={runPrestartAutofill}
+              disabled={autofillBusy || !(tasksThisShift.value || '').trim()}
+              className={`px-4 py-2 rounded-lg font-medium text-white transition-colors ${
+                autofillBusy || !(tasksThisShift.value || '').trim()
+                  ? 'bg-gray-400 cursor-not-allowed'
+                  : 'bg-purple-600 hover:bg-purple-700'
+              }`}
+            >
+              {autofillBusy ? '⏳ Thinking…' : '✨ Auto-fill'}
+            </button>
+          </div>
+        </div>
+
+        <NoteMediaBox label="Methodology" value={methodology.value} notes={methodology.notes} media={methodology.media}
+          siteName={siteConducted}
+          onValueChange={(val) => setMethodology(prev => ({...prev, value: val}))}
+          onAddNote={(note) => setMethodology(prev => ({...prev, notes: [...prev.notes, note]}))}
+          onAddMedia={(item) => { console.log('Methodology onAddMedia called with:', item?.name); setMethodology(prev => ({...prev, media: [...prev.media, item]})); }}
+          onRemoveNote={(idx) => setMethodology(prev => ({...prev, notes: prev.notes.filter((_, i) => i !== idx)}))}
+          onRemoveMedia={(idx) => setMethodology(prev => ({...prev, media: prev.media.filter((_, i) => i !== idx)}))} />
 
         {/* Is Plant/Equipment to be used? */}
         <div className="bg-white rounded-xl p-4 shadow-sm">
