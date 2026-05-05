@@ -28,6 +28,12 @@ const HUB_WEB_SEARCH_MODEL =
 // Anthropic fallback fires only on OpenRouter credit failure.
 const VICTOR_QWEN_MODEL =
   process.env.VICTOR_QWEN_MODEL || "qwen/qwen3-vl-32b-instruct";
+// Latest Qwen thinking model on OpenRouter — used for prestart auto-fill where
+// careful reasoning over WHS/AS standards matters more than raw speed.
+// 30B-A3B thinking is ~3-4x faster than 235B and stays under the Cloud Run
+// idle-connection timeout (~60s). 235B is overkill for filling 4 form boxes.
+const PRESTART_AUTOFILL_MODEL =
+  process.env.PRESTART_AUTOFILL_MODEL || "moonshotai/kimi-k2.6";
 const ANTHROPIC_API_KEY = defineSecret("ANTHROPIC_API_KEY");
 const OPENROUTER_API_KEY = defineSecret("OPENROUTER_API_KEY");
 const FRANK_HOUSE_MODEL = Object.freeze({
@@ -2185,6 +2191,287 @@ exports.frankGenerateSwms = onRequest(
       console.error("frankGenerateSwms failed", {
         message,
         stack: error && typeof error.stack === "string" ? error.stack : null,
+      });
+      res.status(500).json({ success: false, error: message });
+    }
+  },
+);
+
+// ============================================================================
+// Prestart Auto-fill (RAG-powered)
+// ============================================================================
+// Embeds the user's task description, retrieves the K most-similar past J&M
+// prestarts from a static knowledge base (compiled offline from 230 historical
+// SafetyCulture PDFs), then prompts a Qwen thinking model with those examples
+// + Australian WHS standards to generate methodology, machinery controls,
+// site hazards, and permits.
+
+let __prestartKnowledgeCache = null;
+let __embedderPipeline = null;
+
+function loadPrestartKnowledge() {
+  if (__prestartKnowledgeCache) return __prestartKnowledgeCache;
+  // eslint-disable-next-line global-require
+  __prestartKnowledgeCache = require("./data/prestart_knowledge.json");
+  console.info("Prestart knowledge loaded", {
+    count: __prestartKnowledgeCache.records.length,
+    dim: __prestartKnowledgeCache.dim,
+    model: __prestartKnowledgeCache.model,
+  });
+  return __prestartKnowledgeCache;
+}
+
+async function getEmbedder() {
+  if (__embedderPipeline) return __embedderPipeline;
+  // Dynamic import: @huggingface/transformers is ESM-only.
+  const { pipeline, env } = await import("@huggingface/transformers");
+  // Bundle the model with the function so cold starts don't hit HuggingFace.
+  // Files live at functions/models/Xenova/all-MiniLM-L6-v2/{config.json,tokenizer.json,onnx/model.onnx}.
+  env.cacheDir = path.join(__dirname, "models");
+  env.allowRemoteModels = false;
+  env.allowLocalModels = true;
+  // Same model weights as the offline embedding step (sentence-transformers/all-MiniLM-L6-v2).
+  __embedderPipeline = await pipeline(
+    "feature-extraction",
+    "Xenova/all-MiniLM-L6-v2",
+  );
+  console.info("Embedder pipeline ready (local)");
+  return __embedderPipeline;
+}
+
+async function embedQuery(text) {
+  const embedder = await getEmbedder();
+  const out = await embedder(text, { pooling: "mean", normalize: true });
+  // out.data is a Float32Array of length 384.
+  return Array.from(out.data);
+}
+
+function cosineSimilarity(a, b) {
+  // Both vectors are L2-normalised already, so dot product == cosine.
+  let s = 0;
+  for (let i = 0; i < a.length; i++) s += a[i] * b[i];
+  return s;
+}
+
+function retrieveSimilar(queryVec, k = 6) {
+  const kb = loadPrestartKnowledge();
+  const scored = kb.records.map((r, idx) => ({
+    idx,
+    score: cosineSimilarity(queryVec, r.embedding),
+  }));
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, k).map(({ idx, score }) => ({
+    score,
+    record: kb.records[idx],
+  }));
+}
+
+const PRESTART_SYSTEM_PROMPT = `You are a senior WHS Safety Manager for J&M Art Steel Fabrication, a structural steel installer in NSW, Australia.
+
+Your job: given a task the team will perform this shift, generate the four standard pre-start fields exactly as the supervisor (Scott Seeho or Jeff Fu) would write them.
+
+You will be shown EXAMPLES retrieved from this company's actual prestart history. Match their style, wording, and depth — short, direct, action-focused, no waffle. Use Australian English.
+
+Apply Australian WHS legislation and the relevant standards:
+- AS/NZS 1554 (Structural Steel Welding)
+- AS 1657 (Fixed platforms, walkways, stairways, ladders)
+- AS/NZS 4576 (Scaffolding)
+- AS/NZS 1891 (Industrial fall arrest)
+- AS 2550 (Cranes - safe use)
+- AS 4991 (Lifting equipment)
+- AS 4100 (Steel structures)
+- WHS Act 2011 (NSW) and WHS Regulation 2017 (NSW)
+
+STANDARD CITATIONS — if the user's task references an AS clause, sanity-check it before quoting. AS 4100 Section 9 covers connection DESIGN, not in-field plumb tolerance (that's project tolerance specs / AS 3600 for embedded items). If the cited clause clearly does not match the activity, do NOT echo the wrong reference — just describe the actual control without the bad citation, or note "verify clause reference with engineer". Never invent or guess a clause number. Better to omit a standard than cite the wrong one.
+
+BOLTED CONNECTION RULES — when the task involves bolting / torquing structural connections:
+- Sequence: snug-tighten first, then final torque (or 1/4-turn-of-nut method per AS 4100 Cl 15.2.5).
+- Mark/witness each bolt after final torque (paint mark or torque mark).
+- Calibrated wrenches must show in-date calibration tag.
+- For TF/TB bolts (8.8/S), include the bolt category in methodology if known.
+
+CONCRETE / HANDOVER HOLD POINTS — if the task is upstream of a concrete pour, weld inspection, or builder handover, add a "QA hold point" line in methodology so the team waits for sign-off before the next step.
+
+Output a STRICT JSON object with exactly these four string keys:
+{
+  "methodology": "...",   // controls, exclusion zones, permits in use, emergency procedures, environmental controls — multi-line, plain text, hyphens for bullets
+  "machinery":   "...",   // controls for plant/equipment specific to this task — reference SWMS where relevant
+  "hazards":     "...",   // site-specific hazards (one per line, no bullets, no permits)
+  "permits":     "..."    // any permits required, one per line, no bullets
+}
+
+PERMITS — MANDATORY checklist. Look at the task and add a permit (one per line in the "permits" field) whenever ANY of these is true. Do NOT rely solely on the past examples — the historical corpus systematically under-documents Working at Heights and Crane permits. Default to over-permitting. Always list:
+- "Working at Heights permit" — if the task involves any work above 2 m (slab edges, EWP, mobile scaffold, ladders, roof, levels above ground, mezzanines).
+- "Hot Works permit" — if the task involves welding, grinding, cutting, oxy, plasma, brazing, or any spark-producing tool.
+- "Crane Lift permit" or "Lift Plan" — if the task involves any crane lift, EWP load, telehandler, or rigging operation.
+- "Confined Space permit" — if any confined space (tank, pit, plant room, void, duct).
+- "Electrical Isolation permit" — if any work near energised lines/services or requiring isolation.
+- "Excavation permit" — if any digging, trenching, or ground penetration.
+If none apply, use empty string "". Otherwise list the applicable permits — one per line, no leading hyphen.
+
+Do NOT include any prose outside the JSON. Do NOT add markdown fences. The form fields will be filled directly with these strings.`;
+
+function buildAutofillUserPrompt(task, hits) {
+  const examples = hits
+    .map((h, i) => {
+      const r = h.record;
+      const lines = [`### Example ${i + 1} (similarity ${h.score.toFixed(2)})`];
+      lines.push(`Task: ${r.task}`);
+      if (r.methodology) lines.push(`Methodology: ${r.methodology}`);
+      if (r.machinery) lines.push(`Machinery Controls: ${r.machinery}`);
+      if (r.hazards) lines.push(`Site Hazards: ${r.hazards}`);
+      if (r.permits) lines.push(`Permits: ${r.permits}`);
+      if (r.meta && r.meta.site) lines.push(`(site: ${r.meta.site})`);
+      return lines.join("\n");
+    })
+    .join("\n\n");
+
+  return `${examples}
+
+---
+
+Now produce the four prestart fields for this NEW task. Match the company's house style as shown in the examples. Be concise and actionable. Return ONLY the JSON object.
+
+NEW TASK: ${task}`;
+}
+
+async function callQwenThinking(openRouterKey, system, user) {
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${openRouterKey}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      model: PRESTART_AUTOFILL_MODEL,
+      max_tokens: 4000,
+      temperature: 0.2,
+      stream: false,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: user },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`OpenRouter ${response.status}: ${text}`);
+  }
+  const json = await response.json();
+  const content = json && json.choices && json.choices[0] &&
+    json.choices[0].message && json.choices[0].message.content;
+  if (!content) throw new Error("Empty response from Qwen");
+  return content;
+}
+
+function parseAutofillJson(content) {
+  // Qwen thinking models sometimes wrap output. Try direct parse first, then
+  // strip a fenced code block if present.
+  const tryParse = (s) => {
+    try { return JSON.parse(s); } catch { return null; }
+  };
+  let parsed = tryParse(content);
+  if (!parsed) {
+    const fence = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (fence) parsed = tryParse(fence[1]);
+  }
+  if (!parsed) {
+    const obj = content.match(/\{[\s\S]*\}/);
+    if (obj) parsed = tryParse(obj[0]);
+  }
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("Model did not return valid JSON");
+  }
+  // Coerce to exact schema with defaults.
+  return {
+    methodology: typeof parsed.methodology === "string" ? parsed.methodology : "",
+    machinery:   typeof parsed.machinery === "string" ? parsed.machinery : "",
+    hazards:     typeof parsed.hazards === "string" ? parsed.hazards : "",
+    permits:     typeof parsed.permits === "string" ? parsed.permits : "",
+  };
+}
+
+exports.prestartAutofill = onRequest(
+  {
+    region: "australia-southeast1",
+    timeoutSeconds: 240,  // Qwen thinking observed at 53-137s; add cold-start; function must outlast frontend
+    memory: "1GiB",  // transformers.js + 2MB JSON + Qwen call headroom
+    cors: [
+      /^https:\/\/jmart-steel-safety\.web\.app$/,
+      /^https:\/\/jmart-steel-safety\.firebaseapp\.com$/,
+      /^http:\/\/localhost(?::\d+)?$/,
+      /^http:\/\/127\.0\.0\.1(?::\d+)?$/,
+    ],
+    secrets: [OPENROUTER_API_KEY],
+  },
+  async (req, res) => {
+    if (req.method !== "POST") {
+      res.status(405).json({ success: false, error: "Method not allowed" });
+      return;
+    }
+    try {
+      const authResult = await verifyApprovedDevice(req.get("x-firebase-token"));
+      if (authResult.status) {
+        res.status(authResult.status).json({ success: false, detail: authResult.detail });
+        return;
+      }
+
+      const body = req.body || {};
+      const task = typeof body.task === "string" ? body.task.trim() : "";
+      if (!task) {
+        res.status(400).json({ success: false, error: "Field 'task' is required" });
+        return;
+      }
+      if (task.length > 2000) {
+        res.status(400).json({ success: false, error: "Task too long (max 2000 chars)" });
+        return;
+      }
+
+      const openRouterKey = OPENROUTER_API_KEY.value() || "";
+      if (!openRouterKey) {
+        res.status(500).json({ success: false, error: "OPENROUTER_API_KEY not configured" });
+        return;
+      }
+
+      console.info("prestartAutofill request", { taskLen: task.length });
+
+      const t0 = Date.now();
+      const queryVec = await embedQuery(task);
+      const tEmbed = Date.now() - t0;
+
+      const hits = retrieveSimilar(queryVec, 6);
+      const tRetrieve = Date.now() - t0 - tEmbed;
+
+      const userPrompt = buildAutofillUserPrompt(task, hits);
+      const raw = await callQwenThinking(openRouterKey, PRESTART_SYSTEM_PROMPT, userPrompt);
+      const tLlm = Date.now() - t0 - tEmbed - tRetrieve;
+
+      const fields = parseAutofillJson(raw);
+
+      console.info("prestartAutofill ok", {
+        tEmbed, tRetrieve, tLlm,
+        topScore: hits[0] && hits[0].score,
+        hits: hits.map((h) => ({ id: h.record.id, score: Number(h.score.toFixed(3)) })),
+      });
+
+      res.json({
+        success: true,
+        fields,
+        sources: hits.map((h) => ({
+          id: h.record.id,
+          score: Number(h.score.toFixed(3)),
+          task: h.record.task,
+          site: h.record.meta && h.record.meta.site,
+        })),
+        timings: { embedMs: tEmbed, retrieveMs: tRetrieve, llmMs: tLlm },
+      });
+    } catch (error) {
+      const message = (error && error.message) || "Auto-fill failed";
+      console.error("prestartAutofill failed", {
+        message,
+        stack: error && error.stack,
       });
       res.status(500).json({ success: false, error: message });
     }

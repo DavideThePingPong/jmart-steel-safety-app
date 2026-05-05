@@ -4848,6 +4848,7 @@ function PrestartView({
   }), []);
   const [workAreas, setWorkAreas] = useState(ensureMediaStructure(editData.workAreas));
   const [tasksThisShift, setTasksThisShift] = useState(ensureMediaStructure(editData.tasksThisShift));
+  const [methodology, setMethodology] = useState(ensureMediaStructure(editData.methodology));
   const [machineryControls, setMachineryControls] = useState(ensureMediaStructure(editData.machineryControls));
   const [siteHazards, setSiteHazards] = useState(ensureMediaStructure(editData.siteHazards));
   const [permitsRequired, setPermitsRequired] = useState(ensureMediaStructure(editData.permitsRequired));
@@ -4878,6 +4879,7 @@ function PrestartView({
     setFormDate(data.date ? new Date(data.date) : new Date());
     setWorkAreas(ensureMediaStructure(data.workAreas));
     setTasksThisShift(ensureMediaStructure(data.tasksThisShift));
+    setMethodology(ensureMediaStructure(data.methodology));
     setMachineryControls(ensureMediaStructure(data.machineryControls));
     setSiteHazards(ensureMediaStructure(data.siteHazards));
     setPermitsRequired(ensureMediaStructure(data.permitsRequired));
@@ -4913,6 +4915,7 @@ function PrestartView({
     address,
     workAreas,
     tasksThisShift,
+    methodology,
     machineryControls,
     siteHazards,
     permitsRequired,
@@ -4942,6 +4945,7 @@ function PrestartView({
     if (d.address !== undefined) setAddress(d.address);
     if (d.workAreas) setWorkAreas(ensureMediaStructure(d.workAreas));
     if (d.tasksThisShift) setTasksThisShift(ensureMediaStructure(d.tasksThisShift));
+    if (d.methodology) setMethodology(ensureMediaStructure(d.methodology));
     if (d.machineryControls) setMachineryControls(ensureMediaStructure(d.machineryControls));
     if (d.siteHazards) setSiteHazards(ensureMediaStructure(d.siteHazards));
     if (d.permitsRequired) setPermitsRequired(ensureMediaStructure(d.permitsRequired));
@@ -5002,6 +5006,7 @@ function PrestartView({
     address: data.address || '',
     workAreas: buildReusableField(data.workAreas),
     tasksThisShift: buildReusableField(data.tasksThisShift),
+    methodology: buildReusableField(data.methodology),
     machineryControls: buildReusableField(data.machineryControls),
     siteHazards: buildReusableField(data.siteHazards),
     permitsRequired: buildReusableField(data.permitsRequired),
@@ -5041,6 +5046,65 @@ function PrestartView({
 
   // Validation for Pre-Start form - WHS compliance required fields
   const [validationErrors, setValidationErrors] = useState([]);
+
+  // RAG-powered auto-fill state. Triggered from a button next to the
+  // Task box; populates Methodology, Machinery Controls, Site Hazards,
+  // and Permits using historical prestarts + Qwen.
+  const [autofillBusy, setAutofillBusy] = useState(false);
+  const [autofillError, setAutofillError] = useState('');
+  const [autofillSources, setAutofillSources] = useState([]);
+  const runPrestartAutofill = async () => {
+    const taskText = (tasksThisShift.value || '').trim();
+    if (!taskText) {
+      setAutofillError('Type the task first, then auto-fill.');
+      return;
+    }
+    if (typeof window.callJMartFunction !== 'function') {
+      setAutofillError('Cloud function helper not loaded.');
+      return;
+    }
+    setAutofillBusy(true);
+    setAutofillError('');
+    setAutofillSources([]);
+    try {
+      const resp = await window.callJMartFunction('prestartAutofill', {
+        task: taskText
+      }, 220000);
+      if (!resp || !resp.success || !resp.fields) {
+        throw new Error('Empty auto-fill response');
+      }
+      const f = resp.fields;
+      // Only overwrite empty boxes by default — preserve anything already typed.
+      setMethodology(prev => prev.value ? prev : {
+        ...prev,
+        value: f.methodology || ''
+      });
+      setMachineryControls(prev => prev.value ? prev : {
+        ...prev,
+        value: f.machinery || ''
+      });
+      setSiteHazards(prev => prev.value ? prev : {
+        ...prev,
+        value: f.hazards || ''
+      });
+      setPermitsRequired(prev => prev.value ? prev : {
+        ...prev,
+        value: f.permits || ''
+      });
+      setAutofillSources(Array.isArray(resp.sources) ? resp.sources : []);
+      if (typeof ToastNotifier !== 'undefined') {
+        ToastNotifier.success('Auto-filled from ' + (resp.sources?.length || 0) + ' similar past prestarts');
+      }
+    } catch (err) {
+      const msg = err && err.message || 'Auto-fill failed';
+      setAutofillError(msg);
+      if (typeof ToastNotifier !== 'undefined') {
+        ToastNotifier.error('Auto-fill failed: ' + msg);
+      }
+    } finally {
+      setAutofillBusy(false);
+    }
+  };
   const validateForm = () => {
     // Use centralized validator for WHS-compliant checks
     if (window.formValidator) {
@@ -5083,6 +5147,7 @@ function PrestartView({
       address,
       workAreas,
       tasksThisShift,
+      methodology,
       machineryControls,
       siteHazards,
       permitsRequired,
@@ -5242,6 +5307,7 @@ function PrestartView({
     // Copy work context fields (with media)
     setWorkAreas(ensureMediaStructure(data.workAreas));
     setTasksThisShift(ensureMediaStructure(data.tasksThisShift));
+    setMethodology(ensureMediaStructure(data.methodology));
     setMachineryControls(ensureMediaStructure(data.machineryControls));
     setSiteHazards(ensureMediaStructure(data.siteHazards));
     setPermitsRequired(ensureMediaStructure(data.permitsRequired));
@@ -5544,6 +5610,64 @@ function PrestartView({
         notes: prev.notes.filter((_, i) => i !== idx)
       })),
       onRemoveMedia: idx => setTasksThisShift(prev => ({
+        ...prev,
+        media: prev.media.filter((_, i) => i !== idx)
+      }))
+    }), /*#__PURE__*/React.createElement("div", {
+      className: "bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-xl p-4 shadow-sm"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex items-start gap-3"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex-1"
+    }, /*#__PURE__*/React.createElement("h4", {
+      className: "font-semibold text-gray-800 mb-1"
+    }, "\u2728 Auto-fill safety controls"), /*#__PURE__*/React.createElement("p", {
+      className: "text-xs text-gray-600"
+    }, "Fills Methodology, Machinery Controls, Site Hazards, and Permits based on past J&M prestarts for similar tasks. Only fills boxes that are empty \u2014 your edits are kept."), autofillError ? /*#__PURE__*/React.createElement("p", {
+      className: "text-xs text-red-600 mt-2"
+    }, "\u26A0\uFE0F ", autofillError) : null, autofillSources.length > 0 ? /*#__PURE__*/React.createElement("details", {
+      className: "text-xs text-gray-600 mt-2"
+    }, /*#__PURE__*/React.createElement("summary", {
+      className: "cursor-pointer hover:text-gray-800"
+    }, "Sources (", autofillSources.length, ")"), /*#__PURE__*/React.createElement("ul", {
+      className: "mt-1 ml-4 list-disc"
+    }, autofillSources.map(s => /*#__PURE__*/React.createElement("li", {
+      key: s.id
+    }, s.task?.slice(0, 80), s.site ? /*#__PURE__*/React.createElement("span", {
+      className: "text-gray-400"
+    }, " \u2014 ", s.site) : null, /*#__PURE__*/React.createElement("span", {
+      className: "text-gray-400"
+    }, " (", (s.score * 100).toFixed(0), "%)"))))) : null), /*#__PURE__*/React.createElement("button", {
+      type: "button",
+      onClick: runPrestartAutofill,
+      disabled: autofillBusy || !(tasksThisShift.value || '').trim(),
+      className: `px-4 py-2 rounded-lg font-medium text-white transition-colors ${autofillBusy || !(tasksThisShift.value || '').trim() ? 'bg-gray-400 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-700'}`
+    }, autofillBusy ? '⏳ Thinking…' : '✨ Auto-fill'))), /*#__PURE__*/React.createElement(NoteMediaBox, {
+      label: "Methodology",
+      value: methodology.value,
+      notes: methodology.notes,
+      media: methodology.media,
+      siteName: siteConducted,
+      onValueChange: val => setMethodology(prev => ({
+        ...prev,
+        value: val
+      })),
+      onAddNote: note => setMethodology(prev => ({
+        ...prev,
+        notes: [...prev.notes, note]
+      })),
+      onAddMedia: item => {
+        console.log('Methodology onAddMedia called with:', item?.name);
+        setMethodology(prev => ({
+          ...prev,
+          media: [...prev.media, item]
+        }));
+      },
+      onRemoveNote: idx => setMethodology(prev => ({
+        ...prev,
+        notes: prev.notes.filter((_, i) => i !== idx)
+      })),
+      onRemoveMedia: idx => setMethodology(prev => ({
         ...prev,
         media: prev.media.filter((_, i) => i !== idx)
       }))
