@@ -2,7 +2,7 @@
 
 const path = require("path");
 const Busboy = require("busboy");
-const pdfParse = require("pdf-parse");
+const { PDFParse } = require("pdf-parse");
 const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const { initializeApp } = require("firebase-admin/app");
@@ -1221,14 +1221,25 @@ function parseMultipartUpload(req) {
 }
 
 async function inspectPdf(buffer) {
+  // pdf-parse v2 API: instantiate PDFParse({data}) and call getText().
+  // Returns { pages: string[], text: string, total: number }. The previous
+  // `await pdfParse(buffer)` v1-style call silently failed (module is no
+  // longer callable in v2), so all PDF text extraction across this file
+  // was returning "" since the v2 upgrade. Fixed 2026-05-06.
+  let parser = null;
   try {
-    const parsed = await pdfParse(buffer);
+    parser = new PDFParse({ data: buffer });
+    const result = await parser.getText();
     return {
-      numpages: parsed.numpages || 1,
-      text: String(parsed.text || "").trim(),
+      numpages: result.total || result.numpages || 1,
+      text: String(result.text || "").trim(),
     };
   } catch (error) {
     return { numpages: 0, text: "" };
+  } finally {
+    if (parser && typeof parser.destroy === "function") {
+      try { parser.destroy(); } catch (_) {}
+    }
   }
 }
 
