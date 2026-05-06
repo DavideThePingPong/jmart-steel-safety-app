@@ -65,6 +65,14 @@
           "region": "australia-southeast1",
           "pinTag": true
         }
+      },
+      {
+        "source": "api/prestart-autofill",
+        "function": {
+          "functionId": "prestartAutofill",
+          "region": "australia-southeast1",
+          "pinTag": true
+        }
       }
     ],
     "headers": [
