@@ -22,8 +22,16 @@ const FRANK_GENERATION_MODEL =
   process.env.FRANK_GENERATION_MODEL || "anthropic/claude-sonnet-4.6";
 const HUB_VISION_MODEL =
   process.env.HUB_VISION_MODEL || "claude-sonnet-4-6";
+// Web search model. Uses OpenRouter `:online` suffix which injects Exa
+// web-search results into the model's context before generation. Picked
+// Kimi K2.6 to stay consistent with Gio + prestartAutofill, and for its
+// reasoning ability when parsing messy search results. ~$0.50/M tokens
+// vs Anthropic Sonnet's ~$3/M (6x cheaper). Swapped from Anthropic
+// `claude-sonnet-4-6` (with Anthropic's web_search_20250305 tool) to
+// OpenRouter on 2026-05-06 because the Anthropic key in CF secrets
+// became invalid and Davide's policy is "we use OpenRouter".
 const HUB_WEB_SEARCH_MODEL =
-  process.env.HUB_WEB_SEARCH_MODEL || "claude-sonnet-4-6";
+  process.env.HUB_WEB_SEARCH_MODEL || "moonshotai/kimi-k2.6:online";
 // Victor / Frank-attachment Qwen primary (cheap OCR/extraction).
 // Anthropic fallback fires only on OpenRouter credit failure.
 const VICTOR_QWEN_MODEL =
@@ -1522,6 +1530,50 @@ async function callOpenRouterVisionForReceipt(buffer, mediaType, prompt, apiKey,
   return extractOpenRouterMessageText(payload);
 }
 
+// OpenRouter call with web search enabled (used by Victor MSDS search +
+// Frank regulation search). The `:online` suffix on the model name (or
+// equivalent `plugins: [{id: "web"}]` parameter) tells OpenRouter to run an
+// Exa search on the latest user message and inject the top results into the
+// system prompt before the model generates. The model then reasons over the
+// retrieved results and emits the final JSON.
+//
+// Replaces the Anthropic web_search_20250305 tool path used previously.
+async function callOpenRouterWithWebSearch({ apiKey, model, maxTokens, messages, maxSearchResults }) {
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": "https://jmart-steel-safety.web.app",
+      "X-Title": "JMart Hub Web Search",
+    },
+    body: JSON.stringify({
+      model: model,
+      messages: messages,
+      max_tokens: maxTokens || 1024,
+      temperature: 0,
+      // The `web` plugin runs Exa search on the last user message. The
+      // `:online` suffix on the model name does the same thing — using the
+      // explicit plugin form lets us tune `max_results`.
+      plugins: [{ id: "web", max_results: maxSearchResults || 5 }],
+    }),
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    const err = new Error(`OpenRouter ${response.status}: ${text.slice(0, 300)}`);
+    err.openRouterStatus = response.status;
+    err.openRouterBody = text;
+    throw err;
+  }
+  let payload;
+  try {
+    payload = JSON.parse(text);
+  } catch (e) {
+    throw new Error("OpenRouter returned non-JSON response");
+  }
+  return extractOpenRouterMessageText(payload);
+}
+
 // Anthropic vision call for Hanna — kept as a named helper so both the
 // primary OpenRouter path and the credit-failure fallback can use it.
 async function callAnthropicVisionForReceipt(buffer, mediaType, prompt, apiKey) {
@@ -1713,16 +1765,16 @@ function sanitizeVictorSearchResult(value) {
   };
 }
 
-async function searchVictorMsds(input, anthropicKey) {
-  const payload = await callAnthropicMessages({
-    apiKey: anthropicKey,
+async function searchVictorMsds(input, openRouterKey) {
+  const text = await callOpenRouterWithWebSearch({
+    apiKey: openRouterKey,
     model: HUB_WEB_SEARCH_MODEL,
     maxTokens: 1024,
     messages: [{ role: "user", content: buildVictorSearchPrompt(input) }],
-    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 8 }],
+    maxSearchResults: 8,
   });
   return sanitizeVictorSearchResult(
-    extractJsonObject(extractResponseText(payload), "Victor search returned invalid JSON"),
+    extractJsonObject(text, "Victor search returned invalid JSON"),
   );
 }
 
@@ -1832,14 +1884,14 @@ function sanitizeRegChange(value) {
   };
 }
 
-async function searchFrankRegulations(input, anthropicKey) {
+async function searchFrankRegulations(input, openRouterKey) {
   const safe = sanitizeObject(input);
   const queries = sanitizeList(safe.queries, 8, 200);
   const allChanges = [];
 
   for (const query of queries) {
-    const payload = await callAnthropicMessages({
-      apiKey: anthropicKey,
+    const text = await callOpenRouterWithWebSearch({
+      apiKey: openRouterKey,
       model: HUB_WEB_SEARCH_MODEL,
       maxTokens: 1024,
       messages: [
@@ -1853,10 +1905,10 @@ async function searchFrankRegulations(input, anthropicKey) {
             'If no changes found, return {"changes":[]}. Return ONLY JSON.',
         },
       ],
-      tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 4 }],
+      maxSearchResults: 4,
     });
     const parsed = sanitizeObject(
-      extractJsonObject(extractResponseText(payload), "Frank regulation search returned invalid JSON"),
+      extractJsonObject(text, "Frank regulation search returned invalid JSON"),
     );
     const changes = Array.isArray(parsed.changes) ? parsed.changes.map(sanitizeRegChange) : [];
     allChanges.push(...changes.filter((item) => item.title && item.description));
@@ -2009,9 +2061,10 @@ exports.victorSearchMsds = onRequest(
       /^http:\/\/localhost(?::\d+)?$/,
       /^http:\/\/127\.0\.0\.1(?::\d+)?$/,
     ],
-    // Stays on Anthropic — uses the web_search tool which OpenRouter/Qwen
-    // do not expose. Cannot be moved without losing search capability.
-    secrets: [ANTHROPIC_API_KEY],
+    // OpenRouter (Kimi K2.6) with the `:online` web-search plugin. Swapped
+    // off Anthropic 2026-05-06 — OpenRouter Exa-based search is cheaper
+    // (~6x) and matches Davide's "we use OpenRouter" policy.
+    secrets: [OPENROUTER_API_KEY],
   },
   async (req, res) => {
     if (req.method !== "POST") {
@@ -2026,7 +2079,7 @@ exports.victorSearchMsds = onRequest(
         return;
       }
 
-      const result = await searchVictorMsds(req.body || {}, ANTHROPIC_API_KEY.value() || "");
+      const result = await searchVictorMsds(req.body || {}, OPENROUTER_API_KEY.value() || "");
       res.json({ success: true, result });
     } catch (error) {
       if (error && typeof error === "object" && "status" in error && "detail" in error) {
@@ -2110,7 +2163,9 @@ exports.frankSearchRegulations = onRequest(
       /^http:\/\/localhost(?::\d+)?$/,
       /^http:\/\/127\.0\.0\.1(?::\d+)?$/,
     ],
-    secrets: [ANTHROPIC_API_KEY],
+    // OpenRouter (Kimi K2.6) with the `:online` web-search plugin. Swapped
+    // off Anthropic 2026-05-06 — see HUB_WEB_SEARCH_MODEL note.
+    secrets: [OPENROUTER_API_KEY],
   },
   async (req, res) => {
     if (req.method !== "POST") {
@@ -2125,7 +2180,7 @@ exports.frankSearchRegulations = onRequest(
         return;
       }
 
-      const changes = await searchFrankRegulations(req.body || {}, ANTHROPIC_API_KEY.value() || "");
+      const changes = await searchFrankRegulations(req.body || {}, OPENROUTER_API_KEY.value() || "");
       res.json({ success: true, changes });
     } catch (error) {
       if (error && typeof error === "object" && "status" in error && "detail" in error) {
