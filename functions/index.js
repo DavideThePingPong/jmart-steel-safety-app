@@ -2439,6 +2439,11 @@ NEW TASK: ${task}`;
 }
 
 async function callQwenThinking(openRouterKey, system, user) {
+  // `reasoning.effort: 'low'` caps the thinking-token budget. With Kimi K2.6
+  // thinking, full-effort reasoning takes ~150s — past Firebase Hosting's
+  // ~60s gateway timeout when the function is reached via /api/prestart-
+  // autofill. Low-effort drops it to ~20-40s and still produces solid
+  // 4-field output (verified 2026-05-06). Tune up if quality regresses.
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -2451,6 +2456,7 @@ async function callQwenThinking(openRouterKey, system, user) {
       temperature: 0.2,
       stream: false,
       response_format: { type: "json_object" },
+      reasoning: { effort: "low" },
       messages: [
         { role: "system", content: system },
         { role: "user", content: user },
