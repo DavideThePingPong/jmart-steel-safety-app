@@ -1683,19 +1683,23 @@ async function extractHannaReceiptData(filename, mediaType, buffer, secrets) {
     // PDFs: try text extraction first (Qwen is text-only-friendly for PDFs),
     // then OpenRouter text completion, then Anthropic fallback.
     const { numpages, text: pdfText } = await inspectPdf(buffer);
+    const strippedTextLength = pdfText.replace(/\s+/g, "").length;
+    console.info(`[Hanna] PDF inspect: numpages=${numpages}, stripped_text=${strippedTextLength}`);
 
-    // Guard: multi-page image-based PDFs are receipts-of-receipts, not single
-    // receipts. Hanna scans one receipt at a time. Without this guard, the
-    // 2026-05-06 Paramatta.pdf case (4-page scan, no extractable text) falls
-    // through to Anthropic, which 401s on the dead key, surfacing as an
-    // opaque 500. Better: tell the user clearly to split before re-uploading.
-    if (numpages > 1 && pdfText.replace(/\s+/g, "").length < 100) {
+    // Guard: any PDF without extractable text. Cases:
+    //   - Multi-page scanned PDF (e.g. Paramatta.pdf) — receipts-of-receipts.
+    //   - Single-page image-based PDF — same problem, OpenRouter Qwen3-VL
+    //     doesn't reliably accept `data:application/pdf` URIs.
+    //   - pdf-parse failure (numpages=0) — defensive catch.
+    // Without this guard, all three fall through to the Anthropic fallback,
+    // which 401s on the dead key (2026-05-06) and surfaces as opaque 500.
+    if (strippedTextLength < 100) {
       throw {
         status: 400,
         detail:
-          `Multi-page scanned PDF (${numpages} pages, no extractable text). ` +
-          "Hanna scans one receipt per file. Split this PDF into single-page " +
-          "files (one per receipt) and re-upload.",
+          numpages > 1
+            ? `Multi-page scanned PDF (${numpages} pages, no extractable text). Split into single-page files (one per receipt) and re-upload.`
+            : "Image-based or unreadable PDF (no extractable text). Upload the receipt as a JPG/PNG photo instead, or use a text-extractable PDF.",
       };
     }
 
