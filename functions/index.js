@@ -2231,6 +2231,16 @@ async function getEmbedder() {
   env.allowRemoteModels = false;
   env.allowLocalModels = true;
   // Same model weights as the offline embedding step (sentence-transformers/all-MiniLM-L6-v2).
+  //
+  // Cold-start tradeoff (deliberately accepted, NOT a bug):
+  //   First call after a function instance spins up takes 8–15s extra to load
+  //   the ONNX runtime + tokenizer + 90 MB of bundled weights into memory. After
+  //   that the same instance reuses __embedderPipeline for ~free embeddings
+  //   (~50ms each). Pre-warming via min-instances would eliminate the cold
+  //   start but at ~$30/month per always-on instance. Given prestart auto-fill
+  //   is interactive (user is already waiting on the LLM call which is 60s+),
+  //   the embed cold start is hidden inside that wait. Don't optimize unless
+  //   instrumentation shows users actually noticing. Documented 2026-05-06.
   __embedderPipeline = await pipeline(
     "feature-extraction",
     "Xenova/all-MiniLM-L6-v2",
