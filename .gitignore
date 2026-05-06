@@ -47,8 +47,6 @@ sync-healthcheck-*.md
 __pycache__/
 *.pyc
 
-# Cloud Function ML cache (87 MB HF transformers — downloaded at runtime, not deployed)
-functions/models/
 
 # JSON knowledge-base backups (the .json itself is tracked)
 functions/data/*.bak
