@@ -214,7 +214,8 @@ export function createGoogleDriveSync(options = {}) {
         'incident': '01_Safety_Compliance/Incident_Reports',
         'toolbox': '01_Safety_Compliance/Toolbox_Talks',
         'itp': '03_ITPs/General',
-        'steel-itp': '03_ITPs/Structural_Steel'
+        'steel-itp': '03_ITPs/Structural_Steel',
+        'training': '05_Training/Certificates'
       };
 
       const folderPath = folderPaths[formType];
@@ -264,7 +265,8 @@ export function createGoogleDriveSync(options = {}) {
         'incident': '01_Safety_Compliance/Incident_Reports',
         'toolbox': '01_Safety_Compliance/Toolbox_Talks',
         'itp': '03_ITPs/General',
-        'steel-itp': '03_ITPs/Structural_Steel'
+        'steel-itp': '03_ITPs/Structural_Steel',
+        'training': '05_Training/Certificates'
       }
     };
   }
