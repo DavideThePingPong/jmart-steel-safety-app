@@ -1220,13 +1220,20 @@ function parseMultipartUpload(req) {
   });
 }
 
-async function extractPdfText(buffer) {
+async function inspectPdf(buffer) {
   try {
     const parsed = await pdfParse(buffer);
-    return String(parsed.text || "").trim();
+    return {
+      numpages: parsed.numpages || 1,
+      text: String(parsed.text || "").trim(),
+    };
   } catch (error) {
-    return "";
+    return { numpages: 0, text: "" };
   }
+}
+
+async function extractPdfText(buffer) {
+  return (await inspectPdf(buffer)).text;
 }
 
 async function extractWithOpenRouter(messages, apiKey, model) {
@@ -1664,7 +1671,23 @@ async function extractHannaReceiptData(filename, mediaType, buffer, secrets) {
   } else if (mediaType === "application/pdf" || ext === ".pdf") {
     // PDFs: try text extraction first (Qwen is text-only-friendly for PDFs),
     // then OpenRouter text completion, then Anthropic fallback.
-    const pdfText = await extractPdfText(buffer);
+    const { numpages, text: pdfText } = await inspectPdf(buffer);
+
+    // Guard: multi-page image-based PDFs are receipts-of-receipts, not single
+    // receipts. Hanna scans one receipt at a time. Without this guard, the
+    // 2026-05-06 Paramatta.pdf case (4-page scan, no extractable text) falls
+    // through to Anthropic, which 401s on the dead key, surfacing as an
+    // opaque 500. Better: tell the user clearly to split before re-uploading.
+    if (numpages > 1 && pdfText.replace(/\s+/g, "").length < 100) {
+      throw {
+        status: 400,
+        detail:
+          `Multi-page scanned PDF (${numpages} pages, no extractable text). ` +
+          "Hanna scans one receipt per file. Split this PDF into single-page " +
+          "files (one per receipt) and re-upload.",
+      };
+    }
+
     if (openRouterKey && pdfText) {
       try {
         const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
