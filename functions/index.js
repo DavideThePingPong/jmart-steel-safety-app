@@ -1499,6 +1499,14 @@ function extractHannaJson(text, fallbackMessage) {
 // running up Anthropic costs.
 const HANNA_OPENROUTER_MODEL =
   process.env.HANNA_OPENROUTER_MODEL || "qwen/qwen3-vl-32b-instruct";
+// Multi-page PDF receipt scanner. Anthropic Sonnet 4.6 routed through
+// OpenRouter — accepts PDF document blocks natively, handles multi-page
+// scanned receipts, stays inside the "we use OpenRouter" billing policy.
+// Used when pdf-parse extracts no text (image-based scans). Per-receipt
+// cost ~$0.05 vs Qwen3-VL's ~$0.001 — pricier but fixes the workflow
+// gap from 2026-05-06 (scanned PDFs were being rejected).
+const HANNA_PDF_MODEL =
+  process.env.HANNA_PDF_MODEL || "anthropic/claude-sonnet-4.6";
 
 function isOpenRouterCreditError(status, body) {
   if (status === 402) return true;
@@ -1579,6 +1587,52 @@ async function callOpenRouterWithWebSearch({ apiKey, model, maxTokens, messages,
   const text = await response.text();
   if (!response.ok) {
     const err = new Error(`OpenRouter ${response.status}: ${text.slice(0, 300)}`);
+    err.openRouterStatus = response.status;
+    err.openRouterBody = text;
+    throw err;
+  }
+  let payload;
+  try {
+    payload = JSON.parse(text);
+  } catch (e) {
+    throw new Error("OpenRouter returned non-JSON response");
+  }
+  return extractOpenRouterMessageText(payload);
+}
+
+// OpenRouter PDF-document call for Hanna receipts. Routes to a model that
+// accepts PDF document blocks natively (default: Anthropic Sonnet 4.6 via
+// OpenRouter). Handles multi-page scanned PDFs in a single call. Used when
+// pdf-parse extracted no text — i.e., image-based scans where the cheap
+// Qwen text path doesn't apply.
+async function callOpenRouterPdfForReceipt(buffer, prompt, apiKey, model) {
+  const dataUri = `data:application/pdf;base64,${buffer.toString("base64")}`;
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": "https://jmart-steel-safety.web.app",
+      "X-Title": "JMart Hanna Receipt Scanner",
+    },
+    body: JSON.stringify({
+      model: model || HANNA_PDF_MODEL,
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "file", file: { filename: "receipt.pdf", file_data: dataUri } },
+            { type: "text", text: prompt },
+          ],
+        },
+      ],
+      max_tokens: 1500,
+      temperature: 0,
+    }),
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    const err = new Error(`OpenRouter PDF ${response.status}: ${text.slice(0, 300)}`);
     err.openRouterStatus = response.status;
     err.openRouterBody = text;
     throw err;
@@ -1680,30 +1734,18 @@ async function extractHannaReceiptData(filename, mediaType, buffer, secrets) {
       rawText = await fallbackAnthropic();
     }
   } else if (mediaType === "application/pdf" || ext === ".pdf") {
-    // PDFs: try text extraction first (Qwen is text-only-friendly for PDFs),
-    // then OpenRouter text completion, then Anthropic fallback.
+    // PDFs go through one of two OpenRouter paths:
+    //   - Text-extractable: cheap. Send pdf-parse output to Qwen text model.
+    //   - No extractable text (scans, image-based, multi-page): expensive.
+    //     Send the PDF directly as a document block to HANNA_PDF_MODEL
+    //     (Anthropic Sonnet 4.6 via OpenRouter — handles multi-page natively).
+    // The 2026-05-06 multi-page-rejection guard is removed: Davide's actual
+    // workflow involves multi-page scanned receipts and Sonnet handles them.
     const { numpages, text: pdfText } = await inspectPdf(buffer);
     const strippedTextLength = pdfText.replace(/\s+/g, "").length;
     console.info(`[Hanna] PDF inspect: numpages=${numpages}, stripped_text=${strippedTextLength}`);
 
-    // Guard: any PDF without extractable text. Cases:
-    //   - Multi-page scanned PDF (e.g. Paramatta.pdf) — receipts-of-receipts.
-    //   - Single-page image-based PDF — same problem, OpenRouter Qwen3-VL
-    //     doesn't reliably accept `data:application/pdf` URIs.
-    //   - pdf-parse failure (numpages=0) — defensive catch.
-    // Without this guard, all three fall through to the Anthropic fallback,
-    // which 401s on the dead key (2026-05-06) and surfaces as opaque 500.
-    if (strippedTextLength < 100) {
-      throw {
-        status: 400,
-        detail:
-          numpages > 1
-            ? `Multi-page scanned PDF (${numpages} pages, no extractable text). Split into single-page files (one per receipt) and re-upload.`
-            : "Image-based or unreadable PDF (no extractable text). Upload the receipt as a JPG/PNG photo instead, or use a text-extractable PDF.",
-      };
-    }
-
-    if (openRouterKey && pdfText) {
+    if (openRouterKey && strippedTextLength >= 100) {
       try {
         const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
           method: "POST",
@@ -1737,8 +1779,21 @@ async function extractHannaReceiptData(filename, mediaType, buffer, secrets) {
           throw err;
         }
       }
+    } else if (openRouterKey) {
+      // Image-based / scanned PDF (single or multi-page). Send the PDF
+      // directly as a document block to HANNA_PDF_MODEL — Anthropic
+      // Sonnet 4.6 via OpenRouter handles multi-page scans natively.
+      try {
+        rawText = await callOpenRouterPdfForReceipt(buffer, prompt, openRouterKey);
+      } catch (err) {
+        if (isOpenRouterCreditError(err.openRouterStatus, err.openRouterBody)) {
+          rawText = await fallbackAnthropic();
+        } else {
+          throw err;
+        }
+      }
     } else {
-      // Non-text PDF or no OpenRouter key — Anthropic handles document blocks natively.
+      // No OpenRouter key — fall back to Anthropic-direct.
       rawText = await fallbackAnthropic();
     }
   } else {
