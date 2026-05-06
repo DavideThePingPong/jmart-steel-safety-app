@@ -1697,9 +1697,10 @@ async function extractHannaReceiptData(filename, mediaType, buffer, secrets) {
       throw {
         status: 400,
         detail:
-          numpages > 1
+          `[GUARD-2026-05-06-v2] ` +
+          (numpages > 1
             ? `Multi-page scanned PDF (${numpages} pages, no extractable text). Split into single-page files (one per receipt) and re-upload.`
-            : "Image-based or unreadable PDF (no extractable text). Upload the receipt as a JPG/PNG photo instead, or use a text-extractable PDF.",
+            : `Image-based or unreadable PDF (numpages=${numpages}, stripped=${strippedTextLength}). Upload the receipt as a JPG/PNG photo instead, or use a text-extractable PDF.`),
       };
     }
 
