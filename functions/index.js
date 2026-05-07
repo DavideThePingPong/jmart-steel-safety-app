@@ -41,11 +41,13 @@ const VICTOR_QWEN_MODEL =
 const PRESTART_AUTOFILL_MODEL =
   process.env.PRESTART_AUTOFILL_MODEL || "moonshotai/kimi-k2.6";
 // Fallback when primary returns empty content or 5xx — typically OpenRouter
-// credit/routing transients. Different provider lineage so we don't double up
-// on the same backend issue. Anthropic Sonnet 4.6 via OpenRouter handles the
-// JSON output mode well and stays in the "we use OpenRouter" billing world.
+// credit/routing transients. Anthropic Haiku 4.5 via OpenRouter:
+//   - different upstream provider lineage (clears Kimi-side issues)
+//   - 3-4x faster than Sonnet, fits the ~60s Hosting gateway window
+//   - cheaper than Sonnet, helps when balance is the actual problem
+//   - quality plenty for the 4-field structured output
 const PRESTART_AUTOFILL_FALLBACK_MODEL =
-  process.env.PRESTART_AUTOFILL_FALLBACK_MODEL || "anthropic/claude-sonnet-4.6";
+  process.env.PRESTART_AUTOFILL_FALLBACK_MODEL || "anthropic/claude-haiku-4-5";
 const ANTHROPIC_API_KEY = defineSecret("ANTHROPIC_API_KEY");
 const OPENROUTER_API_KEY = defineSecret("OPENROUTER_API_KEY");
 const FRANK_HOUSE_MODEL = Object.freeze({
