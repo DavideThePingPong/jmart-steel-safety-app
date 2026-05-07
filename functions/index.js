@@ -1421,14 +1421,31 @@ async function extractRequirementsFromAttachment(filename, mediaType, buffer, se
 
 function buildHannaReceiptPrompt() {
   return (
-    "Extract all data from this receipt. Return ONLY valid JSON:\n" +
-    '{"store_name":"store name","date":"DD/MM/YYYY","subtotal":0.00,"gst":0.00,"total":0.00,' +
+    "You are processing a document received by J&M Art Steel (a steel " +
+    "fabrication business in Marrickville, NSW). Extract all data and return " +
+    "ONLY valid JSON in this exact shape:\n" +
+    '{"document_type":"invoice","store_name":"supplier name","date":"DD/MM/YYYY",' +
+    '"subtotal":0.00,"gst":0.00,"total":0.00,' +
     '"items":[{"name":"item name","qty":1,"price":0.00}],"confidence":0.95}\n' +
-    "Rules:\n" +
-    "- All prices in AUD\n" +
-    "- GST is 10% in Australia (calculate if not shown)\n" +
-    "- confidence: 0.0-1.0 based on image clarity\n" +
-    "- Return ONLY JSON, no other text"
+    "\n" +
+    "Field rules:\n" +
+    "- document_type: one of \"invoice\" (tax invoice with prices), \"delivery_docket\" " +
+    "(items received, no prices), \"quote\" (proposed pricing, not yet purchased), " +
+    "\"statement\" (account summary), or \"other\".\n" +
+    "- store_name: the SUPPLIER — i.e., the company shipping/selling to J&M. " +
+    "**J&M Art Steel is the customer/recipient, NEVER the store_name.** " +
+    "Look for the supplier's letterhead, ABN, or sender block — not whoever " +
+    "the document is addressed to. If the only visible vendor name is J&M, " +
+    "set store_name to \"unknown supplier\".\n" +
+    "- date: invoice/docket date in DD/MM/YYYY (Australian format).\n" +
+    "- subtotal / gst / total: numeric AUD. If document_type is " +
+    "\"delivery_docket\" or no prices are shown, leave these at 0.\n" +
+    "- items[]: include name, qty (integer), price (per-unit, 0 if not shown). " +
+    "Always populate items if visible, even on dockets without prices.\n" +
+    "- GST is 10% in Australia. Calculate if the line is missing on an invoice.\n" +
+    "- confidence: 0.0-1.0 reflecting how confidently you extracted the fields. " +
+    "Lower confidence is fine — be honest.\n" +
+    "Return ONLY the JSON object, no other text."
   );
 }
 
@@ -1467,8 +1484,23 @@ function sanitizeHannaReceipt(value) {
       date = '';
     }
   }
+  // Validate document_type against the closed enum the prompt promises.
+  // Anything outside the set degrades to "other" so the Hub UI can still
+  // render it without exploding.
+  const ALLOWED_DOC_TYPES = new Set(["invoice", "delivery_docket", "quote", "statement", "other"]);
+  const rawDocType = String(safe.document_type || "").trim().toLowerCase();
+  const document_type = ALLOWED_DOC_TYPES.has(rawDocType) ? rawDocType : "other";
+
+  // Reject "J and M" / "JMart" / variants as store_name — that's the customer,
+  // not the supplier. Belt + braces over the prompt instructions.
+  let store_name = sanitizeText(safe.store_name || safe.store, 240);
+  if (store_name && /\b(j\s*[&]?\s*m|jmart|j\s*and\s*m)\b.*\b(art\s*steel|artsteel|steel)\b/i.test(store_name)) {
+    store_name = "unknown supplier";
+  }
+
   return {
-    store_name: sanitizeText(safe.store_name || safe.store, 240),
+    document_type: document_type,
+    store_name: store_name,
     date: date,
     subtotal: subtotal,
     gst: gst,
