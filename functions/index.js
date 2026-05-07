@@ -2539,9 +2539,13 @@ NEW TASK: ${task}`;
 }
 
 async function callOneAutofillModel(openRouterKey, system, user, model, useReasoningLow) {
+  // 2500 tokens is plenty for the 4-field JSON (typical output ~800-1500
+  // tokens). Lowered from 4000 because the higher cap prices the call
+  // out of small OpenRouter balances — even with low actual usage,
+  // OpenRouter pre-authorises against max_tokens × output-cost.
   const body = {
     model: model,
-    max_tokens: 4000,
+    max_tokens: 2500,
     temperature: 0.2,
     stream: false,
     response_format: { type: "json_object" },
@@ -2583,16 +2587,34 @@ async function callAutofillWithFallback(openRouterKey, system, user) {
   //   1. Primary (Kimi K2.6, reasoning.effort: low) — cheap, fast when it works
   //   2. Fallback (Anthropic Sonnet 4.6 via OpenRouter, no reasoning param)
   //   — different upstream provider, robust JSON handling
-  // Empty-content from the primary is the most common transient (OpenRouter
-  // credit edge cases, model rate-limits). The fallback shouldn't share that
-  // failure mode.
+  // We retry on a broader set than just 5xx because OpenRouter surfaces real
+  // operational issues as 402 (insufficient-credit-for-this-call), 408
+  // (timeout), 429 (rate-limit), or empty-content. The fallback uses a
+  // different model line so it might cost less per call and clear the 402.
   try {
     return await callOneAutofillModel(openRouterKey, system, user, PRESTART_AUTOFILL_MODEL, true);
   } catch (err) {
-    const transient = err.empty || (err.status && err.status >= 500) || (err.status === 429);
+    const transient = err.empty
+      || (err.status && err.status >= 500)
+      || err.status === 408
+      || err.status === 429
+      || err.status === 402;
     if (!transient) throw err;
     console.warn(`[prestartAutofill] primary ${PRESTART_AUTOFILL_MODEL} failed (${err.message}) — falling back to ${PRESTART_AUTOFILL_FALLBACK_MODEL}`);
-    return await callOneAutofillModel(openRouterKey, system, user, PRESTART_AUTOFILL_FALLBACK_MODEL, false);
+    try {
+      return await callOneAutofillModel(openRouterKey, system, user, PRESTART_AUTOFILL_FALLBACK_MODEL, false);
+    } catch (err2) {
+      // Both models failed. If the underlying issue is OpenRouter credits,
+      // surface a clean 402 to the client so the UI can render an actionable
+      // "top up OpenRouter credits" message instead of an opaque 500.
+      if (err2.status === 402 || err.status === 402) {
+        const e = new Error("OpenRouter credits insufficient — top up at https://openrouter.ai/settings/credits");
+        e.userVisible = true;
+        e.status = 402;
+        throw e;
+      }
+      throw err2;
+    }
   }
 }
 
@@ -2728,7 +2750,8 @@ exports.prestartAutofill = onRequest(
         message,
         stack: error && error.stack,
       });
-      res.status(500).json({ success: false, error: message });
+      const status = (error && error.userVisible && error.status) ? error.status : 500;
+      res.status(status).json({ success: false, error: message });
     }
   },
 );
