@@ -36,12 +36,16 @@ const HUB_WEB_SEARCH_MODEL =
 // Anthropic fallback fires only on OpenRouter credit failure.
 const VICTOR_QWEN_MODEL =
   process.env.VICTOR_QWEN_MODEL || "qwen/qwen3-vl-32b-instruct";
-// Latest Qwen thinking model on OpenRouter — used for prestart auto-fill where
-// careful reasoning over WHS/AS standards matters more than raw speed.
-// 30B-A3B thinking is ~3-4x faster than 235B and stays under the Cloud Run
-// idle-connection timeout (~60s). 235B is overkill for filling 4 form boxes.
+// Primary thinking model for prestart auto-fill. Kimi K2.6 is consistent with
+// Gio + Hub. reasoning.effort: low keeps wall-time under Hosting's ~60s gateway.
 const PRESTART_AUTOFILL_MODEL =
   process.env.PRESTART_AUTOFILL_MODEL || "moonshotai/kimi-k2.6";
+// Fallback when primary returns empty content or 5xx — typically OpenRouter
+// credit/routing transients. Different provider lineage so we don't double up
+// on the same backend issue. Anthropic Sonnet 4.6 via OpenRouter handles the
+// JSON output mode well and stays in the "we use OpenRouter" billing world.
+const PRESTART_AUTOFILL_FALLBACK_MODEL =
+  process.env.PRESTART_AUTOFILL_FALLBACK_MODEL || "anthropic/claude-sonnet-4.6";
 const ANTHROPIC_API_KEY = defineSecret("ANTHROPIC_API_KEY");
 const OPENROUTER_API_KEY = defineSecret("OPENROUTER_API_KEY");
 const FRANK_HOUSE_MODEL = Object.freeze({
@@ -2450,7 +2454,16 @@ function retrieveSimilar(queryVec, k = 6) {
     score: cosineSimilarity(queryVec, r.embedding),
   }));
   scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, k).map(({ idx, score }) => ({
+
+  // Threshold-aware retrieval: if top match is weak (<0.55) we prefer FEWER
+  // higher-quality examples over a long tail of marginal ones. The model does
+  // better with 3 sharp examples than 6 noisy ones. If even top-3 is below
+  // 0.4, the corpus has nothing close — caller should know to lean on the
+  // system prompt's AS-standards reasoning instead of mimicking examples.
+  const topScore = scored[0] ? scored[0].score : 0;
+  const effectiveK = topScore < 0.55 ? Math.min(3, k) : k;
+
+  return scored.slice(0, effectiveK).map(({ idx, score }) => ({
     score,
     record: kb.records[idx],
   }));
@@ -2490,14 +2503,14 @@ Output a STRICT JSON object with exactly these four string keys:
   "permits":     "..."    // any permits required, one per line, no bullets
 }
 
-PERMITS — MANDATORY checklist. Look at the task and add a permit (one per line in the "permits" field) whenever ANY of these is true. Do NOT rely solely on the past examples — the historical corpus systematically under-documents Working at Heights and Crane permits. Default to over-permitting. Always list:
-- "Working at Heights permit" — if the task involves any work above 2 m (slab edges, EWP, mobile scaffold, ladders, roof, levels above ground, mezzanines).
+PERMITS — MANDATORY checklist. Look at the task and add a permit (one per line in the "permits" field) whenever ANY of these is true. Be CONSERVATIVE: only list a permit if the task explicitly or strongly implies the trigger condition. Do NOT add permits "just in case" — false-positive permits add real bureaucratic load to the supervisor and erode trust in the auto-fill.
+- "Working at Heights permit" — ONLY if the task explicitly mentions or strongly implies physical work above 2 m. Triggers: levels above ground floor (level 1, 2, mezzanine, roof), EWP/scissor lift use, scaffold work, ladder work above 2 m, slab edges, parapets. Triggers NOT met for ground-floor / basement work even if "vertical" tasks like cutting or welding are involved.
 - "Hot Works permit" — if the task involves welding, grinding, cutting, oxy, plasma, brazing, or any spark-producing tool.
-- "Crane Lift permit" or "Lift Plan" — if the task involves any crane lift, EWP load, telehandler, or rigging operation.
-- "Confined Space permit" — if any confined space (tank, pit, plant room, void, duct).
-- "Electrical Isolation permit" — if any work near energised lines/services or requiring isolation.
-- "Excavation permit" — if any digging, trenching, or ground penetration.
-If none apply, use empty string "". Otherwise list the applicable permits — one per line, no leading hyphen.
+- "Crane Lift permit" or "Lift Plan" — if the task involves crane lifting, telehandler load placement, or rigging of significant loads. Forklift/manual placement at ground level does NOT trigger.
+- "Confined Space permit" — only if the task is in a confined space as defined by AS 2865 (tank, pit, plant room with limited egress, void, duct, sump).
+- "Electrical Isolation permit" — only if work is near energised lines/services or requires isolation lockout/tagout.
+- "Excavation permit" — only if digging, trenching, or ground penetration is part of the task.
+If none apply, use empty string "". Otherwise list applicable permits — one per line, no leading hyphen.
 
 Do NOT include any prose outside the JSON. Do NOT add markdown fences. The form fields will be filled directly with these strings.`;
 
@@ -2525,41 +2538,62 @@ Now produce the four prestart fields for this NEW task. Match the company's hous
 NEW TASK: ${task}`;
 }
 
-async function callQwenThinking(openRouterKey, system, user) {
-  // `reasoning.effort: 'low'` caps the thinking-token budget. With Kimi K2.6
-  // thinking, full-effort reasoning takes ~150s — past Firebase Hosting's
-  // ~60s gateway timeout when the function is reached via /api/prestart-
-  // autofill. Low-effort drops it to ~20-40s and still produces solid
-  // 4-field output (verified 2026-05-06). Tune up if quality regresses.
+async function callOneAutofillModel(openRouterKey, system, user, model, useReasoningLow) {
+  const body = {
+    model: model,
+    max_tokens: 4000,
+    temperature: 0.2,
+    stream: false,
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+  };
+  if (useReasoningLow) body.reasoning = { effort: "low" };
+
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${openRouterKey}`,
       "content-type": "application/json",
     },
-    body: JSON.stringify({
-      model: PRESTART_AUTOFILL_MODEL,
-      max_tokens: 4000,
-      temperature: 0.2,
-      stream: false,
-      response_format: { type: "json_object" },
-      reasoning: { effort: "low" },
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`OpenRouter ${response.status}: ${text}`);
+    const err = new Error(`OpenRouter ${response.status}: ${text.slice(0, 300)}`);
+    err.status = response.status;
+    throw err;
   }
   const json = await response.json();
   const content = json && json.choices && json.choices[0] &&
     json.choices[0].message && json.choices[0].message.content;
-  if (!content) throw new Error("Empty response from Qwen");
+  if (!content) {
+    const err = new Error(`Empty response from ${model}`);
+    err.empty = true;
+    throw err;
+  }
   return content;
+}
+
+async function callAutofillWithFallback(openRouterKey, system, user) {
+  // Attempt order:
+  //   1. Primary (Kimi K2.6, reasoning.effort: low) — cheap, fast when it works
+  //   2. Fallback (Anthropic Sonnet 4.6 via OpenRouter, no reasoning param)
+  //   — different upstream provider, robust JSON handling
+  // Empty-content from the primary is the most common transient (OpenRouter
+  // credit edge cases, model rate-limits). The fallback shouldn't share that
+  // failure mode.
+  try {
+    return await callOneAutofillModel(openRouterKey, system, user, PRESTART_AUTOFILL_MODEL, true);
+  } catch (err) {
+    const transient = err.empty || (err.status && err.status >= 500) || (err.status === 429);
+    if (!transient) throw err;
+    console.warn(`[prestartAutofill] primary ${PRESTART_AUTOFILL_MODEL} failed (${err.message}) — falling back to ${PRESTART_AUTOFILL_FALLBACK_MODEL}`);
+    return await callOneAutofillModel(openRouterKey, system, user, PRESTART_AUTOFILL_FALLBACK_MODEL, false);
+  }
 }
 
 function parseAutofillJson(content) {
@@ -2633,6 +2667,23 @@ exports.prestartAutofill = onRequest(
 
       console.info("prestartAutofill request", { taskLen: task.length });
 
+      // Cache by sha256 of the normalised task. Same input = same output, kept
+      // in RTDB at /jmart-safety/prestartAutofillCache/<sha>. 30-day TTL.
+      // Cache hits skip embedder + retrieval + LLM entirely (~50ms vs 30s).
+      const crypto = require("crypto");
+      const cacheKey = crypto.createHash("sha256")
+        .update(task.toLowerCase().replace(/\s+/g, " ").trim())
+        .digest("hex").slice(0, 32);
+      const admin = require("firebase-admin");
+      if (!admin.apps.length) admin.initializeApp();
+      const cacheRef = admin.database().ref(`/jmart-safety/prestartAutofillCache/${cacheKey}`);
+      const cached = (await cacheRef.once("value")).val();
+      if (cached && cached.savedAt && (Date.now() - cached.savedAt < 30 * 24 * 3600 * 1000)) {
+        console.info("prestartAutofill cache hit", { cacheKey });
+        res.json({ ...cached.payload, cached: true });
+        return;
+      }
+
       const t0 = Date.now();
       const queryVec = await embedQuery(task);
       const tEmbed = Date.now() - t0;
@@ -2641,7 +2692,7 @@ exports.prestartAutofill = onRequest(
       const tRetrieve = Date.now() - t0 - tEmbed;
 
       const userPrompt = buildAutofillUserPrompt(task, hits);
-      const raw = await callQwenThinking(openRouterKey, PRESTART_SYSTEM_PROMPT, userPrompt);
+      const raw = await callAutofillWithFallback(openRouterKey, PRESTART_SYSTEM_PROMPT, userPrompt);
       const tLlm = Date.now() - t0 - tEmbed - tRetrieve;
 
       const fields = parseAutofillJson(raw);
@@ -2650,9 +2701,10 @@ exports.prestartAutofill = onRequest(
         tEmbed, tRetrieve, tLlm,
         topScore: hits[0] && hits[0].score,
         hits: hits.map((h) => ({ id: h.record.id, score: Number(h.score.toFixed(3)) })),
+        kUsed: hits.length,
       });
 
-      res.json({
+      const payload = {
         success: true,
         fields,
         sources: hits.map((h) => ({
@@ -2662,7 +2714,14 @@ exports.prestartAutofill = onRequest(
           site: h.record.meta && h.record.meta.site,
         })),
         timings: { embedMs: tEmbed, retrieveMs: tRetrieve, llmMs: tLlm },
+      };
+
+      // Cache the response — best-effort, don't fail the request if write fails.
+      cacheRef.set({ savedAt: Date.now(), payload }).catch((e) => {
+        console.warn("prestartAutofill cache write failed", { err: e.message });
       });
+
+      res.json(payload);
     } catch (error) {
       const message = (error && error.message) || "Auto-fill failed";
       console.error("prestartAutofill failed", {
