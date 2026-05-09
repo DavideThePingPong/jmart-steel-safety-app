@@ -75,12 +75,22 @@ const FormAssetStore = {
   },
 
   mergeAssetsIntoForm: function(form, assetRecord) {
-    if (!form || !form.data || !form.data.signatures || !assetRecord || !assetRecord.signatures) {
+    // Bail only when there's literally nothing to do. Note: we DO want to
+    // proceed when form.data.signatures is missing/empty but the assetRecord
+    // has signatures — that's the signature-restoration path after a sync
+    // strips sigs out of the form body. Audit 2026-05-07 found the old
+    // `!form.data.signatures` guard killed that path, so a freshly-loaded
+    // form whose sigs lived only in the asset store appeared signature-less
+    // until the form was touched locally.
+    if (!form || !form.data || !assetRecord || !assetRecord.signatures) {
       return form;
     }
+    var assetSigCount = Object.keys(assetRecord.signatures).length;
+    var formSigCount = form.data.signatures ? Object.keys(form.data.signatures).length : 0;
+    if (assetSigCount === 0 && formSigCount === 0) return form;
 
     var merged = {
-      ...form.data.signatures
+      ...(form.data.signatures || {})
     };
 
     Object.keys(assetRecord.signatures).forEach(function(name) {

@@ -908,7 +908,7 @@ function PrestartView({
       onChange: e => {
         const newDate = new Date(formDate);
         const [year, month, day] = e.target.value.split('-');
-        newDate.setFullYear(parseInt(year), parseInt(month) - 1, parseInt(day));
+        newDate.setFullYear(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10));
         setField('formDate', newDate);
       },
       className: "flex-1 bg-white/20 text-white border border-white/30 rounded-lg p-2 text-sm"
@@ -918,7 +918,7 @@ function PrestartView({
       onChange: e => {
         const newDate = new Date(formDate);
         const [hours, minutes] = e.target.value.split(':');
-        newDate.setHours(parseInt(hours), parseInt(minutes));
+        newDate.setHours(parseInt(hours, 10), parseInt(minutes, 10));
         setField('formDate', newDate);
       },
       className: "bg-white/20 text-white border border-white/30 rounded-lg p-2 text-sm"

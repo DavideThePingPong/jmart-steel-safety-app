@@ -599,13 +599,18 @@ const DeviceAuth = {
     if (!firebaseDb) return () => {};
 
     const ref = firebaseDb.ref('jmart-safety/devices/approved');
-    ref.on('value', (snapshot) => {
+    // Capture the handler so cleanup detaches THIS specific listener — not
+    // every value-listener attached to the ref. Bare `ref.off('value')`
+    // works for a single subscriber but stacks ambiguously if the listener
+    // is re-subscribed (logout/login flow). Audit 2026-05-07.
+    const handler = (snapshot) => {
       const data = snapshot.val();
       this.approvedDevices = data ? Object.entries(data).map(([id, info]) => ({ id, ...info })) : [];
       callback(this.approvedDevices);
-    }, function(err) { console.warn('[DeviceAuth] Approved listener error:', err.message); });
+    };
+    ref.on('value', handler, function(err) { console.warn('[DeviceAuth] Approved listener error:', err.message); });
 
-    return () => ref.off('value');
+    return () => ref.off('value', handler);
   },
 
   // Listen for own device status changes (in case revoked)
@@ -613,16 +618,17 @@ const DeviceAuth = {
     if (!firebaseDb) return () => {};
 
     const ref = firebaseDb.ref('jmart-safety/devices/approved/' + this.deviceId);
-    ref.on('value', (snapshot) => {
+    const handler = (snapshot) => {
       if (!snapshot.exists() && this.isApproved) {
         // Device was revoked
         this.isApproved = false;
         this.isAdmin = false;
         callback({ revoked: true });
       }
-    }, function(err) { console.warn('[DeviceAuth] Own device status listener error:', err.message); });
+    };
+    ref.on('value', handler, function(err) { console.warn('[DeviceAuth] Own device status listener error:', err.message); });
 
-    return () => ref.off('value');
+    return () => ref.off('value', handler);
   },
 
   // Notify admins of new device request
