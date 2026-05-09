@@ -987,26 +987,30 @@ function SettingsView({ sites = [], onUpdateSites, siteMetadata = {}, onUpdateSi
         <div className="space-y-2">
           {allMembers.map((name) => (
             <div key={name} className="p-3 bg-gray-50 rounded-lg">
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <span className="text-sm font-medium text-gray-700 truncate flex-1 min-w-0">{name}</span>
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <span className="text-sm font-semibold text-gray-800 truncate flex-1 min-w-0">{name}</span>
                 {signatures[name] ? (
-                  <img src={signatures[name]} alt={`${name}'s signature`} className="h-8 border rounded bg-white px-2 shrink-0" />
+                  <img src={signatures[name]} alt={`${name}'s signature`} className="h-9 w-24 object-contain border border-gray-200 rounded bg-white px-1 shrink-0" />
                 ) : (
-                  <span className="text-xs text-gray-400 italic shrink-0">No signature</span>
+                  <span className="text-xs text-gray-400 italic shrink-0">No signature yet</span>
                 )}
               </div>
               {canManageSignatures && (
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
                   <button
                     onClick={() => setShowSignaturePad(name)}
-                    className={`flex-1 min-w-[88px] px-3 py-1.5 rounded-lg text-sm ${signatures[name] ? 'bg-orange-100 text-orange-600' : 'bg-green-600 text-white'}`}
+                    className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium ${signatures[name] ? 'bg-orange-50 text-orange-700 border border-orange-200 active:bg-orange-100' : 'bg-green-600 text-white active:bg-green-700'}`}
                   >
-                    {signatures[name] ? '✏️ Update' : '➕ Add'}
+                    {signatures[name] ? '✏️ Update signature' : '➕ Add signature'}
                   </button>
-                  {signatures[name] && (
-                    <button onClick={() => deleteSignature(name)} className="px-3 py-1.5 border border-red-200 text-red-500 rounded-lg text-sm" title="Delete signature only">🗑️ Sig</button>
-                  )}
-                  <button onClick={() => deleteMember(name)} className="px-3 py-1.5 text-red-600 text-sm border border-red-300 rounded-lg hover:bg-red-50" title="Remove worker from list">Remove</button>
+                  <button
+                    onClick={() => deleteMember(name)}
+                    className="shrink-0 w-10 h-10 flex items-center justify-center text-red-500 hover:bg-red-50 active:bg-red-100 border border-red-200 rounded-lg"
+                    title="Remove worker (deletes their signature too)"
+                    aria-label={`Remove ${name}`}
+                  >
+                    🗑️
+                  </button>
                 </div>
               )}
             </div>
