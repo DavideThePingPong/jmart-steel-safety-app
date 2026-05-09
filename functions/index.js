@@ -2359,29 +2359,36 @@ If none apply, return empty string. Otherwise one per line with "- ".
 Do NOT include prose outside the JSON. Do NOT add markdown fences. The form fields display these strings directly.`;
 
 function buildAutofillUserPrompt(task, hits) {
-  const examples = hits
+  // Reframe historical prestarts as raw domain reference. We deliberately do
+  // NOT label them "Methodology: <flat>" because the model copies that flat
+  // framing into its own output and ignores the section template in the
+  // system prompt. Strip the field labels — keep only the content as
+  // unstructured snippets that inform substance + tone but cannot be
+  // mistaken for the desired output shape.
+  const reference = hits
     .map((h, i) => {
       const r = h.record;
-      const lines = [`### Example ${i + 1} (similarity ${h.score.toFixed(2)})`];
-      lines.push(`Task: ${r.task}`);
-      if (r.methodology) lines.push(`Methodology: ${r.methodology}`);
-      if (r.machinery) lines.push(`Machinery Controls: ${r.machinery}`);
-      if (r.hazards) lines.push(`Site Hazards: ${r.hazards}`);
-      if (r.permits) lines.push(`Permits: ${r.permits}`);
-      if (r.meta && r.meta.site) lines.push(`(site: ${r.meta.site})`);
-      return lines.join("\n");
+      const blobs = [];
+      if (r.methodology) blobs.push(r.methodology);
+      if (r.machinery) blobs.push(r.machinery);
+      if (r.hazards) blobs.push(r.hazards);
+      const merged = blobs.join("\n").replace(/^\s*-\s*/gm, "• ").trim();
+      const site = (r.meta && r.meta.site) ? ` — ${r.meta.site}` : "";
+      return `Reference ${i + 1} (similarity ${h.score.toFixed(2)})${site}\nTask: ${r.task}\nWhat the team flagged:\n${merged}`;
     })
     .join("\n\n");
 
-  return `${examples}
+  return `# DOMAIN REFERENCE — past J&M prestarts for similar tasks
 
----
+${reference}
 
-The examples above show this company's domain, tone, and which controls they actually use — keep that voice. Do NOT copy their flat-paragraph layout: methodology MUST use the labelled sections (PRE-TASK / CONTROLS / QA HOLD POINT / EMERGENCY) and "- " bullets exactly as defined in the system prompt. Examples are guidance on substance, not format.
+These references are J&M's vocabulary and concerns for this kind of work. They are NOT a format template — their flat layout MUST NOT influence your output structure. Your output uses the labelled-section template defined in the system prompt.
 
-Return ONLY the JSON object — strict schema, no prose, no fences.
+# YOUR TASK
 
-NEW TASK: ${task}`;
+NEW TASK: ${task}
+
+Generate the JSON object with exactly the four keys, methodology following the PRE-TASK / CONTROLS / QA HOLD POINT / EMERGENCY template verbatim. Return ONLY the JSON — no prose, no fences.`;
 }
 
 async function callQwenThinking(openRouterKey, system, user) {
