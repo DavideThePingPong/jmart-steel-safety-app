@@ -2844,6 +2844,7 @@ exports.prestartAutofill = onRequest(
       // Cache key includes PRESTART_PROMPT_VERSION so any prompt or schema
       // change auto-invalidates old entries (otherwise stale outputs from a
       // prior prompt version persist in the cache for 30 days).
+      console.info("prestartAutofill DEPLOY_MARKER_v3_bucketed", { promptVersion: PRESTART_PROMPT_VERSION });
       const cacheKey = crypto.createHash("sha256")
         .update(PRESTART_PROMPT_VERSION + ":" + task.toLowerCase().replace(/\s+/g, " ").trim())
         .digest("hex").slice(0, 32);
