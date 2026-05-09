@@ -7,7 +7,7 @@
 // Template utilities are now in hooks.jsx (shared with dashboard/camera)
 // getPrestartTemplateKey is available via window.getPrestartTemplateKey
 
-function PrestartView({ onSubmit, onUpdate, editingForm, sites = [], savedTemplates = [], onUpsertTemplate, templateToLoad, onTemplateLoaded }) {
+function PrestartView({ onSubmit, onUpdate, editingForm, sites = [], siteMetadata = {}, savedTemplates = [], onUpsertTemplate, templateToLoad, onTemplateLoaded }) {
   const isEditing = !!editingForm;
   const editData = editingForm?.data || {};
 
@@ -612,10 +612,28 @@ function PrestartView({ onSubmit, onUpdate, editingForm, sites = [], savedTempla
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Site Conducted *</label>
-            <select value={siteConducted} onChange={(e) => setSiteConducted(e.target.value)} aria-label="Site Conducted" className="w-full border border-gray-300 rounded-lg p-3 bg-white">
+            <select
+              value={siteConducted}
+              onChange={(e) => {
+                const next = e.target.value;
+                setSiteConducted(next);
+                // Autofill address + builder from siteMetadata if known.
+                // Only overwrite empty fields so we don't clobber user edits.
+                const meta = siteMetadata && siteMetadata[next];
+                if (meta) {
+                  if (meta.address && !address) setAddress(meta.address);
+                  if (meta.builder && !builder) setBuilder(meta.builder);
+                }
+              }}
+              aria-label="Site Conducted"
+              className="w-full border border-gray-300 rounded-lg p-3 bg-white"
+            >
               <option value="">Select Site</option>
               {sitesList.map((site) => <option key={site} value={site}>{site}</option>)}
             </select>
+            {siteMetadata && siteMetadata[siteConducted] ? (
+              <p className="text-xs text-green-600 mt-1">✓ Address & builder autofilled from job</p>
+            ) : null}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Builder *</label>

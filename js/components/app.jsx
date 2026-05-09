@@ -6,6 +6,7 @@ function JMartSteelSafetyApp({ isAdmin = false }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [forms, setForms] = useState([]);
   const [sites, setSites] = useState([]);
+  const [siteMetadata, setSiteMetadata] = useState({});
   const [editingForm, setEditingForm] = useState(null);
   const [templateToLoad, setTemplateToLoad] = useState(null);
   const legacyPrestartMigrationDoneRef = useRef(false);
@@ -56,8 +57,9 @@ function JMartSteelSafetyApp({ isAdmin = false }) {
     syncError,
     showSyncBanner, setShowSyncBanner,
     syncFormsEffect,
-    syncSitesEffect
-  } = useDataSync({ setForms, setSites, deletingFormRef, deletedFormIdsRef, suppressNextFormsSyncRef });
+    syncSitesEffect,
+    syncSiteMetadataEffect
+  } = useDataSync({ setForms, setSites, setSiteMetadata, deletingFormRef, deletedFormIdsRef, suppressNextFormsSyncRef });
 
   // Prestart Templates (shared across dashboard, prestart form, camera)
   const { templates: savedPrestartTemplates, upsertTemplate, deleteTemplate } = usePrestartTemplates();
@@ -192,6 +194,9 @@ function JMartSteelSafetyApp({ isAdmin = false }) {
 
   // Sync sites when they change
   useEffect(() => { syncSitesEffect(sites); }, [sites, isOnline, syncSitesEffect]);
+
+  // Sync site metadata (address + builder per site) when it changes
+  useEffect(() => { syncSiteMetadataEffect(siteMetadata); }, [siteMetadata, isOnline, syncSiteMetadataEffect]);
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', emoji: '🏠' },
@@ -414,17 +419,17 @@ function JMartSteelSafetyApp({ isAdmin = false }) {
         </div>
       )}
 
-      <main className="flex-1 p-4 pb-20">
+      <main className="flex-1 min-w-0 p-4 pb-20">
       {currentView === 'dashboard' && <Dashboard setCurrentView={setCurrentView} forms={forms} onViewForm={setViewFormModal} isFormBackedUp={isFormBackedUp} sites={sites} prestartTemplates={prestartTemplates} recentPrestartForms={recentPrestartForms} templateJobNames={templateJobNames} onDeleteTemplate={handleDeletePrestartTemplate} onDeleteRecentPrestart={handleDeleteRecentPrestart} onArchivePrestart={archiveForm} onEditRecentPrestart={handleEditRecentPrestart} onModifyRecentPrestart={handleModifyRecentPrestart} onSelectTemplate={(template) => { setTemplateToLoad(template); setCurrentView('prestart'); }} />}
         {currentView === 'training' && <TrainingView />}
-      {currentView === 'prestart' && <PrestartView onSubmit={(data, options) => addForm('prestart', data, options)} onUpdate={updateForm} editingForm={editingForm?.type === 'prestart' ? editingForm : null} sites={sites} savedTemplates={prestartTemplates} onUpsertTemplate={upsertTemplate} templateToLoad={templateToLoad} onTemplateLoaded={() => setTemplateToLoad(null)} />}
+      {currentView === 'prestart' && <PrestartView onSubmit={(data, options) => addForm('prestart', data, options)} onUpdate={updateForm} editingForm={editingForm?.type === 'prestart' ? editingForm : null} sites={sites} siteMetadata={siteMetadata} savedTemplates={prestartTemplates} onUpsertTemplate={upsertTemplate} templateToLoad={templateToLoad} onTemplateLoaded={() => setTemplateToLoad(null)} />}
         {currentView === 'steel-itp' && <SteelITPView onSubmit={(data) => addForm('steel-itp', data)} onUpdate={updateForm} editingForm={editingForm?.type === 'steel-itp' ? editingForm : null} sites={sites} />}
         {currentView === 'inspection' && <SubcontractorInspectionView onSubmit={(data) => addForm('inspection', data)} onUpdate={updateForm} editingForm={editingForm?.type === 'inspection' ? editingForm : null} sites={sites} />}
         {currentView === 'itp' && <ITPFormView onSubmit={(data) => addForm('itp', data)} onUpdate={updateForm} editingForm={editingForm?.type === 'itp' ? editingForm : null} sites={sites} />}
         {currentView === 'incidents' && <IncidentView onSubmit={(data) => addForm('incident', data)} onUpdate={updateForm} editingForm={editingForm?.type === 'incident' ? editingForm : null} />}
         {currentView === 'toolbox' && <ToolboxView onSubmit={(data) => addForm('toolbox', data)} onUpdate={updateForm} editingForm={editingForm?.type === 'toolbox' ? editingForm : null} sites={sites} />}
         {currentView === 'emergency' && <EmergencyView />}
-        {currentView === 'settings' && <SettingsView sites={sites} onUpdateSites={setSites} signatures={savedSignatures} onUpdateSignatures={updateSignatures} isAdmin={isAdmin} isDeviceAdmin={isDeviceAdmin} canViewDevices={canViewDevices} canRevokeDevices={canRevokeDevices} pendingDevices={pendingDevices} approvedDevices={approvedDevices} />}
+        {currentView === 'settings' && <SettingsView sites={sites} onUpdateSites={setSites} siteMetadata={siteMetadata} onUpdateSiteMetadata={setSiteMetadata} signatures={savedSignatures} onUpdateSignatures={updateSignatures} isAdmin={isAdmin} isDeviceAdmin={isDeviceAdmin} canViewDevices={canViewDevices} canRevokeDevices={canRevokeDevices} pendingDevices={pendingDevices} approvedDevices={approvedDevices} />}
         {currentView === 'recordings' && <RecordingsView forms={forms} sites={sites} />}
         {currentView === 'archive-map' && <ArchiveMapView forms={forms} />}
       </main>

@@ -498,6 +498,20 @@ const FirebaseSync = {
         await this.writeWithFallback('jmart-safety/sites', 'set', clean);
         break;
       }
+      case 'siteMetadata': {
+        const cleanMeta = {};
+        Object.keys(item.data || {}).forEach((siteName) => {
+          const m = item.data[siteName];
+          if (!siteName || !m || typeof m !== 'object') return;
+          cleanMeta[siteName] = {
+            address: typeof m.address === 'string' ? m.address : '',
+            builder: typeof m.builder === 'string' ? m.builder : '',
+            _lastModified: typeof m._lastModified === 'number' ? m._lastModified : Date.now()
+          };
+        });
+        await this.writeWithFallback('jmart-safety/siteMetadata', 'set', cleanMeta);
+        break;
+      }
       case 'training':
         await this.writeWithFallback('jmart-safety/training', 'set', item.data);
         break;
@@ -624,6 +638,43 @@ const FirebaseSync = {
     } catch (error) {
       console.error('Error syncing sites, adding to retry queue:', error);
       this.addToQueue('sites', sites);
+      return { success: false, queued: true, error: error.message };
+    }
+  },
+
+  // Sync per-site metadata (address + builder) to Firebase.
+  // Uses set() to replace the whole map — same shape contract as sites.
+  // metadata shape: { "Site Name": { address: string, builder: string, _lastModified: number } }
+  syncSiteMetadata: async function(metadata) {
+    if (!firebaseDb || !isFirebaseConfigured) {
+      this.addToQueue('siteMetadata', metadata);
+      return { success: false, queued: true };
+    }
+    var authOk = await this._ensureAuth();
+    if (!authOk) {
+      this.addToQueue('siteMetadata', metadata);
+      return { success: false, queued: true, error: 'Auth not ready' };
+    }
+    try {
+      // Sanitize: drop any entry without a string address+builder.
+      const clean = {};
+      Object.keys(metadata || {}).forEach((siteName) => {
+        const m = metadata[siteName];
+        if (!siteName || !m || typeof m !== 'object') return;
+        const address = typeof m.address === 'string' ? m.address : '';
+        const builder = typeof m.builder === 'string' ? m.builder : '';
+        clean[siteName] = {
+          address: address,
+          builder: builder,
+          _lastModified: typeof m._lastModified === 'number' ? m._lastModified : Date.now()
+        };
+      });
+      await this.writeWithFallback('jmart-safety/siteMetadata', 'set', clean);
+      console.log('Site metadata synced to Firebase:', Object.keys(clean).length, 'entries');
+      return { success: true };
+    } catch (error) {
+      console.error('Error syncing site metadata, adding to retry queue:', error);
+      this.addToQueue('siteMetadata', metadata);
       return { success: false, queued: true, error: error.message };
     }
   },
@@ -777,6 +828,22 @@ const FirebaseSync = {
       console.error('Firebase sites listener error:', error);
       if (typeof ToastNotifier !== 'undefined') ToastNotifier.error('Sites sync paused — connection lost');
       if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(error, 'firebase-sites-listener');
+    };
+    ref.on('value', handler, errorHandler);
+    return () => ref.off('value', handler);
+  },
+
+  // Listen for real-time site metadata updates
+  onSiteMetadataChange: (callback) => {
+    if (!firebaseDb || !isFirebaseConfigured) return () => {};
+    const ref = firebaseDb.ref('jmart-safety/siteMetadata');
+    const handler = (snapshot) => {
+      callback(snapshot.val());
+    };
+    const errorHandler = (error) => {
+      console.error('Firebase siteMetadata listener error:', error);
+      if (typeof ToastNotifier !== 'undefined') ToastNotifier.error('Site metadata sync paused — connection lost');
+      if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(error, 'firebase-site-metadata-listener');
     };
     ref.on('value', handler, errorHandler);
     return () => ref.off('value', handler);

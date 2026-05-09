@@ -97,9 +97,14 @@ function SystemHealthCard() {
   );
 }
 
-function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSignatures, isAdmin = false, isDeviceAdmin = false, canViewDevices = false, canRevokeDevices = false, pendingDevices = [], approvedDevices = [] }) {
+function SettingsView({ sites = [], onUpdateSites, siteMetadata = {}, onUpdateSiteMetadata, signatures = {}, onUpdateSignatures, isAdmin = false, isDeviceAdmin = false, canViewDevices = false, canRevokeDevices = false, pendingDevices = [], approvedDevices = [] }) {
   const [newSite, setNewSite] = useState('');
+  const [newSiteAddress, setNewSiteAddress] = useState('');
+  const [newSiteBuilder, setNewSiteBuilder] = useState('');
   const [showAddSite, setShowAddSite] = useState(false);
+  const [editingSiteName, setEditingSiteName] = useState(null);
+  const [editingSiteAddress, setEditingSiteAddress] = useState('');
+  const [editingSiteBuilder, setEditingSiteBuilder] = useState('');
   const [driveConnected, setDriveConnected] = useState(GoogleDriveSync.isConnected());
   const [driveError, setDriveError] = useState('');
   const [backupStatus, setBackupStatus] = useState('');
@@ -293,16 +298,88 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
   const addSite = () => {
     if (!canManageSharedSettings) return;
     const trimmed = newSite.trim();
-    if (trimmed) {
-      const isDuplicate = currentSites.some(s => s.toLowerCase() === trimmed.toLowerCase());
-      if (isDuplicate) {
-        ToastNotifier.warning('This site already exists');
-        return;
-      }
-      onUpdateSites([...currentSites, trimmed]);
-      setNewSite('');
-      setShowAddSite(false);
+    const trimmedAddress = newSiteAddress.trim();
+    const trimmedBuilder = newSiteBuilder.trim();
+    if (!trimmed) {
+      ToastNotifier.warning('Site name is required');
+      return;
     }
+    if (!trimmedAddress) {
+      ToastNotifier.warning('Address is required so it can autofill in Pre-Start');
+      return;
+    }
+    if (!trimmedBuilder) {
+      ToastNotifier.warning('Builder is required so it can autofill in Pre-Start');
+      return;
+    }
+    const isDuplicate = currentSites.some(s => s.toLowerCase() === trimmed.toLowerCase());
+    if (isDuplicate) {
+      ToastNotifier.warning('This site already exists');
+      return;
+    }
+    onUpdateSites([...currentSites, trimmed]);
+    if (onUpdateSiteMetadata) {
+      onUpdateSiteMetadata({
+        ...siteMetadata,
+        [trimmed]: {
+          address: trimmedAddress,
+          builder: trimmedBuilder,
+          _lastModified: Date.now()
+        }
+      });
+    }
+    setNewSite('');
+    setNewSiteAddress('');
+    setNewSiteBuilder('');
+    setShowAddSite(false);
+    ToastNotifier.success('"' + trimmed + '" added — syncing to other devices');
+  };
+
+  const removeSite = (siteName) => {
+    if (!canManageSharedSettings) return;
+    onUpdateSites(currentSites.filter(s => s !== siteName));
+    if (onUpdateSiteMetadata && siteMetadata[siteName]) {
+      const next = { ...siteMetadata };
+      delete next[siteName];
+      onUpdateSiteMetadata(next);
+    }
+  };
+
+  const startEditSite = (siteName) => {
+    const meta = siteMetadata[siteName] || {};
+    setEditingSiteName(siteName);
+    setEditingSiteAddress(meta.address || '');
+    setEditingSiteBuilder(meta.builder || '');
+  };
+
+  const saveEditSite = () => {
+    if (!canManageSharedSettings || !editingSiteName) return;
+    const trimmedAddress = editingSiteAddress.trim();
+    const trimmedBuilder = editingSiteBuilder.trim();
+    if (!trimmedAddress || !trimmedBuilder) {
+      ToastNotifier.warning('Address and builder are both required');
+      return;
+    }
+    if (onUpdateSiteMetadata) {
+      onUpdateSiteMetadata({
+        ...siteMetadata,
+        [editingSiteName]: {
+          address: trimmedAddress,
+          builder: trimmedBuilder,
+          _lastModified: Date.now()
+        }
+      });
+    }
+    setEditingSiteName(null);
+    setEditingSiteAddress('');
+    setEditingSiteBuilder('');
+    ToastNotifier.success('Updated — syncing');
+  };
+
+  const cancelEditSite = () => {
+    setEditingSiteName(null);
+    setEditingSiteAddress('');
+    setEditingSiteBuilder('');
   };
 
   const connectDrive = () => {
@@ -772,28 +849,116 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
 
       <div className="bg-white rounded-xl shadow-sm p-4">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="font-semibold text-gray-800">🏗️ Sites</h3>
+          <h3 className="font-semibold text-gray-800">🏗️ Sites / Jobs</h3>
           {canManageSharedSettings ? (
-            <button onClick={() => setShowAddSite(!showAddSite)} className="bg-green-600 text-white px-3 py-1 rounded-lg text-sm">+ Add Site</button>
+            <button onClick={() => setShowAddSite(!showAddSite)} className="bg-green-600 text-white px-3 py-1 rounded-lg text-sm">+ Add Job</button>
           ) : (
             <span className="text-xs text-gray-400">Admin only</span>
           )}
         </div>
+        <p className="text-xs text-gray-500 mb-3">Address + builder are saved per job and auto-fill in Pre-Start.</p>
         {canManageSharedSettings && showAddSite && (
-          <div className="mb-4 flex gap-2">
-            <input type="text" value={newSite} onChange={(e) => setNewSite(e.target.value)} className="flex-1 border rounded-lg p-2 text-sm" placeholder="Enter site name" />
-            <button onClick={addSite} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm">Add</button>
+          <div className="mb-4 p-3 bg-gray-50 rounded-lg space-y-2">
+            <input
+              type="text"
+              value={newSite}
+              onChange={(e) => setNewSite(e.target.value)}
+              className="w-full border rounded-lg p-2 text-sm"
+              placeholder="Job / site name (e.g. Chifley Tower)"
+            />
+            <input
+              type="text"
+              value={newSiteAddress}
+              onChange={(e) => setNewSiteAddress(e.target.value)}
+              className="w-full border rounded-lg p-2 text-sm"
+              placeholder="Address (autofills in Pre-Start)"
+            />
+            <select
+              value={newSiteBuilder}
+              onChange={(e) => setNewSiteBuilder(e.target.value)}
+              className="w-full border rounded-lg p-2 text-sm bg-white"
+            >
+              <option value="">Select builder (autofills in Pre-Start)</option>
+              {FORM_CONSTANTS.builders.map((b) => <option key={b} value={b}>{b}</option>)}
+            </select>
+            <div className="flex gap-2">
+              <button onClick={addSite} className="flex-1 bg-green-600 text-white py-2 rounded-lg text-sm font-medium">Add</button>
+              <button
+                onClick={() => { setShowAddSite(false); setNewSite(''); setNewSiteAddress(''); setNewSiteBuilder(''); }}
+                className="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg text-sm"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         )}
         <div className="space-y-2">
-          {currentSites.map((site) => (
-            <div key={site} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
-              <span className="text-sm text-gray-700">{site}</span>
-              {canManageSharedSettings && (
-                <button onClick={() => onUpdateSites(currentSites.filter(s => s !== site))} className="text-red-500">🗑️</button>
-              )}
-            </div>
-          ))}
+          {currentSites.map((site) => {
+            const meta = siteMetadata[site] || {};
+            const isEditing = editingSiteName === site;
+            return (
+              <div key={site} className="p-3 bg-gray-50 rounded-lg">
+                {isEditing ? (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-gray-800">{site}</p>
+                    <input
+                      type="text"
+                      value={editingSiteAddress}
+                      onChange={(e) => setEditingSiteAddress(e.target.value)}
+                      className="w-full border rounded-lg p-2 text-sm"
+                      placeholder="Address"
+                    />
+                    <select
+                      value={editingSiteBuilder}
+                      onChange={(e) => setEditingSiteBuilder(e.target.value)}
+                      className="w-full border rounded-lg p-2 text-sm bg-white"
+                    >
+                      <option value="">Select builder</option>
+                      {FORM_CONSTANTS.builders.map((b) => <option key={b} value={b}>{b}</option>)}
+                    </select>
+                    <div className="flex gap-2">
+                      <button onClick={saveEditSite} className="flex-1 bg-green-600 text-white py-2 rounded-lg text-sm">Save</button>
+                      <button onClick={cancelEditSite} className="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg text-sm">Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-800 truncate">{site}</p>
+                      {meta.address ? (
+                        <p className="text-xs text-gray-500 truncate">📍 {meta.address}</p>
+                      ) : (
+                        <p className="text-xs text-orange-500 italic">No address — won't autofill</p>
+                      )}
+                      {meta.builder ? (
+                        <p className="text-xs text-gray-500 truncate">🏢 {meta.builder}</p>
+                      ) : (
+                        <p className="text-xs text-orange-500 italic">No builder — won't autofill</p>
+                      )}
+                    </div>
+                    {canManageSharedSettings && (
+                      <div className="flex flex-col gap-1 shrink-0">
+                        <button
+                          onClick={() => startEditSite(site)}
+                          className="text-blue-600 text-xs font-medium px-2 py-1 border border-blue-300 rounded hover:bg-blue-50"
+                          title="Edit address / builder"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => removeSite(site)}
+                          className="text-red-500 text-xs font-medium px-2 py-1 border border-red-300 rounded hover:bg-red-50"
+                          title="Remove site"
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
       {/* Team Signatures Section */}
@@ -821,31 +986,29 @@ function SettingsView({ sites = [], onUpdateSites, signatures = {}, onUpdateSign
 
         <div className="space-y-2">
           {allMembers.map((name) => (
-            <div key={name} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <div className="flex items-center gap-3 flex-1">
-                <span className="text-sm font-medium text-gray-700">{name}</span>
+            <div key={name} className="p-3 bg-gray-50 rounded-lg">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <span className="text-sm font-medium text-gray-700 truncate flex-1 min-w-0">{name}</span>
                 {signatures[name] ? (
-                  <img src={signatures[name]} alt={`${name}'s signature`} className="h-8 border rounded bg-white px-2" />
+                  <img src={signatures[name]} alt={`${name}'s signature`} className="h-8 border rounded bg-white px-2 shrink-0" />
                 ) : (
-                  <span className="text-xs text-gray-400 italic">No signature saved</span>
+                  <span className="text-xs text-gray-400 italic shrink-0">No signature</span>
                 )}
               </div>
-              <div className="flex items-center gap-2">
-                {canManageSignatures && (
-                  <>
-                    <button
-                      onClick={() => setShowSignaturePad(name)}
-                      className={`px-3 py-1 rounded-lg text-sm ${signatures[name] ? 'bg-orange-100 text-orange-600' : 'bg-green-600 text-white'}`}
-                    >
-                      {signatures[name] ? '✏️ Update' : '➕ Add'}
-                    </button>
-                    {signatures[name] && (
-                      <button onClick={() => deleteSignature(name)} className="text-red-500 text-lg" title="Delete signature only">🗑️</button>
-                    )}
-                    <button onClick={() => deleteMember(name)} className="text-red-600 text-xs font-medium px-2 py-1 border border-red-300 rounded hover:bg-red-50 ml-1" title="Remove worker from list">Remove</button>
-                  </>
-                )}
-              </div>
+              {canManageSignatures && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    onClick={() => setShowSignaturePad(name)}
+                    className={`flex-1 min-w-[88px] px-3 py-1.5 rounded-lg text-sm ${signatures[name] ? 'bg-orange-100 text-orange-600' : 'bg-green-600 text-white'}`}
+                  >
+                    {signatures[name] ? '✏️ Update' : '➕ Add'}
+                  </button>
+                  {signatures[name] && (
+                    <button onClick={() => deleteSignature(name)} className="px-3 py-1.5 border border-red-200 text-red-500 rounded-lg text-sm" title="Delete signature only">🗑️ Sig</button>
+                  )}
+                  <button onClick={() => deleteMember(name)} className="px-3 py-1.5 text-red-600 text-sm border border-red-300 rounded-lg hover:bg-red-50" title="Remove worker from list">Remove</button>
+                </div>
+              )}
             </div>
           ))}
         </div>

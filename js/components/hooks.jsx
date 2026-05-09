@@ -611,7 +611,7 @@ function useFormManager({ forms, setForms, editingForm, setEditingForm, setCurre
 // =============================================
 // useDataSync - Firebase/localStorage sync
 // =============================================
-function useDataSync({ setForms, setSites, deletingFormRef, deletedFormIdsRef, suppressNextFormsSyncRef }) {
+function useDataSync({ setForms, setSites, setSiteMetadata, deletingFormRef, deletedFormIdsRef, suppressNextFormsSyncRef }) {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const isOnlineRef = useRef(isOnline);
   const [lastSynced, setLastSynced] = useState(null);
@@ -627,6 +627,7 @@ function useDataSync({ setForms, setSites, deletingFormRef, deletedFormIdsRef, s
   const formsFromFirebaseRef = useRef(false);  // Anti-loop: skip syncing back to Firebase when data came FROM Firebase
   const formsFromStorageRef = useRef(false);
   const sitesFromFirebaseRef = useRef(false);
+  const siteMetadataFromFirebaseRef = useRef(false);
   const lastFormsWriteRef = useRef(0); // throttle forms listener writes
   const latestRemoteFormsRef = useRef([]);
   const formAssetsRef = useRef({});
@@ -705,6 +706,23 @@ function useDataSync({ setForms, setSites, deletingFormRef, deletedFormIdsRef, s
       } catch (e) {
         console.error('Error parsing localStorage sites:', e);
         if (typeof ErrorTelemetry !== 'undefined') ErrorTelemetry.captureError(e, 'sites-parse');
+      }
+    }
+
+    // Site metadata bootstrap: prefer localStorage cache so the form picker can
+    // autofill before the Firebase listener fires. Listener will overwrite once
+    // it arrives.
+    if (setSiteMetadata) {
+      try {
+        const savedMeta = localStorage.getItem('jmart-safety-site-metadata');
+        if (savedMeta) {
+          const parsedMeta = JSON.parse(savedMeta);
+          if (parsedMeta && typeof parsedMeta === 'object' && !Array.isArray(parsedMeta)) {
+            setSiteMetadata(parsedMeta);
+          }
+        }
+      } catch (e) {
+        console.warn('Error parsing localStorage site metadata:', e.message);
       }
     }
 
@@ -911,6 +929,26 @@ function useDataSync({ setForms, setSites, deletingFormRef, deletedFormIdsRef, s
         }
       });
 
+      // Site metadata listener — keeps each device's siteMetadata map in sync.
+      const unsubSiteMetadata = FirebaseSync.onSiteMetadataChange((firebaseMeta) => {
+        if (!setSiteMetadata) return;
+        const cleanMeta = {};
+        if (firebaseMeta && typeof firebaseMeta === 'object') {
+          Object.keys(firebaseMeta).forEach((siteName) => {
+            const m = firebaseMeta[siteName];
+            if (!m || typeof m !== 'object') return;
+            cleanMeta[siteName] = {
+              address: typeof m.address === 'string' ? m.address : '',
+              builder: typeof m.builder === 'string' ? m.builder : '',
+              _lastModified: typeof m._lastModified === 'number' ? m._lastModified : 0
+            };
+          });
+        }
+        siteMetadataFromFirebaseRef.current = true;
+        setSiteMetadata(cleanMeta);
+        try { localStorage.setItem('jmart-safety-site-metadata', JSON.stringify(cleanMeta)); } catch (_) {}
+      });
+
       // ONE-TIME CLEANUP: Fix corrupted Firebase sites data
       (async () => {
         try {
@@ -944,11 +982,12 @@ function useDataSync({ setForms, setSites, deletingFormRef, deletedFormIdsRef, s
         unsubForms();
         unsubFormAssets();
         unsubSites();
+        unsubSiteMetadata();
       };
     } else {
       isInitialLoad.current = false;
     }
-  }, [deletedFormIdsRef, deletingFormRef, setForms, setSites]);
+  }, [deletedFormIdsRef, deletingFormRef, setForms, setSites, setSiteMetadata]);
 
   // Save forms to localStorage and sync to Firebase
   const syncFormsEffect = useCallback((forms) => {
@@ -1052,6 +1091,28 @@ function useDataSync({ setForms, setSites, deletingFormRef, deletedFormIdsRef, s
     }
   }, []);
 
+  // Save site metadata to localStorage and sync to Firebase. Same admin-gate
+  // as syncSitesEffect — non-admin devices keep a local cache only.
+  const syncSiteMetadataEffect = useCallback((metadata) => {
+    if (isInitialLoad.current) return;
+    if (!metadata || typeof metadata !== 'object') return;
+
+    try { localStorage.setItem('jmart-safety-site-metadata', JSON.stringify(metadata)); } catch (_) {}
+
+    if (siteMetadataFromFirebaseRef.current) {
+      siteMetadataFromFirebaseRef.current = false;
+      return;
+    }
+
+    if (FirebaseSync.isConnected() && isOnlineRef.current) {
+      if (typeof DeviceAuthManager !== 'undefined' && !DeviceAuthManager.isAdmin) {
+        console.warn('Ignoring site metadata sync from non-admin device');
+        return;
+      }
+      FirebaseSync.syncSiteMetadata(metadata);
+    }
+  }, []);
+
   // Cross-tab fallback: keep same-browser tabs in sync from shared localStorage
   // even if the realtime listener arrives late.
   useEffect(() => {
@@ -1095,6 +1156,18 @@ function useDataSync({ setForms, setSites, deletingFormRef, deletedFormIdsRef, s
         }
       }
 
+      if (event.key === 'jmart-safety-site-metadata' && setSiteMetadata) {
+        try {
+          const parsedMeta = JSON.parse(event.newValue || '{}');
+          if (parsedMeta && typeof parsedMeta === 'object' && !Array.isArray(parsedMeta)) {
+            siteMetadataFromFirebaseRef.current = true;
+            setSiteMetadata(parsedMeta);
+          }
+        } catch (e) {
+          console.warn('Storage site-metadata sync skipped:', e.message);
+        }
+      }
+
       if (event.key === 'jmart-safety-sites') {
         try {
           const parsedSites = JSON.parse(event.newValue || '[]');
@@ -1119,7 +1192,7 @@ function useDataSync({ setForms, setSites, deletingFormRef, deletedFormIdsRef, s
 
     window.addEventListener('storage', handleStorage);
     return () => window.removeEventListener('storage', handleStorage);
-  }, [deletedFormIdsRef, setForms, setSites]);
+  }, [deletedFormIdsRef, setForms, setSites, setSiteMetadata]);
 
   // Online/Offline detection
   useEffect(() => {
@@ -1198,8 +1271,10 @@ function useDataSync({ setForms, setSites, deletingFormRef, deletedFormIdsRef, s
     showSyncBanner, setShowSyncBanner,
     isInitialLoad,
     sitesFromFirebaseRef,
+    siteMetadataFromFirebaseRef,
     syncFormsEffect,
-    syncSitesEffect
+    syncSitesEffect,
+    syncSiteMetadataEffect
   };
 }
 

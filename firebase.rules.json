@@ -108,6 +108,16 @@
         ".write": "auth != null && root.child('jmart-safety/adminAuthUids/' + auth.uid).exists()"
       },
 
+      // Site metadata - per-site address + builder used to autofill prestart fields.
+      // Same auth model as sites: read for approved devices, write for admins only.
+      "siteMetadata": {
+        ".read": "auth != null && root.child('jmart-safety/authDevices/' + auth.uid).child('approvedAt').exists()",
+        ".write": "auth != null && root.child('jmart-safety/adminAuthUids/' + auth.uid).exists()",
+        "$siteName": {
+          ".validate": "!newData.exists() || (newData.child('address').isString() && newData.child('address').val().length < 500 && newData.child('builder').isString() && newData.child('builder').val().length < 200)"
+        }
+      },
+
       // Training - any authenticated device can read/write
       "training": {
         ".read": "auth != null && root.child('jmart-safety/authDevices/' + auth.uid).child('approvedAt').exists()",
