@@ -2,7 +2,7 @@
 
 const path = require("path");
 const Busboy = require("busboy");
-const { PDFParse } = require("pdf-parse");
+const pdfParse = require("pdf-parse");
 const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const { initializeApp } = require("firebase-admin/app");
@@ -22,32 +22,18 @@ const FRANK_GENERATION_MODEL =
   process.env.FRANK_GENERATION_MODEL || "anthropic/claude-sonnet-4.6";
 const HUB_VISION_MODEL =
   process.env.HUB_VISION_MODEL || "claude-sonnet-4-6";
-// Web search model. Uses OpenRouter `:online` suffix which injects Exa
-// web-search results into the model's context before generation. Picked
-// Kimi K2.6 to stay consistent with Gio + prestartAutofill, and for its
-// reasoning ability when parsing messy search results. ~$0.50/M tokens
-// vs Anthropic Sonnet's ~$3/M (6x cheaper). Swapped from Anthropic
-// `claude-sonnet-4-6` (with Anthropic's web_search_20250305 tool) to
-// OpenRouter on 2026-05-06 because the Anthropic key in CF secrets
-// became invalid and Davide's policy is "we use OpenRouter".
 const HUB_WEB_SEARCH_MODEL =
-  process.env.HUB_WEB_SEARCH_MODEL || "moonshotai/kimi-k2.6:online";
+  process.env.HUB_WEB_SEARCH_MODEL || "claude-sonnet-4-6";
 // Victor / Frank-attachment Qwen primary (cheap OCR/extraction).
 // Anthropic fallback fires only on OpenRouter credit failure.
 const VICTOR_QWEN_MODEL =
   process.env.VICTOR_QWEN_MODEL || "qwen/qwen3-vl-32b-instruct";
-// Primary thinking model for prestart auto-fill. Kimi K2.6 is consistent with
-// Gio + Hub. reasoning.effort: low keeps wall-time under Hosting's ~60s gateway.
+// Latest Qwen thinking model on OpenRouter — used for prestart auto-fill where
+// careful reasoning over WHS/AS standards matters more than raw speed.
+// 30B-A3B thinking is ~3-4x faster than 235B and stays under the Cloud Run
+// idle-connection timeout (~60s). 235B is overkill for filling 4 form boxes.
 const PRESTART_AUTOFILL_MODEL =
   process.env.PRESTART_AUTOFILL_MODEL || "moonshotai/kimi-k2.6";
-// Fallback when primary returns empty content or 5xx — typically OpenRouter
-// credit/routing transients. Anthropic Haiku 4.5 via OpenRouter:
-//   - different upstream provider lineage (clears Kimi-side issues)
-//   - 3-4x faster than Sonnet, fits the ~60s Hosting gateway window
-//   - cheaper than Sonnet, helps when balance is the actual problem
-//   - quality plenty for the 4-field structured output
-const PRESTART_AUTOFILL_FALLBACK_MODEL =
-  process.env.PRESTART_AUTOFILL_FALLBACK_MODEL || "anthropic/claude-haiku-4-5";
 const ANTHROPIC_API_KEY = defineSecret("ANTHROPIC_API_KEY");
 const OPENROUTER_API_KEY = defineSecret("OPENROUTER_API_KEY");
 const FRANK_HOUSE_MODEL = Object.freeze({
@@ -1226,31 +1212,13 @@ function parseMultipartUpload(req) {
   });
 }
 
-async function inspectPdf(buffer) {
-  // pdf-parse v2 API: instantiate PDFParse({data}) and call getText().
-  // Returns { pages: string[], text: string, total: number }. The previous
-  // `await pdfParse(buffer)` v1-style call silently failed (module is no
-  // longer callable in v2), so all PDF text extraction across this file
-  // was returning "" since the v2 upgrade. Fixed 2026-05-06.
-  let parser = null;
-  try {
-    parser = new PDFParse({ data: buffer });
-    const result = await parser.getText();
-    return {
-      numpages: result.total || result.numpages || 1,
-      text: String(result.text || "").trim(),
-    };
-  } catch (error) {
-    return { numpages: 0, text: "" };
-  } finally {
-    if (parser && typeof parser.destroy === "function") {
-      try { parser.destroy(); } catch (_) {}
-    }
-  }
-}
-
 async function extractPdfText(buffer) {
-  return (await inspectPdf(buffer)).text;
+  try {
+    const parsed = await pdfParse(buffer);
+    return String(parsed.text || "").trim();
+  } catch (error) {
+    return "";
+  }
 }
 
 async function extractWithOpenRouter(messages, apiKey, model) {
@@ -1427,31 +1395,14 @@ async function extractRequirementsFromAttachment(filename, mediaType, buffer, se
 
 function buildHannaReceiptPrompt() {
   return (
-    "You are processing a document received by J&M Art Steel (a steel " +
-    "fabrication business in Marrickville, NSW). Extract all data and return " +
-    "ONLY valid JSON in this exact shape:\n" +
-    '{"document_type":"invoice","store_name":"supplier name","date":"DD/MM/YYYY",' +
-    '"subtotal":0.00,"gst":0.00,"total":0.00,' +
+    "Extract all data from this receipt. Return ONLY valid JSON:\n" +
+    '{"store_name":"store name","date":"DD/MM/YYYY","subtotal":0.00,"gst":0.00,"total":0.00,' +
     '"items":[{"name":"item name","qty":1,"price":0.00}],"confidence":0.95}\n' +
-    "\n" +
-    "Field rules:\n" +
-    "- document_type: one of \"invoice\" (tax invoice with prices), \"delivery_docket\" " +
-    "(items received, no prices), \"quote\" (proposed pricing, not yet purchased), " +
-    "\"statement\" (account summary), or \"other\".\n" +
-    "- store_name: the SUPPLIER — i.e., the company shipping/selling to J&M. " +
-    "**J&M Art Steel is the customer/recipient, NEVER the store_name.** " +
-    "Look for the supplier's letterhead, ABN, or sender block — not whoever " +
-    "the document is addressed to. If the only visible vendor name is J&M, " +
-    "set store_name to \"unknown supplier\".\n" +
-    "- date: invoice/docket date in DD/MM/YYYY (Australian format).\n" +
-    "- subtotal / gst / total: numeric AUD. If document_type is " +
-    "\"delivery_docket\" or no prices are shown, leave these at 0.\n" +
-    "- items[]: include name, qty (integer), price (per-unit, 0 if not shown). " +
-    "Always populate items if visible, even on dockets without prices.\n" +
-    "- GST is 10% in Australia. Calculate if the line is missing on an invoice.\n" +
-    "- confidence: 0.0-1.0 reflecting how confidently you extracted the fields. " +
-    "Lower confidence is fine — be honest.\n" +
-    "Return ONLY the JSON object, no other text."
+    "Rules:\n" +
+    "- All prices in AUD\n" +
+    "- GST is 10% in Australia (calculate if not shown)\n" +
+    "- confidence: 0.0-1.0 based on image clarity\n" +
+    "- Return ONLY JSON, no other text"
   );
 }
 
@@ -1490,23 +1441,8 @@ function sanitizeHannaReceipt(value) {
       date = '';
     }
   }
-  // Validate document_type against the closed enum the prompt promises.
-  // Anything outside the set degrades to "other" so the Hub UI can still
-  // render it without exploding.
-  const ALLOWED_DOC_TYPES = new Set(["invoice", "delivery_docket", "quote", "statement", "other"]);
-  const rawDocType = String(safe.document_type || "").trim().toLowerCase();
-  const document_type = ALLOWED_DOC_TYPES.has(rawDocType) ? rawDocType : "other";
-
-  // Reject "J and M" / "JMart" / variants as store_name — that's the customer,
-  // not the supplier. Belt + braces over the prompt instructions.
-  let store_name = sanitizeText(safe.store_name || safe.store, 240);
-  if (store_name && /\b(j\s*[&]?\s*m|jmart|j\s*and\s*m)\b.*\b(art\s*steel|artsteel|steel)\b/i.test(store_name)) {
-    store_name = "unknown supplier";
-  }
-
   return {
-    document_type: document_type,
-    store_name: store_name,
+    store_name: sanitizeText(safe.store_name || safe.store, 240),
     date: date,
     subtotal: subtotal,
     gst: gst,
@@ -1537,14 +1473,6 @@ function extractHannaJson(text, fallbackMessage) {
 // running up Anthropic costs.
 const HANNA_OPENROUTER_MODEL =
   process.env.HANNA_OPENROUTER_MODEL || "qwen/qwen3-vl-32b-instruct";
-// Multi-page PDF receipt scanner. Anthropic Sonnet 4.6 routed through
-// OpenRouter — accepts PDF document blocks natively, handles multi-page
-// scanned receipts, stays inside the "we use OpenRouter" billing policy.
-// Used when pdf-parse extracts no text (image-based scans). Per-receipt
-// cost ~$0.05 vs Qwen3-VL's ~$0.001 — pricier but fixes the workflow
-// gap from 2026-05-06 (scanned PDFs were being rejected).
-const HANNA_PDF_MODEL =
-  process.env.HANNA_PDF_MODEL || "anthropic/claude-sonnet-4.6";
 
 function isOpenRouterCreditError(status, body) {
   if (status === 402) return true;
@@ -1591,96 +1519,6 @@ async function callOpenRouterVisionForReceipt(buffer, mediaType, prompt, apiKey,
   let payload;
   try { payload = JSON.parse(text); }
   catch (e) { throw new Error("OpenRouter returned non-JSON response"); }
-  return extractOpenRouterMessageText(payload);
-}
-
-// OpenRouter call with web search enabled (used by Victor MSDS search +
-// Frank regulation search). The `:online` suffix on the model name (or
-// equivalent `plugins: [{id: "web"}]` parameter) tells OpenRouter to run an
-// Exa search on the latest user message and inject the top results into the
-// system prompt before the model generates. The model then reasons over the
-// retrieved results and emits the final JSON.
-//
-// Replaces the Anthropic web_search_20250305 tool path used previously.
-async function callOpenRouterWithWebSearch({ apiKey, model, maxTokens, messages, maxSearchResults }) {
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": "https://jmart-steel-safety.web.app",
-      "X-Title": "JMart Hub Web Search",
-    },
-    body: JSON.stringify({
-      model: model,
-      messages: messages,
-      max_tokens: maxTokens || 1024,
-      temperature: 0,
-      // The `web` plugin runs Exa search on the last user message. The
-      // `:online` suffix on the model name does the same thing — using the
-      // explicit plugin form lets us tune `max_results`.
-      plugins: [{ id: "web", max_results: maxSearchResults || 5 }],
-    }),
-  });
-  const text = await response.text();
-  if (!response.ok) {
-    const err = new Error(`OpenRouter ${response.status}: ${text.slice(0, 300)}`);
-    err.openRouterStatus = response.status;
-    err.openRouterBody = text;
-    throw err;
-  }
-  let payload;
-  try {
-    payload = JSON.parse(text);
-  } catch (e) {
-    throw new Error("OpenRouter returned non-JSON response");
-  }
-  return extractOpenRouterMessageText(payload);
-}
-
-// OpenRouter PDF-document call for Hanna receipts. Routes to a model that
-// accepts PDF document blocks natively (default: Anthropic Sonnet 4.6 via
-// OpenRouter). Handles multi-page scanned PDFs in a single call. Used when
-// pdf-parse extracted no text — i.e., image-based scans where the cheap
-// Qwen text path doesn't apply.
-async function callOpenRouterPdfForReceipt(buffer, prompt, apiKey, model) {
-  const dataUri = `data:application/pdf;base64,${buffer.toString("base64")}`;
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": "https://jmart-steel-safety.web.app",
-      "X-Title": "JMart Hanna Receipt Scanner",
-    },
-    body: JSON.stringify({
-      model: model || HANNA_PDF_MODEL,
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "file", file: { filename: "receipt.pdf", file_data: dataUri } },
-            { type: "text", text: prompt },
-          ],
-        },
-      ],
-      max_tokens: 1500,
-      temperature: 0,
-    }),
-  });
-  const text = await response.text();
-  if (!response.ok) {
-    const err = new Error(`OpenRouter PDF ${response.status}: ${text.slice(0, 300)}`);
-    err.openRouterStatus = response.status;
-    err.openRouterBody = text;
-    throw err;
-  }
-  let payload;
-  try {
-    payload = JSON.parse(text);
-  } catch (e) {
-    throw new Error("OpenRouter returned non-JSON response");
-  }
   return extractOpenRouterMessageText(payload);
 }
 
@@ -1772,18 +1610,10 @@ async function extractHannaReceiptData(filename, mediaType, buffer, secrets) {
       rawText = await fallbackAnthropic();
     }
   } else if (mediaType === "application/pdf" || ext === ".pdf") {
-    // PDFs go through one of two OpenRouter paths:
-    //   - Text-extractable: cheap. Send pdf-parse output to Qwen text model.
-    //   - No extractable text (scans, image-based, multi-page): expensive.
-    //     Send the PDF directly as a document block to HANNA_PDF_MODEL
-    //     (Anthropic Sonnet 4.6 via OpenRouter — handles multi-page natively).
-    // The 2026-05-06 multi-page-rejection guard is removed: Davide's actual
-    // workflow involves multi-page scanned receipts and Sonnet handles them.
-    const { numpages, text: pdfText } = await inspectPdf(buffer);
-    const strippedTextLength = pdfText.replace(/\s+/g, "").length;
-    console.info(`[Hanna] PDF inspect: numpages=${numpages}, stripped_text=${strippedTextLength}`);
-
-    if (openRouterKey && strippedTextLength >= 100) {
+    // PDFs: try text extraction first (Qwen is text-only-friendly for PDFs),
+    // then OpenRouter text completion, then Anthropic fallback.
+    const pdfText = await extractPdfText(buffer);
+    if (openRouterKey && pdfText) {
       try {
         const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
           method: "POST",
@@ -1817,21 +1647,8 @@ async function extractHannaReceiptData(filename, mediaType, buffer, secrets) {
           throw err;
         }
       }
-    } else if (openRouterKey) {
-      // Image-based / scanned PDF (single or multi-page). Send the PDF
-      // directly as a document block to HANNA_PDF_MODEL — Anthropic
-      // Sonnet 4.6 via OpenRouter handles multi-page scans natively.
-      try {
-        rawText = await callOpenRouterPdfForReceipt(buffer, prompt, openRouterKey);
-      } catch (err) {
-        if (isOpenRouterCreditError(err.openRouterStatus, err.openRouterBody)) {
-          rawText = await fallbackAnthropic();
-        } else {
-          throw err;
-        }
-      }
     } else {
-      // No OpenRouter key — fall back to Anthropic-direct.
+      // Non-text PDF or no OpenRouter key — Anthropic handles document blocks natively.
       rawText = await fallbackAnthropic();
     }
   } else {
@@ -1896,16 +1713,16 @@ function sanitizeVictorSearchResult(value) {
   };
 }
 
-async function searchVictorMsds(input, openRouterKey) {
-  const text = await callOpenRouterWithWebSearch({
-    apiKey: openRouterKey,
+async function searchVictorMsds(input, anthropicKey) {
+  const payload = await callAnthropicMessages({
+    apiKey: anthropicKey,
     model: HUB_WEB_SEARCH_MODEL,
     maxTokens: 1024,
     messages: [{ role: "user", content: buildVictorSearchPrompt(input) }],
-    maxSearchResults: 8,
+    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 8 }],
   });
   return sanitizeVictorSearchResult(
-    extractJsonObject(text, "Victor search returned invalid JSON"),
+    extractJsonObject(extractResponseText(payload), "Victor search returned invalid JSON"),
   );
 }
 
@@ -2015,14 +1832,14 @@ function sanitizeRegChange(value) {
   };
 }
 
-async function searchFrankRegulations(input, openRouterKey) {
+async function searchFrankRegulations(input, anthropicKey) {
   const safe = sanitizeObject(input);
   const queries = sanitizeList(safe.queries, 8, 200);
   const allChanges = [];
 
   for (const query of queries) {
-    const text = await callOpenRouterWithWebSearch({
-      apiKey: openRouterKey,
+    const payload = await callAnthropicMessages({
+      apiKey: anthropicKey,
       model: HUB_WEB_SEARCH_MODEL,
       maxTokens: 1024,
       messages: [
@@ -2036,10 +1853,10 @@ async function searchFrankRegulations(input, openRouterKey) {
             'If no changes found, return {"changes":[]}. Return ONLY JSON.',
         },
       ],
-      maxSearchResults: 4,
+      tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 4 }],
     });
     const parsed = sanitizeObject(
-      extractJsonObject(text, "Frank regulation search returned invalid JSON"),
+      extractJsonObject(extractResponseText(payload), "Frank regulation search returned invalid JSON"),
     );
     const changes = Array.isArray(parsed.changes) ? parsed.changes.map(sanitizeRegChange) : [];
     allChanges.push(...changes.filter((item) => item.title && item.description));
@@ -2192,10 +2009,9 @@ exports.victorSearchMsds = onRequest(
       /^http:\/\/localhost(?::\d+)?$/,
       /^http:\/\/127\.0\.0\.1(?::\d+)?$/,
     ],
-    // OpenRouter (Kimi K2.6) with the `:online` web-search plugin. Swapped
-    // off Anthropic 2026-05-06 — OpenRouter Exa-based search is cheaper
-    // (~6x) and matches Davide's "we use OpenRouter" policy.
-    secrets: [OPENROUTER_API_KEY],
+    // Stays on Anthropic — uses the web_search tool which OpenRouter/Qwen
+    // do not expose. Cannot be moved without losing search capability.
+    secrets: [ANTHROPIC_API_KEY],
   },
   async (req, res) => {
     if (req.method !== "POST") {
@@ -2210,7 +2026,7 @@ exports.victorSearchMsds = onRequest(
         return;
       }
 
-      const result = await searchVictorMsds(req.body || {}, OPENROUTER_API_KEY.value() || "");
+      const result = await searchVictorMsds(req.body || {}, ANTHROPIC_API_KEY.value() || "");
       res.json({ success: true, result });
     } catch (error) {
       if (error && typeof error === "object" && "status" in error && "detail" in error) {
@@ -2294,9 +2110,7 @@ exports.frankSearchRegulations = onRequest(
       /^http:\/\/localhost(?::\d+)?$/,
       /^http:\/\/127\.0\.0\.1(?::\d+)?$/,
     ],
-    // OpenRouter (Kimi K2.6) with the `:online` web-search plugin. Swapped
-    // off Anthropic 2026-05-06 — see HUB_WEB_SEARCH_MODEL note.
-    secrets: [OPENROUTER_API_KEY],
+    secrets: [ANTHROPIC_API_KEY],
   },
   async (req, res) => {
     if (req.method !== "POST") {
@@ -2311,7 +2125,7 @@ exports.frankSearchRegulations = onRequest(
         return;
       }
 
-      const changes = await searchFrankRegulations(req.body || {}, OPENROUTER_API_KEY.value() || "");
+      const changes = await searchFrankRegulations(req.body || {}, ANTHROPIC_API_KEY.value() || "");
       res.json({ success: true, changes });
     } catch (error) {
       if (error && typeof error === "object" && "status" in error && "detail" in error) {
@@ -2417,16 +2231,6 @@ async function getEmbedder() {
   env.allowRemoteModels = false;
   env.allowLocalModels = true;
   // Same model weights as the offline embedding step (sentence-transformers/all-MiniLM-L6-v2).
-  //
-  // Cold-start tradeoff (deliberately accepted, NOT a bug):
-  //   First call after a function instance spins up takes 8–15s extra to load
-  //   the ONNX runtime + tokenizer + 90 MB of bundled weights into memory. After
-  //   that the same instance reuses __embedderPipeline for ~free embeddings
-  //   (~50ms each). Pre-warming via min-instances would eliminate the cold
-  //   start but at ~$30/month per always-on instance. Given prestart auto-fill
-  //   is interactive (user is already waiting on the LLM call which is 60s+),
-  //   the embed cold start is hidden inside that wait. Don't optimize unless
-  //   instrumentation shows users actually noticing. Documented 2026-05-06.
   __embedderPipeline = await pipeline(
     "feature-extraction",
     "Xenova/all-MiniLM-L6-v2",
@@ -2456,16 +2260,7 @@ function retrieveSimilar(queryVec, k = 6) {
     score: cosineSimilarity(queryVec, r.embedding),
   }));
   scored.sort((a, b) => b.score - a.score);
-
-  // Threshold-aware retrieval: if top match is weak (<0.55) we prefer FEWER
-  // higher-quality examples over a long tail of marginal ones. The model does
-  // better with 3 sharp examples than 6 noisy ones. If even top-3 is below
-  // 0.4, the corpus has nothing close — caller should know to lean on the
-  // system prompt's AS-standards reasoning instead of mimicking examples.
-  const topScore = scored[0] ? scored[0].score : 0;
-  const effectiveK = topScore < 0.55 ? Math.min(3, k) : k;
-
-  return scored.slice(0, effectiveK).map(({ idx, score }) => ({
+  return scored.slice(0, k).map(({ idx, score }) => ({
     score,
     record: kb.records[idx],
   }));
@@ -2473,48 +2268,68 @@ function retrieveSimilar(queryVec, k = 6) {
 
 const PRESTART_SYSTEM_PROMPT = `You are a senior WHS Safety Manager for J&M Art Steel Fabrication, a structural steel installer in NSW, Australia.
 
-Your job: given a task the team will perform this shift, generate the four standard pre-start fields exactly as the supervisor (Scott Seeho or Jeff Fu) would write them.
+Your job: given a task the team will perform this shift, generate the four standard pre-start fields. Match the in-house supervisor voice (Scott Seeho / Jeff Fu): short, direct, action-focused, no waffle. Australian English.
 
-You will be shown EXAMPLES retrieved from this company's actual prestart history. Match their style, wording, and depth — short, direct, action-focused, no waffle. Use Australian English.
+Apply Australian WHS legislation and standards relevant to structural steel install:
+- AS/NZS 5131 (Structural steelwork — fabrication and erection) — primary reference for steel install methodology, tolerances, weld inspection, erection sequencing, traceability.
+- AS 4100 (Steel structures — design + bolted connection torque sequencing).
+- AS/NZS 1554 (Structural steel welding — process, qualifications, NDT categories).
+- AS/NZS 1891 (Industrial fall-arrest systems and devices) — anchor/lanyard/harness specs for >2 m work.
+- AS 1657 (Fixed platforms, walkways, stairways, ladders).
+- AS/NZS 4576 (Scaffolding — guidance and use).
+- AS 2550 (Cranes — safe use).
+- AS 4991 (Lifting devices).
+- WHS Act 2011 (NSW) and WHS Regulation 2017 (NSW).
+- SafeWork NSW Code of Practice — Construction Work (consultation, traffic mgmt, exclusion zones).
+- SafeWork NSW Code of Practice — Managing the Risk of Falls at Workplaces (the authoritative reference for any work above 2 m on J&M sites).
 
-Apply Australian WHS legislation and the relevant standards:
-- AS/NZS 1554 (Structural Steel Welding)
-- AS 1657 (Fixed platforms, walkways, stairways, ladders)
-- AS/NZS 4576 (Scaffolding)
-- AS/NZS 1891 (Industrial fall arrest)
-- AS 2550 (Cranes - safe use)
-- AS 4991 (Lifting equipment)
-- AS 4100 (Steel structures)
-- WHS Act 2011 (NSW) and WHS Regulation 2017 (NSW)
+CONTROLS HIERARCHY — every methodology MUST express controls in the order Eliminate → Substitute → Engineer → Admin → PPE per AS/NZS 4801 / WHS Reg cl 36. Skip levels that don't apply to the task; never list PPE without an Engineering or Admin control above it.
 
-STANDARD CITATIONS — if the user's task references an AS clause, sanity-check it before quoting. AS 4100 Section 9 covers connection DESIGN, not in-field plumb tolerance (that's project tolerance specs / AS 3600 for embedded items). If the cited clause clearly does not match the activity, do NOT echo the wrong reference — just describe the actual control without the bad citation, or note "verify clause reference with engineer". Never invent or guess a clause number. Better to omit a standard than cite the wrong one.
+STANDARD CITATIONS — only cite a clause when you are certain it applies. AS 4100 Section 9 covers connection DESIGN, not in-field plumb tolerance (project tolerance specs / AS/NZS 5131 §11 for erected steel). If a clause clearly doesn't match the activity, omit it or note "verify clause with engineer". Never invent a clause number — better to omit a standard than misquote it.
 
 BOLTED CONNECTION RULES — when the task involves bolting / torquing structural connections:
 - Sequence: snug-tighten first, then final torque (or 1/4-turn-of-nut method per AS 4100 Cl 15.2.5).
-- Mark/witness each bolt after final torque (paint mark or torque mark).
+- Mark / witness each bolt after final torque (paint or torque mark).
 - Calibrated wrenches must show in-date calibration tag.
 - For TF/TB bolts (8.8/S), include the bolt category in methodology if known.
 
-CONCRETE / HANDOVER HOLD POINTS — if the task is upstream of a concrete pour, weld inspection, or builder handover, add a "QA hold point" line in methodology so the team waits for sign-off before the next step.
+QA HOLD POINTS — if the task is upstream of a concrete pour, weld inspection, NDT category check, or builder handover, list a "QA hold point" line so the team waits for sign-off before proceeding.
 
-Output a STRICT JSON object with exactly these four string keys:
+Output a STRICT JSON object with exactly these four string keys. Each value is plain text with newlines and "- " bullets only (no markdown asterisks, no headings other than the labelled section headers shown below).
+
 {
-  "methodology": "...",   // controls, exclusion zones, permits in use, emergency procedures, environmental controls — multi-line, plain text, hyphens for bullets
-  "machinery":   "...",   // controls for plant/equipment specific to this task — reference SWMS where relevant
-  "hazards":     "...",   // site-specific hazards (one per line, no bullets, no permits)
-  "permits":     "..."    // any permits required, one per line, no bullets
+  "methodology": "...",   // structured under labelled sections — see template below
+  "machinery":   "...",   // plant/equipment-specific controls; one bullet per line with "- "
+  "hazards":     "...",   // site-specific hazards; one bullet per line with "- " (NO permits in this field)
+  "permits":     "..."    // applicable permits; one per line with "- "
 }
 
-PERMITS — MANDATORY checklist. Look at the task and add a permit (one per line in the "permits" field) whenever ANY of these is true. Be CONSERVATIVE: only list a permit if the task explicitly or strongly implies the trigger condition. Do NOT add permits "just in case" — false-positive permits add real bureaucratic load to the supervisor and erode trust in the auto-fill.
-- "Working at Heights permit" — ONLY if the task explicitly mentions or strongly implies physical work above 2 m. Triggers: levels above ground floor (level 1, 2, mezzanine, roof), EWP/scissor lift use, scaffold work, ladder work above 2 m, slab edges, parapets. Triggers NOT met for ground-floor / basement work even if "vertical" tasks like cutting or welding are involved.
-- "Hot Works permit" — if the task involves welding, grinding, cutting, oxy, plasma, brazing, or any spark-producing tool.
-- "Crane Lift permit" or "Lift Plan" — if the task involves crane lifting, telehandler load placement, or rigging of significant loads. Forklift/manual placement at ground level does NOT trigger.
-- "Confined Space permit" — only if the task is in a confined space as defined by AS 2865 (tank, pit, plant room with limited egress, void, duct, sump).
-- "Electrical Isolation permit" — only if work is near energised lines/services or requires isolation lockout/tagout.
-- "Excavation permit" — only if digging, trenching, or ground penetration is part of the task.
-If none apply, use empty string "". Otherwise list applicable permits — one per line, no leading hyphen.
+METHODOLOGY TEMPLATE — use these exact section headers (uppercase, on their own line). Skip a section only if it has no content. Each line under a header starts with "- ". Cite an AS or SafeWork code only when it directly applies.
 
-Do NOT include any prose outside the JSON. Do NOT add markdown fences. The form fields will be filled directly with these strings.`;
+PRE-TASK
+- (sign-on, SWMS review, exclusion zone setup, calibration checks, services/locate)
+
+CONTROLS
+- Engineer: (edge protection, fall arrest, screens, guarding, isolation)
+- Admin: (spotter, exclusion radius, sequencing, hot-works watch, two-person lift ≤25 kg)
+- PPE: (hard hat, hi-vis class D/N, safety boots, gloves cut-rated 5+, eye protection, hearing, harness if >2 m)
+
+QA HOLD POINT
+- (only if a downstream pour, weld inspection, NDT, or handover applies)
+
+EMERGENCY
+- Warden contact, muster point, first-aid kit, nearest hospital if remote site.
+
+PERMITS — MANDATORY checklist. Default to over-permitting; the historical corpus systematically under-documents Working at Heights and Crane permits. Always include any of:
+- "Working at Heights permit" — any work above 2 m (slab edges, EWP, mobile scaffold, ladders, roof, mezzanines).
+- "Hot Works permit" — welding, grinding, cutting, oxy, plasma, brazing, or any spark-producing tool.
+- "Crane Lift permit" / "Lift Plan" — crane lift, EWP load, telehandler, or rigging.
+- "Confined Space permit" — tank, pit, plant room, void, duct.
+- "Electrical Isolation permit" — work near energised services or requiring isolation.
+- "Excavation permit" — digging, trenching, ground penetration.
+If none apply, return empty string. Otherwise one per line with "- ".
+
+Do NOT include prose outside the JSON. Do NOT add markdown fences. The form fields display these strings directly.`;
 
 function buildAutofillUserPrompt(task, hits) {
   const examples = hits
@@ -2535,89 +2350,42 @@ function buildAutofillUserPrompt(task, hits) {
 
 ---
 
-Now produce the four prestart fields for this NEW task. Match the company's house style as shown in the examples. Be concise and actionable. Return ONLY the JSON object.
+The examples above show this company's domain, tone, and which controls they actually use — keep that voice. Do NOT copy their flat-paragraph layout: methodology MUST use the labelled sections (PRE-TASK / CONTROLS / QA HOLD POINT / EMERGENCY) and "- " bullets exactly as defined in the system prompt. Examples are guidance on substance, not format.
+
+Return ONLY the JSON object — strict schema, no prose, no fences.
 
 NEW TASK: ${task}`;
 }
 
-async function callOneAutofillModel(openRouterKey, system, user, model, useReasoningLow) {
-  // 2500 tokens is plenty for the 4-field JSON (typical output ~800-1500
-  // tokens). Lowered from 4000 because the higher cap prices the call
-  // out of small OpenRouter balances — even with low actual usage,
-  // OpenRouter pre-authorises against max_tokens × output-cost.
-  const body = {
-    model: model,
-    max_tokens: 2500,
-    temperature: 0.2,
-    stream: false,
-    response_format: { type: "json_object" },
-    messages: [
-      { role: "system", content: system },
-      { role: "user", content: user },
-    ],
-  };
-  if (useReasoningLow) body.reasoning = { effort: "low" };
-
+async function callQwenThinking(openRouterKey, system, user) {
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${openRouterKey}`,
       "content-type": "application/json",
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      model: PRESTART_AUTOFILL_MODEL,
+      max_tokens: 4000,
+      temperature: 0.2,
+      stream: false,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: user },
+      ],
+    }),
   });
 
   if (!response.ok) {
     const text = await response.text();
-    const err = new Error(`OpenRouter ${response.status}: ${text.slice(0, 300)}`);
-    err.status = response.status;
-    throw err;
+    throw new Error(`OpenRouter ${response.status}: ${text}`);
   }
   const json = await response.json();
   const content = json && json.choices && json.choices[0] &&
     json.choices[0].message && json.choices[0].message.content;
-  if (!content) {
-    const err = new Error(`Empty response from ${model}`);
-    err.empty = true;
-    throw err;
-  }
+  if (!content) throw new Error("Empty response from Qwen");
   return content;
-}
-
-async function callAutofillWithFallback(openRouterKey, system, user) {
-  // Attempt order:
-  //   1. Primary (Kimi K2.6, reasoning.effort: low) — cheap, fast when it works
-  //   2. Fallback (Anthropic Sonnet 4.6 via OpenRouter, no reasoning param)
-  //   — different upstream provider, robust JSON handling
-  // We retry on a broader set than just 5xx because OpenRouter surfaces real
-  // operational issues as 402 (insufficient-credit-for-this-call), 408
-  // (timeout), 429 (rate-limit), or empty-content. The fallback uses a
-  // different model line so it might cost less per call and clear the 402.
-  try {
-    return await callOneAutofillModel(openRouterKey, system, user, PRESTART_AUTOFILL_MODEL, true);
-  } catch (err) {
-    const transient = err.empty
-      || (err.status && err.status >= 500)
-      || err.status === 408
-      || err.status === 429
-      || err.status === 402;
-    if (!transient) throw err;
-    console.warn(`[prestartAutofill] primary ${PRESTART_AUTOFILL_MODEL} failed (${err.message}) — falling back to ${PRESTART_AUTOFILL_FALLBACK_MODEL}`);
-    try {
-      return await callOneAutofillModel(openRouterKey, system, user, PRESTART_AUTOFILL_FALLBACK_MODEL, false);
-    } catch (err2) {
-      // Both models failed. If the underlying issue is OpenRouter credits,
-      // surface a clean 402 to the client so the UI can render an actionable
-      // "top up OpenRouter credits" message instead of an opaque 500.
-      if (err2.status === 402 || err.status === 402) {
-        const e = new Error("OpenRouter credits insufficient — top up at https://openrouter.ai/settings/credits");
-        e.userVisible = true;
-        e.status = 402;
-        throw e;
-      }
-      throw err2;
-    }
-  }
 }
 
 function parseAutofillJson(content) {
@@ -2691,23 +2459,6 @@ exports.prestartAutofill = onRequest(
 
       console.info("prestartAutofill request", { taskLen: task.length });
 
-      // Cache by sha256 of the normalised task. Same input = same output, kept
-      // in RTDB at /jmart-safety/prestartAutofillCache/<sha>. 30-day TTL.
-      // Cache hits skip embedder + retrieval + LLM entirely (~50ms vs 30s).
-      const crypto = require("crypto");
-      const cacheKey = crypto.createHash("sha256")
-        .update(task.toLowerCase().replace(/\s+/g, " ").trim())
-        .digest("hex").slice(0, 32);
-      const admin = require("firebase-admin");
-      if (!admin.apps.length) admin.initializeApp();
-      const cacheRef = admin.database().ref(`/jmart-safety/prestartAutofillCache/${cacheKey}`);
-      const cached = (await cacheRef.once("value")).val();
-      if (cached && cached.savedAt && (Date.now() - cached.savedAt < 30 * 24 * 3600 * 1000)) {
-        console.info("prestartAutofill cache hit", { cacheKey });
-        res.json({ ...cached.payload, cached: true });
-        return;
-      }
-
       const t0 = Date.now();
       const queryVec = await embedQuery(task);
       const tEmbed = Date.now() - t0;
@@ -2716,7 +2467,7 @@ exports.prestartAutofill = onRequest(
       const tRetrieve = Date.now() - t0 - tEmbed;
 
       const userPrompt = buildAutofillUserPrompt(task, hits);
-      const raw = await callAutofillWithFallback(openRouterKey, PRESTART_SYSTEM_PROMPT, userPrompt);
+      const raw = await callQwenThinking(openRouterKey, PRESTART_SYSTEM_PROMPT, userPrompt);
       const tLlm = Date.now() - t0 - tEmbed - tRetrieve;
 
       const fields = parseAutofillJson(raw);
@@ -2725,10 +2476,9 @@ exports.prestartAutofill = onRequest(
         tEmbed, tRetrieve, tLlm,
         topScore: hits[0] && hits[0].score,
         hits: hits.map((h) => ({ id: h.record.id, score: Number(h.score.toFixed(3)) })),
-        kUsed: hits.length,
       });
 
-      const payload = {
+      res.json({
         success: true,
         fields,
         sources: hits.map((h) => ({
@@ -2738,22 +2488,14 @@ exports.prestartAutofill = onRequest(
           site: h.record.meta && h.record.meta.site,
         })),
         timings: { embedMs: tEmbed, retrieveMs: tRetrieve, llmMs: tLlm },
-      };
-
-      // Cache the response — best-effort, don't fail the request if write fails.
-      cacheRef.set({ savedAt: Date.now(), payload }).catch((e) => {
-        console.warn("prestartAutofill cache write failed", { err: e.message });
       });
-
-      res.json(payload);
     } catch (error) {
       const message = (error && error.message) || "Auto-fill failed";
       console.error("prestartAutofill failed", {
         message,
         stack: error && error.stack,
       });
-      const status = (error && error.userVisible && error.status) ? error.status : 500;
-      res.status(status).json({ success: false, error: message });
+      res.status(500).json({ success: false, error: message });
     }
   },
 );
