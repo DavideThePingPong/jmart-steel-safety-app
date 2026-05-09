@@ -937,7 +937,7 @@ function SettingsView({ sites = [], onUpdateSites, siteMetadata = {}, onUpdateSi
                       )}
                     </div>
                     {canManageSharedSettings && (
-                      <div className="flex flex-col gap-1 shrink-0">
+                      <div className="flex flex-col gap-1 flex-shrink-0">
                         <button
                           onClick={() => startEditSite(site)}
                           className="text-blue-600 text-xs font-medium px-2 py-1 border border-blue-300 rounded hover:bg-blue-50"
@@ -990,22 +990,28 @@ function SettingsView({ sites = [], onUpdateSites, siteMetadata = {}, onUpdateSi
               <div className="flex items-center justify-between gap-3 mb-2">
                 <span className="text-sm font-semibold text-gray-800 truncate flex-1 min-w-0">{name}</span>
                 {signatures[name] ? (
-                  <img src={signatures[name]} alt={`${name}'s signature`} className="h-9 w-24 object-contain border border-gray-200 rounded bg-white px-1 shrink-0" />
+                  <img
+                    src={signatures[name]}
+                    alt={`${name}'s signature`}
+                    className="object-contain border border-gray-200 rounded bg-white flex-shrink-0"
+                    style={{ height: '40px', width: '110px', padding: '2px' }}
+                  />
                 ) : (
-                  <span className="text-xs text-gray-400 italic shrink-0">No signature yet</span>
+                  <span className="text-xs text-gray-400 italic flex-shrink-0">No signature yet</span>
                 )}
               </div>
               {canManageSignatures && (
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setShowSignaturePad(name)}
-                    className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium ${signatures[name] ? 'bg-orange-50 text-orange-700 border border-orange-200 active:bg-orange-100' : 'bg-green-600 text-white active:bg-green-700'}`}
+                    className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium ${signatures[name] ? 'bg-orange-100 text-orange-600' : 'bg-green-600 text-white'}`}
                   >
                     {signatures[name] ? '✏️ Update signature' : '➕ Add signature'}
                   </button>
                   <button
                     onClick={() => deleteMember(name)}
-                    className="shrink-0 w-10 h-10 flex items-center justify-center text-red-500 hover:bg-red-50 active:bg-red-100 border border-red-200 rounded-lg"
+                    className="flex-shrink-0 flex items-center justify-center text-red-500 border border-red-200 rounded-lg bg-red-50"
+                    style={{ width: '40px', height: '40px' }}
                     title="Remove worker (deletes their signature too)"
                     aria-label={`Remove ${name}`}
                   >

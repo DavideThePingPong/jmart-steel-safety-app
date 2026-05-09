@@ -377,14 +377,14 @@ function Dashboard({
       </div>
 
       {sortedTemplates.length > 0 && (
-        <div className="min-w-0 max-w-full overflow-hidden">
+        <div className="min-w-0 overflow-hidden" style={{ maxWidth: '100%' }}>
           <div className="mb-3">
             <h3 className="font-semibold text-gray-800">Job Templates</h3>
             <p className="text-xs text-gray-500 mt-1">Latest reusable pre-start for each job</p>
           </div>
           <div
-            className="flex gap-3 overflow-x-auto overflow-y-hidden pb-2 -mx-1 px-1"
-            style={{ scrollbarWidth: 'thin', WebkitOverflowScrolling: 'touch' }}
+            className="flex gap-3 pb-2 -mx-1 px-1"
+            style={{ overflowX: 'auto', overflowY: 'hidden', scrollbarWidth: 'thin', WebkitOverflowScrolling: 'touch' }}
           >
             {sortedTemplates.map((template) => {
               const siteName = template.data?.siteConducted || template.data?.builder || template.data?.address || 'Unknown';
