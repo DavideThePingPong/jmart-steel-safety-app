@@ -2268,30 +2268,33 @@ function retrieveSimilar(queryVec, k = 6) {
 
 const PRESTART_SYSTEM_PROMPT = `You are a senior WHS Safety Manager for J&M Art Steel Fabrication, a structural steel installer in NSW, Australia.
 
-# OUTPUT FORMAT — FOLLOW EXACTLY
+# OUTPUT — STRUCTURED JSON ONLY
 
-Return a STRICT JSON object with these four string keys. The "methodology" string MUST follow the labelled-section template shown in the example below, verbatim — uppercase section headers on their own line, "- " bullets under each. The historical examples in the user prompt show DOMAIN and TONE only; their flat-paragraph layout is NOT the target — IGNORE their formatting and use the structure below.
+Return a STRICT JSON object with EXACTLY this schema. Each array is a list of short string bullets (no leading "- ", no headers — just the content of each bullet). Empty array if nothing applies. The server will format these into the labelled-section text the user sees.
 
-EXAMPLE METHODOLOGY VALUE (this is the exact shape every methodology you produce must take):
+{
+  "methodology": {
+    "preTask":            ["string", ...],
+    "controlsEngineer":   ["string", ...],
+    "controlsAdmin":      ["string", ...],
+    "controlsPPE":        ["string", ...],
+    "qaHoldPoint":        ["string", ...],
+    "emergency":          ["string", ...]
+  },
+  "machinery":   ["string", ...],
+  "hazards":     ["string", ...],
+  "permits":     ["string", ...]
+}
 
-PRE-TASK
-- Toolbox + SWMS sign-on with all workers; verify induction current
-- Exclusion zone marked per AS/NZS 5131 §6.4; spotter posted
-- Calibrated tools verified (torque wrench tag in date, gas test tags)
-- Anchor points and fall-arrest equipment inspected per AS/NZS 1891.1
+CATEGORISATION GUIDE — what goes in each methodology bucket:
+- preTask: things to do BEFORE the work starts (sign-on, SWMS review, exclusion-zone setup, tool calibration verification, services locate, anchor inspection).
+- controlsEngineer: physical engineering controls (edge protection, fall-arrest anchors, isolation, weld screens, guarding, machine guarding).
+- controlsAdmin: administrative controls (spotters, fire watch, sequencing, two-person lifts ≤25 kg, hot-works watcher 30 min after, traffic management, exclusion radius).
+- controlsPPE: required personal protective equipment (hard hat, hi-vis class D/N, safety boots, cut-rated gloves, eye protection, hearing, harness, respirator).
+- qaHoldPoint: quality assurance hold points before the team can proceed (bolt witness mark, weld inspection, NDT category check, engineer sign-off, builder handover).
+- emergency: site-specific emergency arrangements (warden, muster, first-aid, nearest hospital if remote).
 
-CONTROLS
-- Engineer: edge protection / handrails to all open edges; fall-arrest with rated anchors for >2 m work; weld screens for arc flash
-- Admin: hot-works watcher 30 min after last spark; two-person lift ≤25 kg; coordinate with other trades on level 37
-- PPE: hard hat, hi-vis class D/N, safety boots, cut-rated gloves (level 5+), eye protection, hearing protection, harness for >2 m
-
-QA HOLD POINT
-- Bolt torque witness mark before next lift cycle (AS 4100 Cl 15.2.5)
-- Engineer sign-off on connections before grouting / handover
-
-EMERGENCY
-- Site warden: <name on site board>; muster point: <site assembly area>
-- First-aid kit at site shed; nearest hospital details on emergency board
+CRITICAL: PPE must NEVER appear without an engineering or administrative control above it — that's the WHS Reg cl 36 hierarchy. If you populate controlsPPE you must also populate at least one of controlsEngineer or controlsAdmin.
 
 # CONTEXT FOR YOU AS THE WRITER
 
@@ -2310,8 +2313,6 @@ Apply Australian WHS legislation and standards relevant to structural steel inst
 - SafeWork NSW Code of Practice — Construction Work (consultation, traffic mgmt, exclusion zones).
 - SafeWork NSW Code of Practice — Managing the Risk of Falls at Workplaces (the authoritative reference for any work above 2 m on J&M sites).
 
-CONTROLS HIERARCHY — every methodology MUST express controls in the order Eliminate → Substitute → Engineer → Admin → PPE per AS/NZS 4801 / WHS Reg cl 36. Skip levels that don't apply to the task; never list PPE without an Engineering or Admin control above it.
-
 STANDARD CITATIONS — only cite a clause when you are certain it applies. AS 4100 Section 9 covers connection DESIGN, not in-field plumb tolerance (project tolerance specs / AS/NZS 5131 §11 for erected steel). If a clause clearly doesn't match the activity, omit it or note "verify clause with engineer". Never invent a clause number — better to omit a standard than misquote it.
 
 BOLTED CONNECTION RULES — when the task involves bolting / torquing structural connections:
@@ -2320,43 +2321,18 @@ BOLTED CONNECTION RULES — when the task involves bolting / torquing structural
 - Calibrated wrenches must show in-date calibration tag.
 - For TF/TB bolts (8.8/S), include the bolt category in methodology if known.
 
-QA HOLD POINTS — if the task is upstream of a concrete pour, weld inspection, NDT category check, or builder handover, list a "QA hold point" line so the team waits for sign-off before proceeding.
+QA HOLD POINTS — if the task is upstream of a concrete pour, weld inspection, NDT category check, or builder handover, populate the methodology.qaHoldPoint array.
 
-Output a STRICT JSON object with exactly these four string keys. Each value is plain text with newlines and "- " bullets only (no markdown asterisks, no headings other than the labelled section headers shown below).
-
-{
-  "methodology": "...",   // structured under labelled sections — see template below
-  "machinery":   "...",   // plant/equipment-specific controls; one bullet per line with "- "
-  "hazards":     "...",   // site-specific hazards; one bullet per line with "- " (NO permits in this field)
-  "permits":     "..."    // applicable permits; one per line with "- "
-}
-
-METHODOLOGY TEMPLATE — use these exact section headers (uppercase, on their own line). Skip a section only if it has no content. Each line under a header starts with "- ". Cite an AS or SafeWork code only when it directly applies.
-
-PRE-TASK
-- (sign-on, SWMS review, exclusion zone setup, calibration checks, services/locate)
-
-CONTROLS
-- Engineer: (edge protection, fall arrest, screens, guarding, isolation)
-- Admin: (spotter, exclusion radius, sequencing, hot-works watch, two-person lift ≤25 kg)
-- PPE: (hard hat, hi-vis class D/N, safety boots, gloves cut-rated 5+, eye protection, hearing, harness if >2 m)
-
-QA HOLD POINT
-- (only if a downstream pour, weld inspection, NDT, or handover applies)
-
-EMERGENCY
-- Warden contact, muster point, first-aid kit, nearest hospital if remote site.
-
-PERMITS — MANDATORY checklist. Default to over-permitting; the historical corpus systematically under-documents Working at Heights and Crane permits. Always include any of:
+PERMITS — MANDATORY checklist. Default to over-permitting; the historical corpus systematically under-documents Working at Heights and Crane permits. Always include any of these permit names (one per array entry, no leading hyphen):
 - "Working at Heights permit" — any work above 2 m (slab edges, EWP, mobile scaffold, ladders, roof, mezzanines).
 - "Hot Works permit" — welding, grinding, cutting, oxy, plasma, brazing, or any spark-producing tool.
 - "Crane Lift permit" / "Lift Plan" — crane lift, EWP load, telehandler, or rigging.
 - "Confined Space permit" — tank, pit, plant room, void, duct.
 - "Electrical Isolation permit" — work near energised services or requiring isolation.
 - "Excavation permit" — digging, trenching, ground penetration.
-If none apply, return empty string. Otherwise one per line with "- ".
+If none apply, return an empty array.
 
-Do NOT include prose outside the JSON. Do NOT add markdown fences. The form fields display these strings directly.`;
+Do NOT include prose outside the JSON. Do NOT add markdown fences. The server formats the structured object into labelled-section text for the user.`;
 
 function buildAutofillUserPrompt(task, hits) {
   // Reframe historical prestarts as raw domain reference. We deliberately do
@@ -2382,13 +2358,13 @@ function buildAutofillUserPrompt(task, hits) {
 
 ${reference}
 
-These references are J&M's vocabulary and concerns for this kind of work. They are NOT a format template — their flat layout MUST NOT influence your output structure. Your output uses the labelled-section template defined in the system prompt.
+These references are J&M's vocabulary and concerns for this kind of work. Use them for substance, tone, and which controls the team typically uses — but bucket each insight into the structured JSON schema in the system prompt.
 
 # YOUR TASK
 
 NEW TASK: ${task}
 
-Generate the JSON object with exactly the four keys, methodology following the PRE-TASK / CONTROLS / QA HOLD POINT / EMERGENCY template verbatim. Return ONLY the JSON — no prose, no fences.`;
+Generate the structured JSON object now. Categorise each control into preTask, controlsEngineer, controlsAdmin, controlsPPE, qaHoldPoint, or emergency. Return ONLY the JSON — no prose, no fences.`;
 }
 
 async function callQwenThinking(openRouterKey, system, user) {
@@ -2422,9 +2398,57 @@ async function callQwenThinking(openRouterKey, system, user) {
   return content;
 }
 
+// Convert a raw bullet array into "- " prefixed lines, ignoring empty/junk entries.
+function bulletizeArray(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr
+    .map((s) => (typeof s === "string" ? s.trim() : ""))
+    .filter((s) => s && s !== "-" && s !== "•")
+    .map((s) => s.replace(/^[-•]\s*/, ""));  // strip any leading bullet the model added
+}
+
+// Format a structured methodology object into the labelled-section text the
+// form displays. Empty sections are omitted entirely. PPE-only methodology is
+// suppressed (WHS Reg cl 36 — controls hierarchy demands engineering or admin
+// before PPE).
+function formatMethodology(m) {
+  if (!m || typeof m !== "object") return "";
+  const preTask = bulletizeArray(m.preTask);
+  const eng = bulletizeArray(m.controlsEngineer);
+  const adm = bulletizeArray(m.controlsAdmin);
+  const ppe = bulletizeArray(m.controlsPPE);
+  const qa = bulletizeArray(m.qaHoldPoint);
+  const emerg = bulletizeArray(m.emergency);
+
+  const sections = [];
+  if (preTask.length) {
+    sections.push("PRE-TASK\n" + preTask.map((s) => `- ${s}`).join("\n"));
+  }
+  // Build CONTROLS only if at least one tier is populated; suppress PPE-only.
+  const hasNonPPE = eng.length || adm.length;
+  if (eng.length || adm.length || ppe.length) {
+    const controlLines = [];
+    if (eng.length) controlLines.push(...eng.map((s) => `- Engineer: ${s}`));
+    if (adm.length) controlLines.push(...adm.map((s) => `- Admin: ${s}`));
+    if (ppe.length && hasNonPPE) controlLines.push(...ppe.map((s) => `- PPE: ${s}`));
+    if (controlLines.length) {
+      sections.push("CONTROLS\n" + controlLines.join("\n"));
+    }
+  }
+  if (qa.length) {
+    sections.push("QA HOLD POINT\n" + qa.map((s) => `- ${s}`).join("\n"));
+  }
+  if (emerg.length) {
+    sections.push("EMERGENCY\n" + emerg.map((s) => `- ${s}`).join("\n"));
+  }
+  return sections.join("\n\n");
+}
+
+function joinBullets(arr) {
+  return bulletizeArray(arr).map((s) => `- ${s}`).join("\n");
+}
+
 function parseAutofillJson(content) {
-  // Qwen thinking models sometimes wrap output. Try direct parse first, then
-  // strip a fenced code block if present.
   const tryParse = (s) => {
     try { return JSON.parse(s); } catch { return null; }
   };
@@ -2440,12 +2464,31 @@ function parseAutofillJson(content) {
   if (!parsed || typeof parsed !== "object") {
     throw new Error("Model did not return valid JSON");
   }
-  // Coerce to exact schema with defaults.
+
+  // Coerce + format. Methodology can be either the new structured object or
+  // a legacy string (graceful degrade if a stale model still returns flat).
+  let methodology;
+  if (parsed.methodology && typeof parsed.methodology === "object" && !Array.isArray(parsed.methodology)) {
+    methodology = formatMethodology(parsed.methodology);
+  } else if (typeof parsed.methodology === "string") {
+    methodology = parsed.methodology;
+  } else {
+    methodology = "";
+  }
+
+  // machinery / hazards / permits are arrays in the new schema; legacy was
+  // a single string. Accept both.
+  const arrOrStr = (v) => {
+    if (Array.isArray(v)) return joinBullets(v);
+    if (typeof v === "string") return v;
+    return "";
+  };
+
   return {
-    methodology: typeof parsed.methodology === "string" ? parsed.methodology : "",
-    machinery:   typeof parsed.machinery === "string" ? parsed.machinery : "",
-    hazards:     typeof parsed.hazards === "string" ? parsed.hazards : "",
-    permits:     typeof parsed.permits === "string" ? parsed.permits : "",
+    methodology,
+    machinery: arrOrStr(parsed.machinery),
+    hazards:   arrOrStr(parsed.hazards),
+    permits:   arrOrStr(parsed.permits),
   };
 }
 
