@@ -42,18 +42,20 @@ const HUB_WEB_SEARCH_FALLBACK_MODEL =
 // Anthropic fallback fires only on OpenRouter credit failure.
 const VICTOR_QWEN_MODEL =
   process.env.VICTOR_QWEN_MODEL || "qwen/qwen3-vl-32b-instruct";
-// Primary thinking model for prestart auto-fill. Kimi K2.6 is consistent with
-// Gio + Hub. reasoning.effort: low keeps wall-time under Hosting's ~60s gateway.
+// Primary model for prestart auto-fill. Swapped from Kimi K2.6 → Anthropic
+// Haiku 4.5 on 2026-05-10 after Sofia's mobile users hit timeouts: Kimi was
+// returning Empty Response intermittently, causing a Haiku fallback that
+// pushed wall-time past the 220s frontend timeout. Haiku as primary is
+// faster (~45-80s typical), more reliable, ~3× cheaper, and quality is
+// plenty for the 4-field structured output. Pattern-matching task, not
+// deep reasoning — the "Kimi quality" edge wasn't material.
 const PRESTART_AUTOFILL_MODEL =
-  process.env.PRESTART_AUTOFILL_MODEL || "moonshotai/kimi-k2.6";
-// Fallback when primary returns empty content or 5xx — typically OpenRouter
-// credit/routing transients. Anthropic Haiku 4.5 via OpenRouter:
-//   - different upstream provider lineage (clears Kimi-side issues)
-//   - 3-4x faster than Sonnet, fits the ~60s Hosting gateway window
-//   - cheaper than Sonnet, helps when balance is the actual problem
-//   - quality plenty for the 4-field structured output
+  process.env.PRESTART_AUTOFILL_MODEL || "anthropic/claude-haiku-4-5";
+// Fallback when primary returns empty content or 5xx. Kept Kimi K2.6 here
+// so the fallback uses a different upstream provider lineage — if Anthropic
+// has an outage, Kimi takes over.
 const PRESTART_AUTOFILL_FALLBACK_MODEL =
-  process.env.PRESTART_AUTOFILL_FALLBACK_MODEL || "anthropic/claude-haiku-4-5";
+  process.env.PRESTART_AUTOFILL_FALLBACK_MODEL || "moonshotai/kimi-k2.6";
 const ANTHROPIC_API_KEY = defineSecret("ANTHROPIC_API_KEY");
 const OPENROUTER_API_KEY = defineSecret("OPENROUTER_API_KEY");
 const FRANK_HOUSE_MODEL = Object.freeze({

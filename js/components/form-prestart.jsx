@@ -299,11 +299,33 @@ function PrestartView({ onSubmit, onUpdate, editingForm, sites = [], siteMetadat
     setAutofillBusy(true);
     setAutofillError('');
     setAutofillSources([]);
+
+    // Hold the screen awake during the autofill call — iOS Safari (and Android
+    // Chrome to a lesser extent) suspend JS timers + in-flight fetch when the
+    // screen dims or the user backgrounds the tab, which kills a 1-3 minute
+    // call. wakeLock is best-effort: graceful no-op on browsers that don't
+    // support it. Re-acquire on visibilitychange because the OS releases the
+    // lock when the page hides — without that, returning to the app finds a
+    // dead lock and the next minute of waiting won't be protected.
+    let wakeLock = null;
+    const onVisibilityChange = async () => {
+      if (document.visibilityState === 'visible' && navigator.wakeLock) {
+        try { wakeLock = await navigator.wakeLock.request('screen'); } catch (_) {}
+      }
+    };
+    if (navigator.wakeLock) {
+      try { wakeLock = await navigator.wakeLock.request('screen'); } catch (_) {}
+      document.addEventListener('visibilitychange', onVisibilityChange);
+    }
+
     try {
       const resp = await window.callJMartFunction(
         'prestartAutofill',
         { task: taskText },
-        220000,
+        // 300s frontend cap (was 220s). Realistic worst case: Kimi cold start
+        // 5-15s + Kimi empty 30-60s + Haiku fallback 60-120s + RAG embedder
+        // load 5-10s = ~200s on a bad day. 300s leaves headroom.
+        300000,
       );
       if (!resp || !resp.success || !resp.fields) {
         throw new Error('Empty auto-fill response');
@@ -334,6 +356,10 @@ function PrestartView({ onSubmit, onUpdate, editingForm, sites = [], siteMetadat
         ToastNotifier.error('Auto-fill failed: ' + msg);
       }
     } finally {
+      // Drop the screen wake-lock + visibility listener whether we succeeded or
+      // errored. iOS otherwise holds the screen awake longer than needed.
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      if (wakeLock) { try { await wakeLock.release(); } catch (_) {} }
       setAutofillBusy(false);
     }
   };
