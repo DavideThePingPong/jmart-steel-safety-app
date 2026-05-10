@@ -133,6 +133,10 @@ const buildVersion = 'b' + Date.now();
     /window\.__JMART_ASSET_VERSION__\s*=\s*['"][^'"]*['"]/,
     `window.__JMART_ASSET_VERSION__ = '${buildVersion}'`
   );
+  // Also stamp the manifest cache-bust query so users get fresh manifest on every
+  // deploy. Previously a static literal `?v=20260404-safetyfinal` meant manifest
+  // changes (theme color, scope, icons) needed manual hard-refresh per device.
+  content = content.replace(/__JMART_MANIFEST_VERSION__/g, buildVersion);
   if (content !== before) {
     fs.writeFileSync(file, content, 'utf8');
     console.log('  stamped version:', relativePath, '→', buildVersion);

@@ -32,6 +32,12 @@ const HUB_VISION_MODEL =
 // became invalid and Davide's policy is "we use OpenRouter".
 const HUB_WEB_SEARCH_MODEL =
   process.env.HUB_WEB_SEARCH_MODEL || "moonshotai/kimi-k2.6:online";
+// Fallback when the primary web-search model returns empty / 402 / 408 / 429 /
+// 5xx. Different upstream provider lineage so transient OpenRouter issues
+// against Kimi don't take Victor + Frank web-search down with them. Same Exa
+// `web` plugin handles search; only the generation model differs.
+const HUB_WEB_SEARCH_FALLBACK_MODEL =
+  process.env.HUB_WEB_SEARCH_FALLBACK_MODEL || "anthropic/claude-haiku-4.5";
 // Victor / Frank-attachment Qwen primary (cheap OCR/extraction).
 // Anthropic fallback fires only on OpenRouter credit failure.
 const VICTOR_QWEN_MODEL =
@@ -1638,6 +1644,52 @@ async function callOpenRouterWithWebSearch({ apiKey, model, maxTokens, messages,
   return extractOpenRouterMessageText(payload);
 }
 
+// Wrap callOpenRouterWithWebSearch with a primary -> fallback model retry so
+// Victor SDS-search and Frank regulation-search keep working when the primary
+// (Kimi K2.6) hits 402/408/429/5xx or returns empty content. Mirrors the
+// callAutofillWithFallback pattern used by prestartAutofill.
+async function callOpenRouterWebSearchWithFallback({ apiKey, maxTokens, messages, maxSearchResults }) {
+  const tryModel = async (model) => {
+    const text = await callOpenRouterWithWebSearch({
+      apiKey,
+      model,
+      maxTokens,
+      messages,
+      maxSearchResults,
+    });
+    if (!text || !text.trim()) {
+      const err = new Error(`Empty response from ${model}`);
+      err.empty = true;
+      throw err;
+    }
+    return text;
+  };
+  try {
+    return await tryModel(HUB_WEB_SEARCH_MODEL);
+  } catch (err) {
+    const status = err.openRouterStatus || err.status || 0;
+    const transient = err.empty
+      || (status >= 500)
+      || status === 408
+      || status === 429
+      || status === 402;
+    if (!transient) throw err;
+    console.warn(`[hub-web-search] primary ${HUB_WEB_SEARCH_MODEL} failed (${err.message}) — falling back to ${HUB_WEB_SEARCH_FALLBACK_MODEL}`);
+    try {
+      return await tryModel(HUB_WEB_SEARCH_FALLBACK_MODEL);
+    } catch (err2) {
+      const status2 = err2.openRouterStatus || err2.status || 0;
+      if (status2 === 402 || status === 402) {
+        const e = new Error("OpenRouter credits insufficient — top up at https://openrouter.ai/settings/credits");
+        e.userVisible = true;
+        e.status = 402;
+        throw e;
+      }
+      throw err2;
+    }
+  }
+}
+
 // OpenRouter PDF-document call for Hanna receipts. Routes to a model that
 // accepts PDF document blocks natively (default: Anthropic Sonnet 4.6 via
 // OpenRouter). Handles multi-page scanned PDFs in a single call. Used when
@@ -1897,9 +1949,8 @@ function sanitizeVictorSearchResult(value) {
 }
 
 async function searchVictorMsds(input, openRouterKey) {
-  const text = await callOpenRouterWithWebSearch({
+  const text = await callOpenRouterWebSearchWithFallback({
     apiKey: openRouterKey,
-    model: HUB_WEB_SEARCH_MODEL,
     maxTokens: 1024,
     messages: [{ role: "user", content: buildVictorSearchPrompt(input) }],
     maxSearchResults: 8,
@@ -2021,9 +2072,8 @@ async function searchFrankRegulations(input, openRouterKey) {
   const allChanges = [];
 
   for (const query of queries) {
-    const text = await callOpenRouterWithWebSearch({
+    const text = await callOpenRouterWebSearchWithFallback({
       apiKey: openRouterKey,
-      model: HUB_WEB_SEARCH_MODEL,
       maxTokens: 1024,
       messages: [
         {
