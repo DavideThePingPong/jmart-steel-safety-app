@@ -7,6 +7,68 @@
 // Template utilities are now in hooks.jsx (shared with dashboard/camera)
 // getPrestartTemplateKey is available via window.getPrestartTemplateKey
 
+// Client-side methodology formatter — buckets the LLM's flat-bullet
+// methodology into labelled sections (PRE-TASK / CONTROLS / QA / EMERGENCY)
+// using keyword regex. Mirrors the server-side bucketer (which can't reach
+// production until the Cloud Function deploy is fixed). WHS Reg cl 36
+// hierarchy enforced — PPE only emits when an Eng/Admin control is also
+// present.
+function _formatPrestartMethodology(flatText) {
+  if (typeof flatText !== 'string' || !flatText.trim()) return flatText || '';
+  // Already sectioned? Pass through.
+  if (/^\s*PRE-TASK\b/m.test(flatText) || /^\s*CONTROLS\b/m.test(flatText)) {
+    return flatText;
+  }
+  const bullets = flatText
+    .split(/\n+/)
+    .map(s => s.replace(/^\s*[-•*]\s*/, '').trim())
+    .filter(s => s.length > 3);
+  if (bullets.length === 0) return flatText;
+  const score = (line) => {
+    const l = line.toLowerCase();
+    if (/witness|paint mark|torque mark|qa hold|hold point|engineer sign-?off|NDT|weld inspection/i.test(line)) return 'qa';
+    if (/emergency|warden|muster|first[- ]aid|nearest hospital|evacuat/i.test(l)) return 'emerg';
+    if (/\bPPE\b|hard hat|hi-?vis|safety boot|gloves|safety glass|eye protect|hearing protect|respirator|harness|lanyard/i.test(line)) return 'ppe';
+    if (/edge protection|fall arrest|anchor|guardrail|screen|guarding|isolat|barrier|exclusion zone|fence/i.test(l)) return 'eng';
+    if (/sign[- ]on|swms|induct|calibrat|verify|inspect.*before|brief|toolbox|pre-?start|tag.*before|in-?date/i.test(l)) return 'pre';
+    if (/spotter|watch\b|watcher|two-?person|sequence|coordinate|report.*to|do not|forbid|prohibited|fire watch|hot works permit|permit/i.test(l)) return 'admin';
+    if (/torque|paint|mark each|connection.*before/i.test(l)) return 'qa';
+    return 'admin';
+  };
+  const buckets = { pre: [], eng: [], admin: [], ppe: [], qa: [], emerg: [] };
+  for (const b of bullets) buckets[score(b)].push(b);
+  const sections = [];
+  if (buckets.pre.length) {
+    sections.push('PRE-TASK\n' + buckets.pre.map(s => '- ' + s).join('\n'));
+  }
+  const hasNonPPE = buckets.eng.length || buckets.admin.length;
+  if (buckets.eng.length || buckets.admin.length || buckets.ppe.length) {
+    const lines = [];
+    if (buckets.eng.length) lines.push(...buckets.eng.map(s => '- Engineer: ' + s));
+    if (buckets.admin.length) lines.push(...buckets.admin.map(s => '- Admin: ' + s));
+    if (buckets.ppe.length && hasNonPPE) lines.push(...buckets.ppe.map(s => '- PPE: ' + s));
+    if (lines.length) sections.push('CONTROLS\n' + lines.join('\n'));
+  }
+  if (buckets.qa.length) {
+    sections.push('QA HOLD POINT\n' + buckets.qa.map(s => '- ' + s).join('\n'));
+  }
+  if (buckets.emerg.length) {
+    sections.push('EMERGENCY\n' + buckets.emerg.map(s => '- ' + s).join('\n'));
+  }
+  return sections.join('\n\n') || flatText;
+}
+
+// Normalise a flat string of bullet-y items to "- " prefixed lines.
+function _normalizeBulletList(s) {
+  if (typeof s !== 'string' || !s.trim()) return s || '';
+  return s
+    .split(/\n+/)
+    .map(line => line.replace(/^\s*[-•*]\s*/, '').trim())
+    .filter(line => line.length > 0)
+    .map(line => '- ' + line)
+    .join('\n');
+}
+
 function PrestartView({ onSubmit, onUpdate, editingForm, sites = [], siteMetadata = {}, savedTemplates = [], onUpsertTemplate, templateToLoad, onTemplateLoaded }) {
   const isEditing = !!editingForm;
   const editData = editingForm?.data || {};
@@ -247,11 +309,20 @@ function PrestartView({ onSubmit, onUpdate, editingForm, sites = [], siteMetadat
         throw new Error('Empty auto-fill response');
       }
       const f = resp.fields;
+      // Reshape flat-bullet output into labelled sections client-side. The
+      // Cloud Function returns plain "- bullet\n- bullet" strings; we
+      // bucket them into PRE-TASK / CONTROLS (Eng/Admin/PPE) / QA / EMERGENCY
+      // for the visual polish Sofia wanted. See _formatPrestartMethodology
+      // above for the keyword routing.
+      const formattedMethodology = _formatPrestartMethodology(f.methodology || '');
+      const normalizedMachinery = _normalizeBulletList(f.machinery || '');
+      const normalizedHazards = _normalizeBulletList(f.hazards || '');
+      const normalizedPermits = _normalizeBulletList(f.permits || '');
       // Only overwrite empty boxes by default — preserve anything already typed.
-      setMethodology(prev => prev.value ? prev : { ...prev, value: f.methodology || '' });
-      setMachineryControls(prev => prev.value ? prev : { ...prev, value: f.machinery || '' });
-      setSiteHazards(prev => prev.value ? prev : { ...prev, value: f.hazards || '' });
-      setPermitsRequired(prev => prev.value ? prev : { ...prev, value: f.permits || '' });
+      setMethodology(prev => prev.value ? prev : { ...prev, value: formattedMethodology });
+      setMachineryControls(prev => prev.value ? prev : { ...prev, value: normalizedMachinery });
+      setSiteHazards(prev => prev.value ? prev : { ...prev, value: normalizedHazards });
+      setPermitsRequired(prev => prev.value ? prev : { ...prev, value: normalizedPermits });
       setAutofillSources(Array.isArray(resp.sources) ? resp.sources : []);
       if (typeof ToastNotifier !== 'undefined') {
         ToastNotifier.success('Auto-filled from ' + (resp.sources?.length || 0) + ' similar past prestarts');
